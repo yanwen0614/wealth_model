@@ -1,0 +1,10 @@
+# 数据路径配置文件
+
+# K线快照文件路径（支持多个文件）
+Kline_Snapshot_file_path:
+  - C:/D/quant/wealth_road/data/archive/kline/day/kline_snapshot_day_A_2013_2025.parquet
+  - C:/D/quant/wealth_road/data/archive/kline/day/kline_snapshot_day_20260101_20260220.parquet
+
+# 股本结构文件路径（支持多个文件）
+Share_Info:
+  - C:/D/quant/wealth_road/data/archive/share_info/share_info_equity_structure_20130101_20251231.parquet
