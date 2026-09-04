@@ -10,7 +10,7 @@ class EMDLoss(nn.Module):
     支持标签平滑策略：
     - 可以通过参数控制是否开启
     - 最多往相邻2阶类别迁移
-    - 边缘类别（最小和最大类别）不进行迁移
+    - 边缘单侧独享权重，行和恒1
     """
     def __init__(self, num_classes=10, p=2, label_smoothing=False, smooth_eps=0.1):
         """
@@ -28,9 +28,11 @@ class EMDLoss(nn.Module):
         self.label_smoothing = label_smoothing
         self.smooth_eps = smooth_eps
         
-        # 预计算每个类别的平滑权重矩阵
+        # 预计算每个类别的平滑权重矩阵，随模块 .to() 迁移
         if self.label_smoothing and self.num_classes > 1:
-            self.smooth_weights = self._compute_smooth_weights()
+            self.register_buffer("smooth_weights", self._compute_smooth_weights())
+        else:
+            self.register_buffer("smooth_weights", None)
 
     def _compute_smooth_weights(self):
         """
@@ -91,13 +93,22 @@ class EMDLoss(nn.Module):
         
         Returns:
             smoothed_targets: 平滑后的标签分布 (Batch_Size, Num_Classes)
+
+        Raises:
+            RuntimeError: 关闭标签平滑时直接调用（smooth_weights 未注册为 Tensor）
         """
-        # 转换为 one-hot 编码
-        target_onehot = F.one_hot(targets, num_classes=self.num_classes).float()
-        
+        weights = self.smooth_weights
+        if not isinstance(weights, torch.Tensor):
+            raise RuntimeError("label_smoothing is disabled")
+
+        # 转换为 one-hot 编码，与 buffer 同设备防跨设备 matmul
+        target_onehot = F.one_hot(targets, num_classes=self.num_classes).float().to(
+            weights.device
+        )
+
         # 应用标签平滑
-        smoothed_targets = torch.matmul(target_onehot, self.smooth_weights)
-        
+        smoothed_targets = torch.matmul(target_onehot, weights)
+
         return smoothed_targets
 
     def forward(self, logits, targets):
@@ -119,10 +130,12 @@ class EMDLoss(nn.Module):
         # 3. 构建真值的累积分布函数 (CDF)
         if self.label_smoothing and self.num_classes > 1:
             # 应用标签平滑
-            target_dist = self._apply_label_smoothing(targets)
+            target_dist = self._apply_label_smoothing(targets).to(logits.device)
         else:
             # 不使用标签平滑，直接转换为 one-hot 编码
-            target_dist = F.one_hot(targets, num_classes=self.num_classes).float()
+            target_dist = F.one_hot(targets, num_classes=self.num_classes).float().to(
+                logits.device
+            )
         
         # 计算真值的 CDF
         target_cdf = torch.cumsum(target_dist, dim=1)
@@ -136,25 +149,6 @@ class EMDLoss(nn.Module):
             loss = torch.mean(torch.pow(torch.abs(pred_cdf - target_cdf), self.p))
             
         return loss
-
-    def to(self, device):
-        """
-        将损失函数的参数移动到指定设备
-        
-        Args:
-            device: 目标设备，可以是字符串（如"cuda"、"cpu"）或torch.device对象
-        
-        Returns:
-            self: 移动后的损失函数实例
-        """
-        self.device = torch.device(device)
-        
-        # 如果使用了标签平滑，将平滑权重矩阵移动到指定设备
-        if self.label_smoothing and self.num_classes > 1:
-            self.smooth_weights = self.smooth_weights.to(self.device)
-            
-        return self
-
 
 # --- 使用示例 ---
 if __name__ == "__main__":
@@ -197,7 +191,7 @@ if __name__ == "__main__":
         print(f"\n类别 2 平滑后的分布: {smoothed}")
         print(f"总和: {torch.sum(smoothed):.4f}")
         
-        # 边缘类别不进行平滑
+        # 边缘单侧独享权重，行和恒1
         edge_target = torch.tensor([0])  # 边缘类别
         smoothed_edge = emd_loss_with_smooth._apply_label_smoothing(edge_target)
         print(f"\n类别 0（边缘）平滑后的分布: {smoothed_edge}")
