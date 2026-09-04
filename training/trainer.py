@@ -9,10 +9,8 @@ from dataclasses import dataclass
 from sklearn.metrics import confusion_matrix
 from typing import Tuple, List, Optional
 from tqdm import tqdm
-from data.npz_data_load import DataConfig
 from .early_stopping import EarlyStopping
-from .metrics import calculate_latter_half_metrics, print_detailed_metrics_report
-from .custom_loss import HalfClassWeightedCrossEntropy
+from .metrics import calculate_latter_half_metrics
 
 
 @dataclass
