@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from typing import List, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from tqdm import tqdm
 
 @dataclass
@@ -12,7 +12,7 @@ class DataConfig:
     cache_block_size: int = 10                # 一次预加载的连续npz文件数（150G内存可设为20）
     batch_size: int = 512                     # 批次大小
     num_workers: int = 4                     # 数据加载进程数
-    bins:np.array = np.array([-15,-7,-3, -1, 1, 3, 7,15]) / 100
+    bins: np.ndarray = field(default_factory=lambda: np.array([-15, -7, -3, -1, 1, 3, 7, 15]) / 100)
 
 
 class NPZSequentialDataset(Dataset):
