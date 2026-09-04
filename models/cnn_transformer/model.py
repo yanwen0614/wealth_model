@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .cnnblock import MultiWindowInceptionCNN
+from .inception_blocks import MultiWindowInceptionCNN
 from .config import ModelConfig
 
 
@@ -112,7 +112,7 @@ class CNNTransformer(nn.Module):
 
 
 if __name__ == "__main__":
-    # python -m models.model2.model2
+    # python -m models.cnn_transformer.model
     # 测试代码
     print("Testing CNNTransformer model with positional encoding...")
     

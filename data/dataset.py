@@ -178,7 +178,7 @@ class ParquetDataset(Dataset):
         # 2. 归一化统计
         # 支持 grouped 与 per_code 分支（zscore 已删除），均支持外部传入 scaler_stats / 文件持久化 / 验证集复用
         if cfg.normalize == "per_code":
-            from data.per_code_scaler import PerCodeGroupedScaler
+            from data.scaler import PerCodeGroupedScaler
             if scaler_stats is not None:
                 if isinstance(scaler_stats, PerCodeGroupedScaler):
                     self.scaler_stats = scaler_stats
@@ -244,7 +244,7 @@ class ParquetDataset(Dataset):
             # NaN 填充 + 归一化（per_code 按 code 独立，grouped 全局）
             if cfg.normalize == "per_code":
                 # per-code：需传入 close 供 G1/macd relative
-                from data.per_code_scaler import PerCodeGroupedScaler
+                from data.scaler import PerCodeGroupedScaler
                 if isinstance(self.scaler_stats, PerCodeGroupedScaler):
                     feat = self.scaler_stats.transform_code(code, feat, feature_cols, close)
                     # 同步更新 feature_cols_out 长度（首次循环后已一致）
@@ -445,7 +445,7 @@ class ParquetDataset(Dataset):
 
 
 if __name__ == "__main__":
-    # python -m data.parquet_dataset --max_codes 10
+    # python -m data.dataset --max_codes 10
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -497,7 +497,7 @@ if __name__ == "__main__":
         max_codes=args.max_codes,
         normalize=args.normalize,
     )
-    from data.per_code_scaler import PerCodeGroupedScaler
+    from data.scaler import PerCodeGroupedScaler
     loaded = PerCodeGroupedScaler.load(tmp)
     ds_val = ParquetDataset(cfg_val, scaler_stats=loaded)
     print(f"[Reuse] 验证集特征数: {ds_val.num_features}, 样本数: {len(ds_val)}，与训练集一致: {ds_val.num_features==ds.num_features}")

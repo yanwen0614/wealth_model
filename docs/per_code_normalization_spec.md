@@ -53,17 +53,17 @@
 
 ## 5. 实现映射
 
-- 配置：`data/parquet_dataset.py` `ParquetDataConfig.normalize = "per_code"`，`per_code_add_mask=True`，`feature_cols` 自动剔除 `return_*/TOT_SHARE/volume/amount/close`
-- Scaler：`data/per_code_scaler.py` `PerCodeGroupedScaler`，`fit(df)` 按 code 独立算 `median/IQR/winsor`，`transform_code(code, feat, cols, close)` 按 code 应用
+- 配置：`data/dataset.py` `ParquetDataConfig.normalize = "per_code"`，`per_code_add_mask=True`，`feature_cols` 自动剔除 `return_*/TOT_SHARE/volume/amount/close`
+- Scaler：`data/scaler.py` `PerCodeGroupedScaler`，`fit(df)` 按 code 独立算 `median/IQR/winsor`，`transform_code(code, feat, cols, close)` 按 code 应用
 - 验证集复用：重叠 code 用训练集 per-code 统计，未见 code 回退全局 median/IQR
 - 持久化：`{per_code_stats, global_stats, feature_cols, version: v2_per_code}` pickle
-- 模型：`featurenum = 47+1=48`，`CNNTransformer` 自动校正（`main_parquet.py` 已有）
+- 模型：`featurenum = 47+1=48`，`CNNTransformer` 自动校正（`train.py` 已有）
 
 ---
 
 ## 6. 待办
 
 - [x] G1~G9 逐组讨论确认
-- [ ] 按本 spec 改造 `parquet_dataset.py` 支持 `per_code` 分支并打通 `main_parquet.py` 训练（`normalize="per_code"`）
+- [ ] 按本 spec 改造 `dataset.py` 支持 `per_code` 分支并打通 `train.py` 训练（`normalize="per_code"`）
 - [ ] 小样本验证：`--max_codes 10 --normalize per_code` 检查 `x [48,60]` 无 NaN/inf，均值≈0
 - [ ] 全量冒烟：`--max_codes 100 --normalize per_code --epochs 1` 验证 loss 收敛

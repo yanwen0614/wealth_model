@@ -29,12 +29,12 @@
 | `NPZSequentialDataset` 缓存块 | `ParquetDataset` 按 code 分组、滑动窗口、全局 z-score |
 
 ### 2.2 核心模块
-- **`data/parquet_dataset.py`**：
+- **`data/dataset.py`**：
   - `ParquetDataConfig`：`seq_len=60, horizon=5, bins=52类, normalize=zscore, filter_is_trading=True, scaler_path=logs/scaler.pkl`
   - `ParquetDataset`：读取 parquet → 过滤 → 按 code 排序 → 计算 future_return → 填充 NaN(中位数) → 全局 z-score(clip ±5) → 构建  `(code, start)` 全局索引 `~ 49491 (20股冒烟) / 全量约 10M 窗口`
   - `create_dataloaders`：训练集拟合 scaler 并落盘，验证集复用（防泄露），支持 `start_date/end_date` 时序切分
-  - 冒烟验证：`python -m data.parquet_dataset --max_codes 10` → 29261 窗口，`x [55,60] y 52类` 正常
-- **`main_parquet.py`**：新训练入口，兼容 `Trainer` / `EMDLoss` / `LoggerManager`
+  - 冒烟验证：`python -m data.dataset --max_codes 10` → 29261 窗口，`x [55,60] y 52类` 正常
+- **`train.py`**：新训练入口，兼容 `Trainer` / `EMDLoss` / `LoggerManager`
   - 时序切分默认：训练 `2013-01-01~2023-12-31` (865万行) / 验证 `2024-01-01~2025-12-31` (245万行)
   - 模型：`CNNTransformer(featurenum=55, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, layers=4)`
   - 训练：`AdamW(lr=1e-4, wd=1e-5)` + `EMDLoss(p=2, smooth)` + `ReduceLROnPlateau`
@@ -48,7 +48,7 @@
 
 ### 3.1 命令
 ```bash
-uv run --project . python main_parquet.py --smoke --num_workers 0
+uv run --project . python train.py --smoke --num_workers 0
 # 等价于：--max_codes 20 --epochs 1 --batch_size 256 --train 2013-2023 --val 2024-2025
 ```
 
@@ -62,7 +62,7 @@ uv run --project . python main_parquet.py --smoke --num_workers 0
 ### 3.3 推理校验
 ```bash
 uv run --project . python -c "
-import torch; from models.model2.config import ModelConfig; from models.model2.model2 import CNNTransformer
+import torch; from models.cnn_transformer.config import ModelConfig; from models.cnn_transformer.model import CNNTransformer
 m=CNNTransformer(ModelConfig(featurenum=55, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, cnn_kernel_sizes=[1,3,5,7,10], num_encoder_layers=4, dropout_rate=0.3))
 m.load_state_dict(torch.load('logs/run_20260901_012401/best_model.pth', map_location='cpu')); m.eval()
 print(m(torch.randn(2,55,60)).shape)  # => torch.Size([2,52])
@@ -73,25 +73,25 @@ print(m(torch.randn(2,55,60)).shape)  # => torch.Size([2,52])
 
 ### 4.1 小样本调试（推荐先跑）
 ```bash
-uv run --project . python main_parquet.py --max_codes 100 --epochs 5 --batch_size 512 --num_workers 4
+uv run --project . python train.py --max_codes 100 --epochs 5 --batch_size 512 --num_workers 4
 ```
 
 ### 4.2 全量训练（5166 股，约 10M 窗口，需 ~8G 内存 + 5G 显存，单 epoch 约 20-30 分钟）
 ```bash
-uv run --project . python main_parquet.py --epochs 50 --batch_size 256 --num_workers 4
+uv run --project . python train.py --epochs 50 --batch_size 256 --num_workers 4
 # 或自定义时序切分
-uv run --project . python main_parquet.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31 --epochs 50
+uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31 --epochs 50
 ```
 
 ### 4.3 仅训练集（无验证集，快速吞吐）
 ```bash
-uv run --project . python main_parquet.py --no_val --epochs 10
+uv run --project . python train.py --no_val --epochs 10
 ```
 
 ### 4.4 数据集单独测试
 ```bash
-uv run --project . python -m data.parquet_dataset --max_codes 20
-uv run --project . python -m data.parquet_dataset --max_codes 100  # 更大数据
+uv run --project . python -m data.dataset --max_codes 20
+uv run --project . python -m data.dataset --max_codes 100  # 更大数据
 ```
 
 ## 5. 文件清单
@@ -102,8 +102,8 @@ cnn/
   .python-version # 3.12
   data/
     test/train_data/train_data_v1_*.parquet  # 3.5G 已复制
-    parquet_dataset.py  # 新增，核心数据集
-  main_parquet.py  # 新增，直通训练入口
+    dataset.py  # 新增，核心数据集
+  train.py  # 新增，直通训练入口
   training/early_stopping.py  # 修复 np.inf
   data/npz_data_load.py  # 修复 dataclass
   logs/

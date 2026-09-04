@@ -8,8 +8,8 @@
     -> Trainer (早停 + 调度)
 
 使用：
-  uv run --project . python main_parquet.py --max_codes 20 --epochs 2 --batch_size 256
-  uv run --project . python main_parquet.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31
+  uv run --project . python train.py --max_codes 20 --epochs 2 --batch_size 256
+  uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31
 
 与旧链路兼容：
   旧 main2.py 依赖 processed_data_train/*.npz，本脚本完全替代，无需中间 npz，特征维度由 8 -> 55，标签由 amp sum -> future 5d return
@@ -20,13 +20,13 @@ import os
 import numpy as np
 import torch
 
-from data.parquet_dataset import ParquetDataConfig, ParquetDataset
-from models.model2.model2 import CNNTransformer
-from models.model2.config import ModelConfig
+from data.dataset import ParquetDataConfig, ParquetDataset
+from models.cnn_transformer.model import CNNTransformer
+from models.cnn_transformer.config import ModelConfig
 from training import Trainer
 from visualization import Visualizer
 from log_manager import LoggerManager
-from criterion.EMD_loss import EMDLoss
+from criterion.emd_loss import EMDLoss
 
 # -------------------- 默认配置（可经命令行覆盖） --------------------
 DEFAULT_PARQUET = "data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet"
