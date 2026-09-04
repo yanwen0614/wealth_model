@@ -365,7 +365,7 @@ class ParquetDataset(Dataset):
     def __len__(self):
         return len(self.index)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         code, s = self.index[idx]
         g = self.groups[code]
         feat = g["features"]  # [N, num_features_out]
@@ -376,10 +376,13 @@ class ParquetDataset(Dataset):
 
         label_pos = s + self.config.seq_len - 1
         label = int(g["discrete"][label_pos])
+        # 连续收益率标签：clip ±0.5 防尖刺（如 1273%），2x BINS 边缘
+        y_ret = float(np.clip(float(g["future_ret"][label_pos]), -0.5, 0.5))
 
         x = torch.from_numpy(window.astype(np.float32))
         y = torch.tensor(label, dtype=torch.long)
-        return x, y
+        y_r = torch.tensor(y_ret, dtype=torch.float32)
+        return x, y, y_r
 
     @classmethod
     def create_dataloaders(
@@ -468,8 +471,8 @@ if __name__ == "__main__":
     )
     ds = ParquetDataset(cfg)
     print(f"Dataset len: {len(ds)}")
-    x, y = ds[0]
-    print(f"x shape: {x.shape}, y: {y}")
+    x, y, y_ret = ds[0]
+    print(f"x shape: {x.shape}, y_cls: {y}, y_ret: {y_ret}")
     print(f"features_in: {len(ds.feature_cols)}, features_out: {ds.num_features} (out cols: {ds.feature_cols_out[:5]}... + mask {ds.feature_cols_out[-6:] if len(ds.feature_cols_out)>len(ds.feature_cols) else []})")
     print(f"seq_len: {cfg.seq_len}, num_classes: {len(cfg.bins)+1}")
     if hasattr(ds, 'scaler_stats') and hasattr(ds.scaler_stats, 'per_code_stats'):
@@ -478,8 +481,8 @@ if __name__ == "__main__":
         print(f"x has_nan: {torch.isnan(x).any().item()}, has_inf: {torch.isinf(x).any().item()}")
 
     loader = DataLoader(ds, batch_size=4, shuffle=True, num_workers=0)
-    for bx, by in loader:
-        print(f"batch x: {bx.shape}, y: {by.shape}, y values: {by}")
+    for bx, by, br in loader:
+        print(f"batch x: {bx.shape}, y_cls: {by.shape}, y_ret: {br.shape}, y values: {by}, rets: {br}")
         print(f"batch x mean: {bx.mean().item():.4f}, std: {bx.std().item():.4f}, min: {bx.min().item():.3f}, max: {bx.max().item():.3f}")
         break
 

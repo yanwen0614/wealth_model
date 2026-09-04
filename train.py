@@ -27,6 +27,7 @@ from training import Trainer
 from visualization import Visualizer
 from log_manager import LoggerManager
 from criterion.emd_loss import EMDLoss
+from criterion.dual_loss import DualLoss
 
 # -------------------- 默认配置（可经命令行覆盖） --------------------
 DEFAULT_PARQUET = "data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet"
@@ -70,6 +71,9 @@ config = {
     # 训练
     "criterion": "EMDLoss",
     "EMLossConfig": dict(p=2, label_smoothing=True, smooth_eps=0.1),
+    "DUAL_HEAD": False,   # 双头回归开关，默认关保 baseline
+    "LAMBDA_REG": 0.2,    # DualLoss 回归项权重
+    "HUBER_DELTA": 1.0,   # Huber delta
     "scheduler": "ReduceLROnPlateau",
     'LEARNING_RATE': 1e-4,
     'WEIGHT_DECAY': 1e-5,
@@ -103,6 +107,9 @@ def parse_args():
     p.add_argument("--max_windows_per_code", type=int, default=None)
     p.add_argument("--no_val", action="store_true", help="不使用验证集")
     p.add_argument("--smoke", action="store_true", help="冒烟测试：max_codes=20, epochs=1, batch 256")
+    p.add_argument("--dual_head", action="store_true", help="双头回归：DualLoss=EMD+λHuber，默认关保 baseline")
+    p.add_argument("--lambda_reg", type=float, default=config['LAMBDA_REG'], help="双头回归项权重 λ")
+    p.add_argument("--huber_delta", type=float, default=config['HUBER_DELTA'], help="Huber delta")
     return p.parse_args()
 
 
@@ -132,6 +139,9 @@ def main():
     config['LEARNING_RATE'] = args.lr
     config['MAX_CODES'] = args.max_codes
     config['MAX_WINDOWS_PER_CODE'] = args.max_windows_per_code
+    config['DUAL_HEAD'] = args.dual_head
+    config['LAMBDA_REG'] = args.lambda_reg
+    config['HUBER_DELTA'] = args.huber_delta
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
     config["CNNTransformerConfig"]['seq_len'] = config['SEQ_LEN']
@@ -222,7 +232,12 @@ def main():
 
     # 损失 & 优化器
     logger.info("=== 初始化损失与优化器 ===")
-    criterion = EMDLoss(num_classes=config['num_classes'], **config['EMLossConfig'])
+    if config['DUAL_HEAD']:
+        criterion = DualLoss(num_classes=config['num_classes'], **config['EMLossConfig'],
+                             lambda_reg=config['LAMBDA_REG'], huber_delta=config['HUBER_DELTA'])
+        logger.info(f"双头 DualLoss: EMD + λ={config['LAMBDA_REG']} Huber(δ={config['HUBER_DELTA']})")
+    else:
+        criterion = EMDLoss(num_classes=config['num_classes'], **config['EMLossConfig'])
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['LEARNING_RATE'], weight_decay=config['WEIGHT_DECAY'])
     if config['scheduler'] == "ReduceLROnPlateau":
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)

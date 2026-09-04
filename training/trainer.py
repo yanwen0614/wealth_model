@@ -13,6 +13,33 @@ from .early_stopping import EarlyStopping
 from .metrics import calculate_latter_half_metrics
 
 
+def _unpack_batch(batch):
+    """支持 2 元 (data, y_cls) / 3 元 (data, y_cls, y_ret)，缺 y_ret 返回 None。"""
+    if len(batch) == 2:
+        data, y_cls = batch
+        return data, y_cls, None
+    data, y_cls, y_ret = batch
+    return data, y_cls, y_ret
+
+
+def _unpack_outputs(out):
+    """单头 Tensor -> (logits, None)；双头 tuple -> (logits, ret_pred)。"""
+    if isinstance(out, tuple):
+        logits, ret_pred = out
+        return logits, ret_pred
+    return out, None
+
+
+def _compute_loss(criterion, logits, ret_pred, y_cls, y_ret):
+    """双头 criterion 走 4 参 (兼容 tuple/scalar 返回)，否则走旧 2 参。"""
+    if getattr(criterion, "is_dual_head", False):
+        result = criterion(logits, ret_pred, y_cls, y_ret)
+        if isinstance(result, tuple):
+            return result[0]
+        return result
+    return criterion(logits, y_cls)
+
+
 @dataclass
 class TrainConfig:
     epochs: int = 50                      # 训练轮数
@@ -94,20 +121,22 @@ class Trainer:
         train_correct = 0
         train_total = 0
         
-        for batch_idx, (data, labels) in tqdm(enumerate(self.train_loader),desc="batch train",total=len(self.train_loader)):
+        for batch_idx, batch in tqdm(enumerate(self.train_loader),desc="batch train",total=len(self.train_loader)):
+            data, labels, y_ret = _unpack_batch(batch)
             data, labels = data.to(self.device), labels.to(self.device)
-            
+            y_ret = y_ret.to(self.device) if y_ret is not None else None
+
             self.optimizer.zero_grad()
-            outputs = self.model(data)  # CNNTransformer只返回一个输出
-            loss = self.criterion(outputs, labels)
+            logits, ret_pred = _unpack_outputs(self.model(data))  # 单/双头兼容
+            loss = _compute_loss(self.criterion, logits, ret_pred, labels, y_ret)
             loss.backward()
             self.optimizer.step()
-            
+
             # 更新全局步数
             self.global_step += 1
-            
+
             train_loss += loss.item() * data.size(0)
-            _, preds = torch.max(outputs, 1)
+            _, preds = torch.max(logits, 1)
             train_correct += (preds == labels).sum().item()
             train_total += labels.size(0)
             
@@ -136,13 +165,15 @@ class Trainer:
         all_preds = []
         
         with torch.no_grad():
-            for data, labels in self.val_loader:
+            for batch in self.val_loader:
+                data, labels, y_ret = _unpack_batch(batch)
                 data, labels = data.to(self.device), labels.to(self.device)
-                outputs = self.model(data)  # CNNTransformer只返回一个输出
-                loss = self.criterion(outputs, labels)
-                
+                y_ret = y_ret.to(self.device) if y_ret is not None else None
+                logits, ret_pred = _unpack_outputs(self.model(data))  # 单/双头兼容
+                loss = _compute_loss(self.criterion, logits, ret_pred, labels, y_ret)
+
                 val_loss += loss.item() * data.size(0)
-                _, preds = torch.max(outputs, 1)
+                _, preds = torch.max(logits, 1)
                 val_correct += (preds == labels).sum().item()
                 val_total += labels.size(0)
                 

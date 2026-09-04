@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import torch.nn as nn
 from .inception_blocks import MultiWindowInceptionCNN
@@ -82,14 +84,30 @@ class CNNTransformer(nn.Module):
         # 3. Transformer Encoder（已包含位置编码）
         self.transformer_encoder = TransformerEncoder(config)
         
-        # 4. 分类头
-        self.fc = nn.Sequential(
+        # 4. 双头：分类头（旧契约 out[0] 即 [B,52] logits）+ 回归头（共享 pooled_feat）
+        self.fc_cls = nn.Sequential(
             nn.LayerNorm(config.d_model),
             nn.Dropout(config.dropout_rate),
             nn.Linear(config.d_model, config.num_classes)
         )
+        self.fc_reg = nn.Sequential(
+            nn.LayerNorm(config.d_model),
+            nn.Dropout(config.dropout_rate),
+            nn.Linear(config.d_model, 1)
+        )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
+        # ckpt 兼容：旧单头 `fc.2.weight/bias` -> `fc_cls.2.weight/bias`
+        sd = copy.copy(dict(state_dict))
+        for k in list(sd.keys()):
+            if k.startswith("fc.") and "fc_cls." + k[3:] not in sd:
+                sd["fc_cls." + k[3:]] = sd[k]
+        try:
+            return super().load_state_dict(sd, strict=strict, assign=assign)
+        except TypeError:
+            return super().load_state_dict(sd, strict=strict)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: [batch_size, featurenum, seq_len]
         # Step1: 多窗口CNN提取局部特征
         cnn_feat = self.multi_window_cnn(x)  # [batch, cnn_total_channels, seq_len']
@@ -104,11 +122,12 @@ class CNNTransformer(nn.Module):
         # Step4: Transformer提取长程依赖（包含位置编码）
         trans_out = self.transformer_encoder(trans_feat)  # [seq_len', batch, d_model]
         
-        # Step5: 全局池化+分类 (在seq_len维度求平均)
+        # Step5: 全局池化+双头 (在seq_len维度求平均，共享 pooled_feat)
         pooled_feat = trans_out.mean(dim=0)  # [batch, d_model]
-        logits = self.fc(pooled_feat)        # [batch, num_classes]
-        
-        return logits
+        logits = self.fc_cls(pooled_feat)        # [batch, num_classes]
+        ret_pred = self.fc_reg(pooled_feat).squeeze(-1)  # [batch]
+        # 恒返 tuple；旧契约 forward([B,F,T])->[B,52] 即 out[0]
+        return logits, ret_pred
 
 
 if __name__ == "__main__":
@@ -148,13 +167,22 @@ if __name__ == "__main__":
     x = torch.randn(batch_size, config.featurenum, config.seq_len).to(device)
     print(f"\nInput shape: {x.shape}")
     
-    # 前向传播测试
+    # 前向传播测试（双头）
     model.eval()
     with torch.no_grad():
-        logits = model(x)
-    
+        logits, ret_pred = model(x)
+
     print(f"Output logits shape: {logits.shape}")
     print(f"Output logits: {logits}")
+    print(f"Output ret_pred shape: {ret_pred.shape}")
+    print(f"Output ret_pred: {ret_pred}")
+    assert tuple(logits.shape) == (batch_size, config.num_classes)
+    assert tuple(ret_pred.shape) == (batch_size,)
+    # ckpt 兼容自检：旧 fc.* 键可加载到 fc_cls
+    _sd = model.state_dict()
+    _legacy = {("fc." + k.split("fc_cls.", 1)[1] if k.startswith("fc_cls.") else k): v for k, v in _sd.items()}
+    model.load_state_dict(_legacy, strict=False)
+    print("Legacy fc.* ckpt remap OK")
     
     # 测试损失计算
     target = torch.randint(0, config.num_classes, (batch_size,)).to(device)
