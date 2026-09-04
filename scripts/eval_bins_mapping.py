@@ -37,6 +37,7 @@ from training.metrics import calculate_latter_half_metrics
 
 CENTERS52 = np.linspace(-0.255, 0.255, 52)  # 52 类中心（小数单位）
 DEFAULT_BINS11_PCT = [-15, -10, -6, -3, -1, 1, 3, 6, 10, 15]  # 百分制，内部/100
+DEFAULT_BINS13_PCT = [-15, -10, -7, -4, -2, -0.5, 0.5, 2, 4, 7, 10, 15]  # 百分制，内部/100
 DEFAULT_BINS52 = (np.linspace(-25, 25, 51) / 100).tolist()  # 与 train.py DEFAULT_BINS 一致
 NUM_CLASSES52 = 52
 
@@ -126,7 +127,9 @@ def evaluate(args) -> dict:
     )
     device = args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
     model = CNNTransformer(model_cfg).to(device)
-    model.load_state_dict(torch.load(ckpt_path, map_location=device))
+    # 双头改造兼容：forward 恒返 tuple；旧单头 ckpt 含 fc.* 键（现为 fc_cls.*），
+    # model.py 已有 fc->fc_cls remap，此处 strict=False 容忍新增 fc_reg.* 缺失键
+    model.load_state_dict(torch.load(ckpt_path, map_location=device), strict=False)
     model.eval()
 
     loader, ds = build_val_loader(args)
@@ -135,11 +138,14 @@ def evaluate(args) -> dict:
 
     bins11 = np.array(args.bins11_pct if args.bins11_pct else DEFAULT_BINS11_PCT,
                       dtype=np.float64) / 100.0  # 化为小数单位
+    bins13 = np.array(args.bins13_pct if args.bins13_pct else DEFAULT_BINS13_PCT,
+                      dtype=np.float64) / 100.0
     all_probs, all_pred52, all_true52, all_true_ret = [], [], [], []
     offset = 0
-    for xb, yb in loader:
+    for xb, yb, *_ in loader:  # dataset 现返 3 元 (x, y_cls, y_ret)，*_ 兼容双头
         n = xb.shape[0]
-        logits = model(xb.to(device))
+        out = model(xb.to(device))
+        logits = out[0] if isinstance(out, tuple) else out  # 双头恒返 tuple，取分类头
         probs = torch.softmax(logits, dim=1).cpu().numpy()
         all_probs.append(probs)
         all_pred52.append(probs.argmax(axis=1))
@@ -156,6 +162,8 @@ def evaluate(args) -> dict:
     exp_ret = (probs * CENTERS52).sum(axis=1)
     pred11 = np.digitize(exp_ret, bins11).astype(int)  # 0..10
     true11 = np.digitize(true_ret, bins11).astype(int)
+    pred13 = np.digitize(exp_ret, bins13).astype(int)  # 0..12
+    true13 = np.digitize(true_ret, bins13).astype(int)
 
     # --- 52 原样指标 ---
     acc52 = float((pred52 == true52).mean())
@@ -163,8 +171,9 @@ def evaluate(args) -> dict:
                                                    num_classes=NUM_CLASSES52,
                                                    weight_type="equal")
     rank_ic = spearman(exp_ret, true_ret)
-    # --- 11 映射指标 ---
+    # --- 11/13 映射指标 ---
     acc11 = float((pred11 == true11).mean())
+    acc13 = float((pred13 == true13).mean())
     # 分位命中：exp_ret 五分位 vs true_ret 五分位一致率
     pq = np.quantile(exp_ret, [0.2, 0.4, 0.6, 0.8])
     tq = np.quantile(true_ret, [0.2, 0.4, 0.6, 0.8])
@@ -180,15 +189,18 @@ def evaluate(args) -> dict:
     report = {
         "checkpoint": ckpt_path, "n": len(true52),
         "bins11_pct": list(args.bins11_pct or DEFAULT_BINS11_PCT),
+        "bins13_pct": list(args.bins13_pct or DEFAULT_BINS13_PCT),
         "acc52": acc52, "latter_half_precision52": lh_p, "latter_half_recall52": lh_r,
         "rank_ic_exp_vs_true": rank_ic, "quintile_hit": quint_hit,
-        "acc11_mapped": acc11, "top10_mean_true_ret": top10_mean,
+        "acc11_mapped": acc11, "acc13_mapped": acc13, "top10_mean_true_ret": top10_mean,
         "top10_pos_rate": top10_pos, "top10_bottom10_spread": spread,
     }
     print("=" * 60)
     print(f"[eval] n={report['n']} bins11(百分制)={report['bins11_pct']}")
+    print(f"[eval] bins13(百分制)={report['bins13_pct']}")
     print(f"  52原样: acc={acc52:.4f} 后半P={lh_p:.4f} R={lh_r:.4f} RankIC={rank_ic:.4f}")
     print(f"  11映射: acc={acc11:.4f} 五分位命中={quint_hit:.4f}")
+    print(f"  13映射: acc={acc13:.4f} 五分位命中={quint_hit:.4f}")
     print(f"  Top10%: mean_true_ret={top10_mean:.4f} 为正率={top10_pos:.4f} 多空spread={spread:.4f}")
     print("=" * 60)
     if args.out:
@@ -212,6 +224,7 @@ def parse_args():
     p.add_argument("--max_windows_per_code", type=int, default=None)
     p.add_argument("--scaler_path", default="logs/scaler_per_code.pkl")
     p.add_argument("--bins11_pct", type=float, nargs="+", default=None, help="T02 冻结 bins（百分制），默认 [-15..15]")
+    p.add_argument("--bins13_pct", type=float, nargs="+", default=None, help="13 映射 bins（百分制），默认 [-15..15]")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
     p.add_argument("--out", default=None)
