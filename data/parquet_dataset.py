@@ -18,10 +18,9 @@
 - 旧：processed_data_train/*.npz，每样本 train_features [8,60], labels [5,8] -> sum amp -> digitize
 - 新：parquet 直读，无需中间 npz，特征维度 ~50，标签为未来 5日累计收益
 
-分组归一化（新增 grouped 分支，保留旧 zscore 兼容）：
-- 55特征=7 OHLCVA+TOT_SHARE +48因子 分9组差异化处理（见 data/grouped_scaler.py）
-- 每组非线性 + winsor + robust/tanh/bounded，结构性缺失生成 mask 通道
-- fit/transform 统计量 per-column 持久化，验证集复用训练集 scaler
+分组归一化（per-code 共识，精简后仅保留 per_code）：
+- 45特征=39+6 mask，G1/mcd robust(median/IQR)+clip±5、G3/G4 winsor 1/99、G9 rank透传+mask
+- per-code 按股独立拟合 via PerCodeGroupedScaler，验证集复用训练集 scaler 防泄露
 """
 import os
 import pickle
@@ -72,18 +71,16 @@ class ParquetDataConfig:
     start_date: Optional[str] = None  # "2013-01-01"
     end_date: Optional[str] = None
     split_date: Optional[str] = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
-    # 归一化：grouped | per_code | none | minmax_window（per_code 为共识：不做 window 只 per-code 分组，zscore 已删除）
+    # 归一化：per_code | none（per_code 为共识：不做 window 只 per-code 分组）
     normalize: str = "per_code"
     # 归一化统计文件（训练集拟合后保存，供验证集复用）
     scaler_path: Optional[str] = None
-    # NaN 填充策略（仅 zscore/none 分支使用，grouped/per_code 内置分级填充）
+    # NaN 填充策略（仅 none 分支使用，per_code 内置分级填充）
     fill_method: str = "median"  # "median" | "zero"
     # 小样本调试：仅取前 N 只股票
     max_codes: Optional[int] = None
     # 采样：每股最大窗口数（用于快速验证）
     max_windows_per_code: Optional[int] = None
-    # grouped 专用：是否添加 G9 mask 通道
-    grouped_add_mask: bool = True
     # per_code 专用：是否添加 G9 mask
     per_code_add_mask: bool = True
 
@@ -220,59 +217,12 @@ class ParquetDataset(Dataset):
                 print(f"[ParquetDataset] PerCodeGroupedScaler 拟合完成: {len(self.feature_cols)} -> {self.num_features} (per-code {len(scaler.per_code_stats)} 股)")
                 if cfg.scaler_path:
                     scaler.save(cfg.scaler_path)
-        elif cfg.normalize == "grouped":
-            # grouped 分支
-            from data.grouped_scaler import GroupedScaler
-            if scaler_stats is not None:
-                # 传入可能是 GroupedScaler 实例或 dict
-                if isinstance(scaler_stats, GroupedScaler):
-                    self.scaler_stats = scaler_stats
-                elif isinstance(scaler_stats, dict) and "stats" in scaler_stats:
-                    # dict 形态的 grouped
-                    try:
-                        self.scaler_stats = GroupedScaler.from_dict(scaler_stats)
-                    except Exception:
-                        self.scaler_stats = scaler_stats
-                else:
-                    self.scaler_stats = scaler_stats
-                print(f"[ParquetDataset] 使用外部传入的 scaler_stats (grouped)")
-                # 确保 feature_cols_out 同步
-                if isinstance(self.scaler_stats, GroupedScaler):
-                    self.feature_cols_out = self.scaler_stats.feature_cols_out
-                    self.num_features = len(self.feature_cols_out)
-            elif cfg.scaler_path and os.path.exists(cfg.scaler_path):
-                # 优先按 GroupedScaler 加载
-                try:
-                    self.scaler_stats = GroupedScaler.load(cfg.scaler_path)
-                    print(f"[ParquetDataset] 从 {cfg.scaler_path} 加载 GroupedScaler")
-                except Exception as e:
-                    # 可能是旧 zscore 文件，尝试 pickle
-                    print(f"[ParquetDataset] GroupedScaler 加载失败 ({e})，尝试 pickle 回退")
-                    with open(cfg.scaler_path, "rb") as f:
-                        self.scaler_stats = pickle.load(f)
-                    print(f"[ParquetDataset] 从 {cfg.scaler_path} 加载 scaler_stats (pickle)")
-                if isinstance(self.scaler_stats, GroupedScaler):
-                    self.feature_cols_out = self.scaler_stats.feature_cols_out
-                    self.num_features = len(self.feature_cols_out)
-            else:
-                # 拟合新的 GroupedScaler
-                print(f"[ParquetDataset] 拟合 GroupedScaler (add_mask={cfg.grouped_add_mask}) ...")
-                scaler = GroupedScaler(add_mask=cfg.grouped_add_mask)
-                scaler.fit(df, feature_cols)
-                scaler.print_summary()
-                self.scaler_stats = scaler
-                self.feature_cols_out = scaler.feature_cols_out
-                self.num_features = len(self.feature_cols_out)
-                print(f"[ParquetDataset] GroupedScaler 拟合完成: {len(self.feature_cols)} -> {self.num_features} (mask={len(scaler.mask_cols)})")
-                if cfg.scaler_path:
-                    scaler.save(cfg.scaler_path)
-        elif cfg.normalize in ("none", "minmax_window"):
+        elif cfg.normalize == "none":
             self.scaler_stats = None
-            # need to handle grouped_add_mask? none/minmax 不追加 mask
             self.feature_cols_out = list(self.feature_cols)
             self.num_features = len(self.feature_cols_out)
         else:
-            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 grouped/per_code/none/minmax_window")
+            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 per_code/none")
 
         print(f"[ParquetDataset] 输出特征列数: {self.num_features}, 输出特征: {self.feature_cols_out[:8]}...")
 
@@ -375,10 +325,9 @@ class ParquetDataset(Dataset):
         self._print_label_stats()
 
     def _preprocess_features(self, feat: np.ndarray, feature_cols: List[str]) -> np.ndarray:
-        """NaN 填充 + 归一化（支持 per_code/grouped/none/minmax_window，zscore 已删除）"""
+        """NaN 填充 + 归一化（仅 per_code/none，per_code 主循环已处理，此处兜底）"""
         cfg = self.config
         if cfg.normalize == "none":
-            # 仅填充 NaN
             for j, col in enumerate(feature_cols):
                 col_vals = feat[:, j]
                 nan_mask = np.isnan(col_vals)
@@ -386,40 +335,7 @@ class ParquetDataset(Dataset):
                     col_vals[nan_mask] = 0.0
                     feat[:, j] = col_vals
             return feat
-
-        if cfg.normalize == "grouped":
-            from data.grouped_scaler import GroupedScaler
-            if self.scaler_stats is None:
-                # 未拟合时仅填0
-                feat = np.where(np.isnan(feat), 0, feat)
-                return feat
-            scaler = self.scaler_stats
-            if isinstance(scaler, dict):
-                # dict 形态的 grouped，尝试还原为 GroupedScaler
-                try:
-                    scaler = GroupedScaler.from_dict(scaler)
-                    self.scaler_stats = scaler
-                except Exception:
-                    # 回退：按 zscore 逻辑处理
-                    feat = np.where(np.isnan(feat), 0, feat)
-                    return feat
-            if isinstance(scaler, GroupedScaler):
-                return scaler.transform_ndarray(feat, feature_cols)
-            # 未知类型
-            feat = np.where(np.isnan(feat), 0, feat)
-            return feat
-
-        if cfg.normalize == "minmax_window":
-            # 窗口内 minmax 将在 __getitem__ 中处理，此处仅填充
-            for j, col in enumerate(feature_cols):
-                col_vals = feat[:, j]
-                nan_mask = np.isnan(col_vals)
-                if np.any(nan_mask):
-                    col_vals[nan_mask] = 0.0
-                    feat[:, j] = col_vals
-            return feat
-
-        # fallback
+        # per_code 分支在 _load_and_prepare 循环内已逐股 transform，此处仅 fallback 填0
         feat = np.where(np.isnan(feat), 0, feat)
         return feat
 
@@ -458,16 +374,6 @@ class ParquetDataset(Dataset):
         # 转为 [num_features, seq_len] 以适配 CNNTransformer 输入 [batch, featurenum, seq_len]
         window = window.T  # [num_features, seq_len]
 
-        # minmax_window 归一化（若配置）
-        if self.config.normalize == "minmax_window":
-            # 对每个特征在窗口内做 minmax 到 [-1,1]（类似旧 DataProcessor.normalize_data）
-            # 避免除零
-            mins = window.min(axis=1, keepdims=True)
-            maxs = window.max(axis=1, keepdims=True)
-            denom = maxs - mins
-            denom[denom < 1e-8] = 1.0
-            window = 2 * (window - mins) / denom - 1
-
         label_pos = s + self.config.seq_len - 1
         label = int(g["discrete"][label_pos])
 
@@ -490,7 +396,6 @@ class ParquetDataset(Dataset):
         约定：
           - 训练集拟合 scaler，并保存到 scaler_path（若提供）
           - 验证集复用训练集的 scaler_stats，避免泄露
-          - per_code/grouped 均复用同一路径机制
         """
         # 训练集
         train_cfg = ParquetDataConfig(
@@ -546,7 +451,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--parquet", default="data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet")
     parser.add_argument("--max_codes", type=int, default=10)
-    parser.add_argument("--normalize", type=str, default="per_code", choices=["grouped", "per_code", "none", "minmax_window"], help="归一化方式")
+    parser.add_argument("--normalize", type=str, default="per_code", choices=["per_code", "none"], help="归一化方式")
     parser.add_argument("--scaler_path", type=str, default=None, help="scaler 持久化路径")
     args = parser.parse_args()
 
@@ -578,27 +483,24 @@ if __name__ == "__main__":
         print(f"batch x mean: {bx.mean().item():.4f}, std: {bx.std().item():.4f}, min: {bx.min().item():.3f}, max: {bx.max().item():.3f}")
         break
 
-    # 测试持久化与复用
-    if args.normalize in ("grouped", "per_code"):
-        import tempfile, os
-        tmp = tempfile.mktemp(suffix="_scaler.pkl")
-        ds.scaler_stats.save(tmp)
-        print(f"[Persistence] 保存成功: {tmp}")
-        # 验证集复用
-        cfg_val = ParquetDataConfig(
-            parquet_path=args.parquet,
-            seq_len=60,
-            horizon=5,
-            batch_size=64,
-            num_workers=0,
-            max_codes=args.max_codes,
-            normalize=args.normalize,
-        )
-        from data.per_code_scaler import PerCodeGroupedScaler
-        from data.grouped_scaler import GroupedScaler
-        loaded = PerCodeGroupedScaler.load(tmp) if args.normalize == "per_code" else GroupedScaler.load(tmp)
-        ds_val = ParquetDataset(cfg_val, scaler_stats=loaded)
-        print(f"[Reuse] 验证集特征数: {ds_val.num_features}, 样本数: {len(ds_val)}，与训练集一致: {ds_val.num_features==ds.num_features}")
-        os.remove(tmp)
-        print("[Test] 全流程验证通过")
+    # 测试持久化与复用（仅 per_code）
+    import tempfile, os
+    tmp = tempfile.mktemp(suffix="_scaler.pkl")
+    ds.scaler_stats.save(tmp)
+    print(f"[Persistence] 保存成功: {tmp}")
+    cfg_val = ParquetDataConfig(
+        parquet_path=args.parquet,
+        seq_len=60,
+        horizon=5,
+        batch_size=64,
+        num_workers=0,
+        max_codes=args.max_codes,
+        normalize=args.normalize,
+    )
+    from data.per_code_scaler import PerCodeGroupedScaler
+    loaded = PerCodeGroupedScaler.load(tmp)
+    ds_val = ParquetDataset(cfg_val, scaler_stats=loaded)
+    print(f"[Reuse] 验证集特征数: {ds_val.num_features}, 样本数: {len(ds_val)}，与训练集一致: {ds_val.num_features==ds.num_features}")
+    os.remove(tmp)
+    print("[Test] 全流程验证通过")
 
