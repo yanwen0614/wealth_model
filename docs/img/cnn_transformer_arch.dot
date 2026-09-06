@@ -1,0 +1,39 @@
+digraph CNNTransformer {
+  rankdir=TB;
+  bgcolor="white";
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10];
+  edge [fontname="Helvetica", fontsize=8, color="#444444"];
+
+  input [label="Input\n[B, 45, 60]\nper-code norm", fillcolor="#E3F2FD"];
+  stem [label="Stem\nConv1d k7 s2 p3  45→128\nBN + ReLU + MaxPool k3 s2\n→ [B,128,15]  seq/4", fillcolor="#FFF3E0"];
+  inc1 [label="LightInceptionBlock #1\n128→128  kernels [1,3,5,7,10] + pool\n→ [B,128,15]", fillcolor="#FFE0B2"];
+  inc2 [label="LightInceptionBlock #2\n128→256  kernels [1,3,5,7,10] + pool\n→ [B,256,15]", fillcolor="#FFE0B2"];
+  pool1 [label="MaxPool1d /2\nk2 s2 → [B,256,7]  seq/8", fillcolor="#FFCC80", shape=box];
+  inc3 [label="LightInceptionBlock #3\n256→256  kernels [1,3,5,7,10] + pool", fillcolor="#FFE0B2"];
+  inc4 [label="LightInceptionBlock #4\n256→128  kernels [1,3,5,7,10] + pool", fillcolor="#FFE0B2"];
+  pool2 [label="MaxPool1d /2\nk2 s2 → [B,128,3]  seq/16", fillcolor="#FFCC80"];
+  proj [label="Permute + Projection\n[B,128,3] → [B,3,128]\nLinear 128→256 → [B,3,256]\npermute → [3,B,256]", fillcolor="#E8F5E9"];
+  pe [label="PositionalEncoding\nsinusoidal  x + pe[:seq] + Dropout(0.3)\n[3,B,256]", fillcolor="#E1BEE7"];
+  trans [label="TransformerEncoder ×4\nnhead=8  d_ff=1024  GELU  dropout 0.3\n[3,B,256] → [3,B,256]", fillcolor="#CE93D8"];
+  mean [label="Mean Pool (seq dim)\nmean(dim=0) → [B,256]", fillcolor="#FFEBEE"];
+  head [label="Classification Head\nLayerNorm(256) → Dropout(0.3)\nLinear 256→52 → Logits [B,52]", fillcolor="#FFCDD2"];
+  loss [label="EMDLoss  p=2  label_smoothing", fillcolor="#FFCDD2", shape=ellipse];
+
+  // detail subgraph for LightInception
+  subgraph cluster_inception {
+    label="LightInceptionBlock1D 细节  (cnnblock.py:6)";
+    style="dashed,rounded";
+    color="#F9A825";
+    bgcolor="#FFFDE7";
+    fontsize=9;
+    b1 [label="k=1分支\n1×1 Conv → BN → ReLU6", fillcolor="white", fontsize=8];
+    b2 [label="k>1分支\n1×1降维(mid=in×0.5)\n→ DW-Conv groups=mid\n→ 1×1升维 → BN", fillcolor="white", fontsize=8];
+    b3 [label="Pool分支\nMaxPool k3 s1 p1 → 1×1 Conv → BN", fillcolor="white", fontsize=8];
+    cat [label="concat(dim=1)\n→ Dropout → ReLU6\n→ [B,out_ch,seq']", fillcolor="#FFF9C4", fontsize=8];
+    b1 -> cat [style=dashed, color="#F9A825"];
+    b2 -> cat [style=dashed, color="#F9A825"];
+    b3 -> cat [style=dashed, color="#F9A825"];
+  }
+
+  input -> stem -> inc1 -> inc2 -> pool1 -> inc3 -> inc4 -> pool2 -> proj -> pe -> trans -> mean -> head -> loss;
+}

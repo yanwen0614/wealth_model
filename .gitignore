@@ -1,0 +1,15 @@
+data.ipynb
+*.pth
+*.npy
+
+*.parquet
+*.pyc
+logs
+.ipynb_checkpoints/
+/dataset/
+*.tgz
+*.tar.gz
+processed_data_train/
+processed_data_val/
+label_distribution_plots/
+.opencode/
