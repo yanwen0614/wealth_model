@@ -1,5 +1,8 @@
 # 损失函数消融总结 — base / dual / pure_reg（2026-09-05）
 
+> 历史实验记录：本报告的训练标签和真实收益仍为 close-close 口径，结果数字原样保留，
+> 仅用于历史追溯。不得与当前 parquet 的 open-open 标签、checkpoint 或回测结果混用。
+
 > 实验目的：验证 52 类有序分类监督（EMD）与回归监督（Huber）的相对价值。
 > 结论先行：**dual（EMD+λ·Huber）全面最优，pure_reg（纯 Huber）全面最差**——52 类分布监督 > 纯回归拟合，且回归辅助项对 EMD 有正贡献。
 
@@ -15,7 +18,7 @@
 - 模型 CNNTransformer（d_model=256, 4 层 encoder, 45 特征×60 序列，52 类）**零改动**——forward 恒返 `(logits, ret_pred)`（model.py:130），三个损失共用同一架构
 - 数据：全市场 5166 股，train 2013-01~2025-06（10,143,195 样本）/ val 2025-07~12（316,813 样本），per_code 归一化（复用 `logs/scaler_per_code.pkl`，无泄露）
 - 训练：AdamW lr=1e-4, wd=1e-5, batch 512, num_workers 0, ReduceLROnPlateau(patience=5), 早停 patience=10, epochs≤50
-- `y_ret` 定义：5 日收益 `close[t+5]/close[t]-1`，clip ±0.5；`y_cls`：52 类 digitize（BINS=linspace(-0.25,0.25,51)）
+- `y_ret` 定义（历史 close-close）：5 日收益 `close[t+5]/close[t]-1`，clip ±0.5；`y_cls`：52 类 digitize（BINS=linspace(-0.25,0.25,51)）
 
 ## 二、训练情况
 

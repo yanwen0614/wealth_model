@@ -35,7 +35,7 @@ uv run ruff check .   # line-length 120, pyproject.toml
 
 - 单 parquet `data/test/train_data/train_data_v1_*.parquet` 11.4M行×58列 5166股，10基础+48因子。`is_trading=False` 的行 OHLC/因子=NaN 必须 `dataset.py:160` 过滤。
 - 默认特征 `dataset.py:91` 自动剔除：`return_1d/5d/10d/20d`(G2)、`TOT_SHARE`、`volume/amount`、`close`、`pe/pb/pcf/ps`(G6)、`revenue_growth*4`(G7) → 45维（39+6 mask）。
-- 标签 `dataset.py:309` `future_ret[t]=close[t+5]/close[t]-1` horizon=5，`np.digitize(BINS)` 52类，`BINS=linspace(-0.25,0.25,51)` `train.py:34`。窗口 `[s,s+60)` 取末日 `y`。
+- 标签 `dataset.py:309` `future_ret[t]=open[t+1+horizon]/open[t+1]-1`（horizon=5），`np.digitize(BINS)` 52类，`BINS=linspace(-0.25,0.25,51)` `train.py:34`。窗口 `[s,s+60)` 取末日 `y`。
 
 ## Normalization — Per-Code Only
 

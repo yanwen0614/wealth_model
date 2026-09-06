@@ -30,9 +30,9 @@ matplotlib.use("Agg")
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
 plt.rcParams["axes.unicode_minus"] = False
 
-from backtest.engine import benchmark_nav, nav_metrics, run_backtest, run_backtest_target
+from backtest.engine import benchmark_nav, nav_metrics, run_backtest, run_backtest_target  # noqa: E402
+from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays  # noqa: E402
 
-PREDS_KEYS = ("exp_ret", "true_ret", "dates", "codes")
 OHLC_KEYS = ("codes", "dates", "t_close", "open_t1", "open_t6")
 FULL_OHLC_KEYS = ("codes", "dates", "open_m", "close_m")
 NOTE = ("卖出未做跌停检查（简化口径）；策略与基准均为 open-open 口径"
@@ -44,11 +44,10 @@ NOTE_TARGET = ("卖出未做跌停检查（简化口径）；目标持仓模式�
 
 def load_preds(path: str) -> dict:
     z = np.load(path, allow_pickle=False)
-    missing = [k for k in PREDS_KEYS if k not in z.files]
-    if missing:
-        raise ValueError(f"{path} 缺少键 {missing}（旧 npz 无 codes，请用新版 eval_bins_mapping.py --preds_cache 重跑）")
-    return {"exp_ret": z["exp_ret"].astype(np.float64), "true_ret": z["true_ret"].astype(np.float64),
-            "dates": z["dates"], "codes": z["codes"]}
+    arrays = {key: z[key] for key in PREDICTION_CACHE_KEYS if key in z.files}
+    validate_prediction_cache_arrays(arrays, path)
+    return {"exp_ret": arrays["exp_ret"].astype(np.float64), "true_ret": arrays["true_ret"].astype(np.float64),
+            "dates": arrays["dates"], "codes": arrays["codes"]}
 
 
 def load_ohlc(path: str) -> dict:

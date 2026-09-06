@@ -15,67 +15,15 @@ from datetime import UTC, datetime
 import numpy as np
 import torch
 
-from criterion.dual_loss import DualLoss
-from criterion.emd_loss import EMDLoss
-from criterion.pure_reg_loss import PureRegLoss
+from config.defaults import make_default_config
 from data.dataset import ParquetDataConfig, ParquetDataset
 from log_manager import LoggerManager
-from models.cnn_transformer.config import ModelConfig
-from models.cnn_transformer.model import CNNTransformer
 from training import Trainer
+from training.factory import build_criterion, build_model, build_optimizer_scheduler
 from visualization import Visualizer
 
-# 与 train.py 保持一致的默认配置
-DEFAULT_PARQUET = "data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet"
-DEFAULT_BINS = (np.linspace(-25, 25, 51) / 100).tolist()
-
-BASE_CONFIG = {
-    'DEVICE': 'cuda' if torch.cuda.is_available() else 'cpu',
-    'PARQUET_PATH': DEFAULT_PARQUET,
-    'BINS': DEFAULT_BINS,
-    'SEQ_LEN': 60,
-    'HORIZON': 5,
-    'BATCH_SIZE': 256,
-    'NUM_WORKERS': 4,
-    'TRAIN_START': "2013-01-01",
-    'TRAIN_END': "2025-06-30",
-    'VAL_START': "2025-07-01",
-    'VAL_END': "2025-12-31",
-    'TEST_START': "2026-01-01",
-    'TEST_END': None,
-    'NORMALIZE': "per_code",
-    'SCALER_PATH': "logs/scaler_per_code.pkl",
-    'MAX_CODES': None,
-    'MAX_WINDOWS_PER_CODE': None,
-    "model": "CNNTransformer",
-    "CNNTransformerConfig": {
-        'featurenum': 45,
-        'seq_len': 60,
-        'num_classes': 52,
-        'cnn_out_channels': 128,
-        'd_model': 256,
-        'nhead': 8,
-        "cnn_kernel_sizes": [1, 3, 5, 7, 10],
-        'num_encoder_layers': 4,
-        'dropout_rate': 0.3,
-    },
-    "criterion": "EMDLoss",
-    "EMLossConfig": {"p": 2, "label_smoothing": True, "smooth_eps": 0.1},
-    "DUAL_HEAD": True,
-    "PURE_REG": False,
-    "LAMBDA_REG": 0.2,
-    "LAMBDA_JITTER": 0.005,
-    "HUBER_DELTA": 1.0,
-    "scheduler": "ReduceLROnPlateau",
-    'LEARNING_RATE': 1e-4,
-    'WEIGHT_DECAY': 1e-5,
-    'EPOCHS': 50,
-    'PATIENCE': 10,
-    'LOG_DIR': './logs',
-}
-BASE_CONFIG['num_classes'] = len(BASE_CONFIG['BINS']) + 1
-BASE_CONFIG["CNNTransformerConfig"]['num_classes'] = len(BASE_CONFIG['BINS']) + 1
-BASE_CONFIG["CNNTransformerConfig"]['seq_len'] = BASE_CONFIG['SEQ_LEN']
+BASE_CONFIG = make_default_config(dual_head=True)
+BASE_CONFIG["LAMBDA_JITTER"] = 0.005
 
 
 def set_all_seeds(seed: int):
@@ -168,20 +116,9 @@ def run_single_seed(seed: int, cfg: dict, scaler_stats=None):
             logger.warning(f"特征校正: {model_cfg_dict['featurenum']} -> {actual_fn}")
             model_cfg_dict['featurenum'] = actual_fn
 
-        model_cfg = ModelConfig(**model_cfg_dict)
-        model = CNNTransformer(model_cfg).to(cfg['DEVICE'])
-
-        if cfg['PURE_REG']:
-            criterion = PureRegLoss(num_classes=cfg['num_classes'], huber_delta=cfg['HUBER_DELTA'])
-        elif cfg['DUAL_HEAD']:
-            criterion = DualLoss(num_classes=cfg['num_classes'], **cfg['EMLossConfig'],
-                                 lambda_reg=lambda_val, huber_delta=cfg['HUBER_DELTA'])
-        else:
-            criterion = EMDLoss(num_classes=cfg['num_classes'], **cfg['EMLossConfig'])
-
-        optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['LEARNING_RATE'],
-                                      weight_decay=cfg['WEIGHT_DECAY'])
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+        model, _ = build_model({**cfg, "CNNTransformerConfig": model_cfg_dict})
+        criterion = build_criterion(cfg, lambda_reg=lambda_val)
+        optimizer, scheduler = build_optimizer_scheduler(model, cfg)
 
         local_cfg = dict(cfg)
         local_cfg["run_log_dir"] = run_log_dir
@@ -238,7 +175,8 @@ def main():
     seeds = [int(s.strip()) for s in args.seeds.split(",") if s.strip()]
     print(f">>> 多 seed 训练启动: seeds={seeds}, λ_基准={args.lambda_reg}, jitter=±{args.lambda_jitter}")
 
-    cfg = dict(BASE_CONFIG)
+    cfg = make_default_config(dual_head=True)
+    cfg["LAMBDA_JITTER"] = BASE_CONFIG["LAMBDA_JITTER"]
     if args.smoke:
         args.max_codes = 20
         args.epochs = 1
@@ -297,4 +235,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

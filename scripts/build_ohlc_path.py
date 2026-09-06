@@ -33,7 +33,7 @@ def build_ohlc_path(parquet: str, val_start: str, val_end: str, horizon: int) ->
     print(f"[ohlc] 读取 parquet(列裁剪 {len(READ_COLS)} 列): {parquet}")
     df = pq.read_table(parquet, columns=READ_COLS).to_pandas()
     print(f"[ohlc] 原始行数: {len(df):,}")
-    df = df[df["is_trading"] == True]
+    df = df[df["is_trading"]]
     df["kline_time"] = pd.to_datetime(df["kline_time"])
     cal = df["kline_time"].unique()
     cal = np.sort(cal)
@@ -63,7 +63,7 @@ def build_ohlc_full(parquet: str, val_start: str, val_end: str) -> dict:
     print(f"[ohlc-full] 读取 parquet(列裁剪 {len(READ_COLS)} 列): {parquet}")
     df = pq.read_table(parquet, columns=READ_COLS).to_pandas()
     print(f"[ohlc-full] 原始行数: {len(df):,}")
-    df = df[df["is_trading"] == True]
+    df = df[df["is_trading"]]
     df["kline_time"] = pd.to_datetime(df["kline_time"])
     df = df[(df["kline_time"] >= pd.to_datetime(val_start)) & (df["kline_time"] <= pd.to_datetime(val_end))]
     print(f"[ohlc-full] 时间裁剪: {val_start} ~ {val_end} 过滤后行数: {len(df):,}")

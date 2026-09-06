@@ -15,10 +15,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays
 
 matplotlib.use("Agg")
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
@@ -65,7 +70,7 @@ def topn_stats(exp_ret: np.ndarray, true_ret: np.ndarray, dates: np.ndarray,
 
 def parse_args():
     p = argparse.ArgumentParser(description="TopN 收益折线图（日截面）")
-    p.add_argument("--preds", nargs="+", required=True, help="npz 路径（exp_ret/true_ret/dates），每个一条线")
+    p.add_argument("--preds", nargs="+", required=True, help="npz 路径（exp_ret/true_ret/dates/codes），每个一条线")
     p.add_argument("--labels", nargs="+", default=None, help="图例名，与 --preds 对齐，缺失用文件名 stem")
     p.add_argument("--topn_list", nargs="+", type=int, default=[5, 10, 15, 20, 25, 50, 100, 200, 500])
     p.add_argument("--min_size", type=int, default=100, help="截面样本数下限，跳过稀疏截面")
@@ -84,8 +89,10 @@ def main():
     results = []
     for path, label in zip(args.preds, labels):
         z = np.load(path)
-        st = topn_stats(z["exp_ret"].astype(np.float64), z["true_ret"].astype(np.float64),
-                        z["dates"], topn_list, args.min_size)
+        arrays = {key: z[key] for key in PREDICTION_CACHE_KEYS if key in z.files}
+        validate_prediction_cache_arrays(arrays, path)
+        st = topn_stats(arrays["exp_ret"].astype(np.float64), arrays["true_ret"].astype(np.float64),
+                        arrays["dates"], topn_list, args.min_size)
         results.append((label, st))
         print(f"\n=== {label} ({os.path.basename(path)}) ===")
         print(f"截面数: {st['ndays']} 天 (日均样本 ~{st['avg_size']}) 截面RankIC mean={st['ic_mean']:.4f}")

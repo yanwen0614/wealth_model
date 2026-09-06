@@ -1,50 +1,17 @@
+import logging
+import os
+from typing import List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import logging
-import os
-import csv
-import numpy as np
-from dataclasses import dataclass
 from sklearn.metrics import confusion_matrix
-from typing import Tuple, List, Optional
 from tqdm import tqdm
+
+from .batch import _compute_loss, _unpack_batch, _unpack_outputs
 from .early_stopping import EarlyStopping
 from .metrics import calculate_latter_half_metrics
-
-
-def _unpack_batch(batch):
-    """支持 2 元 (data, y_cls) / 3 元 (data, y_cls, y_ret)，缺 y_ret 返回 None。"""
-    if len(batch) == 2:
-        data, y_cls = batch
-        return data, y_cls, None
-    data, y_cls, y_ret = batch
-    return data, y_cls, y_ret
-
-
-def _unpack_outputs(out):
-    """单头 Tensor -> (logits, None)；双头 tuple -> (logits, ret_pred)。"""
-    if isinstance(out, tuple):
-        logits, ret_pred = out
-        return logits, ret_pred
-    return out, None
-
-
-def _compute_loss(criterion, logits, ret_pred, y_cls, y_ret):
-    """双头 criterion 走 4 参 (兼容 tuple/scalar 返回)，否则走旧 2 参。"""
-    if getattr(criterion, "is_dual_head", False):
-        result = criterion(logits, ret_pred, y_cls, y_ret)
-        if isinstance(result, tuple):
-            return result[0]
-        return result
-    return criterion(logits, y_cls)
-
-
-@dataclass
-class TrainConfig:
-    epochs: int = 50                      # 训练轮数
-    lr: float = 1e-3                      # 初始学习率
-    weight_decay: float = 1e-4            # 权重衰减
+from .reporting import save_confusion_matrix
 
 class Trainer:
     """
@@ -188,14 +155,7 @@ class Trainer:
         return avg_val_loss, avg_val_acc, all_labels, all_preds
     
     def print_confusion_matrix(self, labels: torch.Tensor, preds: torch.Tensor, epoch: Optional[int] = None):
-        """
-        打印并保存混淆矩阵
-        
-        参数:
-            labels: 真实标签
-            preds: 预测标签
-            epoch: 当前epoch编号（用于保存文件名）
-        """
+        """打印并保存混淆矩阵。"""
         num_classes = self.config.get('num_classes')
         class_names = [str(i) for i in range(num_classes)]
         cm = confusion_matrix(labels.numpy(), preds.numpy(), labels=range(num_classes))
@@ -204,116 +164,25 @@ class Trainer:
         self.logger.info("                混淆矩阵（文本版）")
         self.logger.info("=" * 50)
         
-        # 打印带类名的混淆矩阵
         header = "真实标签\\预测标签" + "".join([f"{name:>8}" for name in class_names])
         self.logger.info(header)
         for i, row in enumerate(cm):
             row_str = f"{class_names[i]:>16}" + "".join([f"{val:>8}" for val in row])
             self.logger.info(row_str)
-        
-        # 保存混淆矩阵到文件
         self.save_confusion_matrix(cm, class_names, epoch)
-    
-    def save_confusion_matrix(self, cm: np.ndarray, class_names: List[str], epoch: Optional[int] = None):
-        """
-        保存混淆矩阵到文件
-        
-        参数:
-            cm: 混淆矩阵
-            class_names: 类别名称列表
-            epoch: 当前epoch编号（用于保存文件名）
-        """
-        try:
-            # 获取保存目录
-            save_dir = self.config.get('run_log_dir', './logs')
-            os.makedirs(save_dir, exist_ok=True)
-            
-            # 生成文件名
-            if epoch is not None:
-                txt_filename = f"confusion_matrix_epoch_{epoch+1}.txt"
-                csv_filename = f"confusion_matrix_epoch_{epoch+1}.csv"
-            else:
-                txt_filename = "confusion_matrix.txt"
-                csv_filename = "confusion_matrix.csv"
-            
-            txt_path = os.path.join(save_dir, txt_filename)
-            csv_path = os.path.join(save_dir, csv_filename)
-            
-            # 保存为CSV文件（仅保存表格数据）
-            with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                
-                # 写入表头
-                header_row = ["真实标签\\预测标签"] + class_names
-                writer.writerow(header_row)
-                
-                # 写入每一行（仅矩阵数据）
-                for i, row in enumerate(cm):
-                    writer.writerow([class_names[i]] + row.tolist())
-            
-            # 保存为文本文件（保存格式化的混淆矩阵和统计信息）
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write("=" * 50 + "\n")
-                f.write("                混淆矩阵（文本版）\n")
-                f.write("=" * 50 + "\n\n")
-                
-                # 写入带类名的混淆矩阵
-                header = "真实标签\\预测标签" + "".join([f"{name:>8}" for name in class_names])
-                f.write(header + "\n")
-                for i, row in enumerate(cm):
-                    row_str = f"{class_names[i]:>16}" + "".join([f"{val:>8}" for val in row])
-                    f.write(row_str + "\n")
-                
-                # 添加详细统计信息
-                f.write("\n" + "=" * 50 + "\n")
-                f.write("详细统计信息:\n")
-                f.write("=" * 50 + "\n")
-                f.write(f"总样本数: {cm.sum()}\n")
-                f.write(f"正确分类样本数: {cm.trace()}\n")
-                f.write(f"总体准确率: {cm.trace()/cm.sum():.4f}\n")
-                f.write(f"总体错误率: {1 - cm.trace()/cm.sum():.4f}\n")
-                
-                # 添加每类的详细统计
-                f.write("\n" + "=" * 50 + "\n")
-                f.write("每类分类统计:\n")
-                f.write("=" * 50 + "\n")
-                f.write(f"{'类别':<6}{'真实样本数':<12}{'正确分类':<10}{'错误分类':<10}{'准确率':<8}{'错误率':<8}\n")
-                for i, class_name in enumerate(class_names):
-                    total = cm[i].sum()
-                    correct = cm[i, i]
-                    incorrect = total - correct
-                    accuracy = correct / total if total > 0 else 0.0
-                    error_rate = incorrect / total if total > 0 else 0.0
-                    f.write(f"{class_name:<6}{total:<12}{correct:<10}{incorrect:<10}{accuracy:.4f}{error_rate:.4f}\n")
-                
-                # 添加混淆矩阵的整体分布统计
-                f.write("\n" + "=" * 50 + "\n")
-                f.write("混淆矩阵分布统计:\n")
-                f.write("=" * 50 + "\n")
-                
-                # 计算每类的预测分布
-                for i, class_name in enumerate(class_names):
-                    row = cm[i]
-                    f.write(f"\n类别 {class_name} 的预测分布:\n")
-                    for j, pred_class in enumerate(class_names):
-                        if i == j:
-                            continue
-                        count = row[j]
-                        if count > 0:
-                            percentage = count / row.sum() * 100
-                            f.write(f"  被错误预测为 {pred_class}: {count} 个 ({percentage:.2f}%)\n")
-            
-            self.logger.info(f"混淆矩阵已保存到:")
-            self.logger.info(f"  表格数据: {csv_path} (仅包含纯表格数据)")
-            self.logger.info(f"  统计信息: {txt_path} (包含格式化混淆矩阵和详细统计)")
-            
-        except Exception as e:
-            self.logger.error(f"保存混淆矩阵失败: {e}")
+
+    def save_confusion_matrix(self, cm, class_names, epoch: Optional[int] = None):
+        """保留旧接口，实际输出由 reporting 模块完成。"""
+        save_confusion_matrix(cm, class_names, self.config.get('run_log_dir', './logs'), epoch, self.logger)
     
     def train(self):
         """执行完整的训练流程"""
         # 检查验证集是否存在
         has_val = self.val_loader is not None
+        if len(self.train_loader.dataset) == 0:
+            raise ValueError("训练集为空，无法开始训练")
+        if has_val and len(self.val_loader.dataset) == 0:
+            raise ValueError("验证集为空，无法执行验证")
         
         # 打印训练基本信息
         train_size = len(self.train_loader.dataset)
@@ -378,7 +247,7 @@ class Trainer:
             
         # 训练结束，加载最佳模型
         if has_val:
-            self.model.load_state_dict(torch.load(self.early_stopping.path))
+            self.model.load_state_dict(torch.load(self.early_stopping.path, map_location=self.device))
             self.logger.info(f"训练结束，已加载最佳模型: {self.early_stopping.path}")
         else:
             self.logger.info("训练结束（无验证集，未保存模型）")
@@ -386,9 +255,8 @@ class Trainer:
 
     def update_scheduler_epoch(self):
         if self.scheduler is not None:
-            avg_val_loss = self.val_losses[-1]
             if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-                self.scheduler.step(avg_val_loss)
+                self.scheduler.step(self.val_losses[-1])
             else:
                 self.scheduler.step()
             

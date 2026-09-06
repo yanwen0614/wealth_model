@@ -64,8 +64,10 @@ class EMDLoss(nn.Module):
                 # 确定左右邻居索引
                 left, right = cls - dist, cls + dist
                 neighbors = []
-                if left >= 0: neighbors.append(left)
-                if right < self.num_classes: neighbors.append(right)
+                if left >= 0:
+                    neighbors.append(left)
+                if right < self.num_classes:
+                    neighbors.append(right)
                 
                 # 如果没有有效邻居，跳过
                 if not neighbors:

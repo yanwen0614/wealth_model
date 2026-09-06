@@ -1,5 +1,10 @@
 # 脚本索引
 
+当前共同契约：训练数据来自 parquet，先过滤 `is_trading=False`；默认 per-code 输出 `F=45`
+（39 个有效特征+6 个 G9 mask），`48` 是原始因子集合，`55` 不是当前默认模型输入。
+序列长度 `T=60`，horizon=5，标签为 `open[t+1+horizon]/open[t+1]-1`；51 个 BINS 边界对应
+`C=52`。scaler 由训练集 fit 并保存为 `logs/scaler_per_code.pkl`，验证集复用该统计。
+
 | 脚本 | 用途 |
 |------|------|
 | `train.py` | 唯一训练入口 |
@@ -125,7 +130,8 @@ uv run --project . python scripts/recompute_bins.py [选项]
 | `--output PATH` | 控制台 | 输出 bins 到文件 |
 | `--strategy` | 默认 | 分位策略（等宽/等频/自定义） |
 
-> 口径注意：本脚本目前为 close-close 旧口径，open-open 重训后需先同步公式再重算。
+> 口径注意：历史版本曾按 close-close 计算；该旧结果不可与当前 open-open 训练、评估或回测混用。
+> 当前口径应使用 `open[t+1+horizon]/open[t+1]-1`（默认 horizon=5），并保留 51 个 BINS 边界。
 
 ---
 
@@ -142,6 +148,9 @@ uv run --project . python scripts/plot_topn_curve.py \
 ---
 
 ## `scripts/run_backtest.py` — 逐日回测
+
+回测时序固定为 T 日决策、T+1 open 买入、T+6 open 卖出。输入预测缓存和 OHLC 路径表必须
+来自同一 open-open 口径；旧 close-close 缓存不可混用。
 
 ```
 uv run --project . python scripts/run_backtest.py \

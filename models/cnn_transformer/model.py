@@ -1,9 +1,8 @@
-import copy
-
 import torch
-import torch.nn as nn
-from .inception_blocks import MultiWindowInceptionCNN
+from torch import nn
+
 from .config import ModelConfig
+from .inception_blocks import MultiWindowInceptionCNN
 
 
 class PositionalEncoding(nn.Module):
@@ -96,17 +95,6 @@ class CNNTransformer(nn.Module):
             nn.Linear(config.d_model, 1)
         )
 
-    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
-        # ckpt 兼容：旧单头 `fc.2.weight/bias` -> `fc_cls.2.weight/bias`
-        sd = copy.copy(dict(state_dict))
-        for k in list(sd.keys()):
-            if k.startswith("fc.") and "fc_cls." + k[3:] not in sd:
-                sd["fc_cls." + k[3:]] = sd[k]
-        try:
-            return super().load_state_dict(sd, strict=strict, assign=assign)
-        except TypeError:
-            return super().load_state_dict(sd, strict=strict)
-
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: [batch_size, featurenum, seq_len]
         # Step1: 多窗口CNN提取局部特征
@@ -156,7 +144,7 @@ if __name__ == "__main__":
     print(f"可训练参数比例: {100 * trainable_params / total_params:.2f}%")
     
     # 打印位置编码信息
-    print(f"\n=== 位置编码信息 ===")
+    print("\n=== 位置编码信息 ===")
     print(f"位置编码维度: {config.d_model}")
     print(f"最大序列长度: {config.seq_len}")
     
@@ -178,12 +166,6 @@ if __name__ == "__main__":
     print(f"Output ret_pred: {ret_pred}")
     assert tuple(logits.shape) == (batch_size, config.num_classes)
     assert tuple(ret_pred.shape) == (batch_size,)
-    # ckpt 兼容自检：旧 fc.* 键可加载到 fc_cls
-    _sd = model.state_dict()
-    _legacy = {("fc." + k.split("fc_cls.", 1)[1] if k.startswith("fc_cls.") else k): v for k, v in _sd.items()}
-    model.load_state_dict(_legacy, strict=False)
-    print("Legacy fc.* ckpt remap OK")
-    
     # 测试损失计算
     target = torch.randint(0, config.num_classes, (batch_size,)).to(device)
     loss_fn = nn.CrossEntropyLoss()
@@ -191,7 +173,7 @@ if __name__ == "__main__":
     print(f"\nCrossEntropyLoss: {loss.item()}")
     
     # 测试位置编码单独输出
-    print(f"\n=== 测试位置编码 ===")
+    print("\n=== 测试位置编码 ===")
     pos_encoder = PositionalEncoding(d_model=config.d_model, dropout=0.0).to(device)
     # 创建测试输入 [seq_len, batch_size, d_model]
     test_input = torch.zeros(config.seq_len, batch_size, config.d_model).to(device)

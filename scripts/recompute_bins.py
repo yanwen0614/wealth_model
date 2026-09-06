@@ -2,16 +2,12 @@
 
 口径与 data/dataset.py 一致:
 - is_trading=True 过滤，按 code,kline_time 排序
-- future_ret[t] = close[t+5]/close[t]-1（dataset.py:259-272，仅 close 均有效且 close[t]!=0）
+- future_ret[t] = open[t+1+5]/open[t+1]-1（当前 open-open 标签口径）
 - digitize: np.digitize(future_ret, bins) -> 0..len(bins)（dataset.py:306）
 
 双口径:
 - ALL_RET: 全部有效 t (t in [0, n-horizon)) 的 future_ret
 - WIN_LABEL: seq_len=60 窗口末日标签 y=future_ret[s+59], s in [0, n-seq-horizon]（dataset.py:274-290）
-
-> 口径警示（2026-09-05）: dataset.py 训练标签已改为 open-open（open[t+6]/open[t+1]-1），
-> 本脚本 future_ret_close/max_s+1 仍为 close-close 旧口径副本；open-open 重训后
-> 重算 bins 前必先同步公式，否则分位 bins 系统性偏移。
 
 候选 bins（均不写回 train.py:34 默认，仅输出报告冻结 11 类候选）:
 - bins52: linspace(-0.25, 0.25, 51)（现行默认，52 类）
@@ -33,9 +29,14 @@ import argparse
 import glob
 import json
 import os
+import sys
 
 import numpy as np
 import pyarrow.parquet as pq
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from data.labels import _future_ret_open_open
 
 HORIZON = 5
 SEQ_LEN = 60
@@ -54,25 +55,11 @@ def resolve_parquet(pattern: str) -> str:
     return paths[0]
 
 
-def future_ret_close(close: np.ndarray, horizon: int) -> np.ndarray:
-    """与 dataset.py:259-272 同口径（向量化等价实现）。"""
-    n = len(close)
-    fr = np.full(n, np.nan, dtype=np.float64)
-    valid = ~np.isnan(close)
-    c0 = close[:-horizon]
-    c1 = close[horizon:]
-    ok = valid[:-horizon] & valid[horizon:] & (c0 != 0)
-    fr_vals = np.full(len(c0), np.nan)
-    fr_vals[ok] = c1[ok] / c0[ok] - 1.0
-    fr[: n - horizon] = fr_vals
-    return fr
-
-
 def collect_returns(parquet_path: str, horizon: int, seq_len: int, max_codes: int | None = None):
     """返回 (all_ret, win_label) 两个一维 float64 数组。"""
-    table = pq.read_table(parquet_path, columns=["code", "kline_time", "close", "is_trading"])
+    table = pq.read_table(parquet_path, columns=["code", "kline_time", "open", "is_trading"])
     df = table.to_pandas()
-    df = df[df["is_trading"] == True]
+    df = df[df["is_trading"]]
     df["kline_time"] = df["kline_time"].astype("datetime64[ns]")
     df = df.sort_values(["code", "kline_time"]).reset_index(drop=True)
     codes = df["code"].unique()
@@ -83,11 +70,11 @@ def collect_returns(parquet_path: str, horizon: int, seq_len: int, max_codes: in
         print(f"[recompute_bins] 行数 {len(df):,}, 股票数 {len(codes)}")
     all_parts, win_parts = [], []
     for _code, g in df.groupby("code", sort=False):
-        close = g["close"].to_numpy(dtype=np.float64)
-        n = len(close)
+        open_prices = g["open"].to_numpy(dtype=np.float64)
+        n = len(open_prices)
         if n < seq_len + horizon:
             continue
-        fr = future_ret_close(close, horizon)
+        fr = _future_ret_open_open(open_prices, horizon)
         all_parts.append(fr[~np.isnan(fr)])
         max_s = n - seq_len - horizon + 1
         if max_s > 0:

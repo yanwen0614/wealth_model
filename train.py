@@ -11,84 +11,23 @@
   uv run --project . python train.py --max_codes 20 --epochs 2 --batch_size 256
   uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31
 
-与旧链路兼容：
-  旧 main2.py 依赖 processed_data_train/*.npz，本脚本完全替代，无需中间 npz，特征维度由 8 -> 55，标签由 amp sum -> future 5d return
+历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=45 和 future 5d open-open 标签。
+旧模型 checkpoint 不属于当前加载契约，历史结果仅供参考且不可与当前口径混用。
 """
 import argparse
 import logging
 import os
-import sys
 import numpy as np
 import torch
 
+from config.defaults import make_default_config
 from data.dataset import ParquetDataConfig, ParquetDataset
-from models.cnn_transformer.model import CNNTransformer
-from models.cnn_transformer.config import ModelConfig
-from training import Trainer
-from visualization import Visualizer
 from log_manager import LoggerManager
-from criterion.emd_loss import EMDLoss
-from criterion.dual_loss import DualLoss
-from criterion.pure_reg_loss import PureRegLoss
+from training import Trainer
+from training.factory import build_criterion, build_model, build_optimizer_scheduler
+from visualization import Visualizer
 
-# -------------------- 默认配置（可经命令行覆盖） --------------------
-DEFAULT_PARQUET = "data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet"
-# 与 main2 保持一致的 BINS（52类）
-DEFAULT_BINS = (np.linspace(-25, 25, 51) / 100).tolist()
-
-config = {
-    'DEVICE': 'cuda' if torch.cuda.is_available() else 'cpu',
-    # 数据（per-code 共识：45特征=39+6 mask，G6/G7已剔除，zscore已删除）
-    'PARQUET_PATH': DEFAULT_PARQUET,
-    'BINS': DEFAULT_BINS,
-    'SEQ_LEN': 60,
-    'HORIZON': 5,
-    'BATCH_SIZE': 256,
-    'NUM_WORKERS': 4,
-    'TRAIN_START': "2013-01-01",
-    'TRAIN_END': "2025-06-30",
-    'VAL_START': "2025-07-01",
-    'VAL_END': "2025-12-31",
-    'TEST_START': "2026-01-01",
-    'TEST_END': None,  # 至今（当前 parquet 仅至 2025-12-31，test 暂空，待增量数据）
-    'NORMALIZE': "per_code",
-    'SCALER_PATH': "logs/scaler_per_code.pkl",
-    'MAX_CODES': None,  # 调试用，小样本
-    'MAX_WINDOWS_PER_CODE': None,
-
-    # 模型（适配 45 特征，per-code 12+7+3+6+5+6=39+6 mask）
-    "model": "CNNTransformer",
-    "CNNTransformerConfig": {
-        'featurenum': 45,  # per-code 45，将在运行时根据实际特征数校正
-        'seq_len': 60,
-        'num_classes': 52,  # len(BINS)+1
-        'cnn_out_channels': 128,
-        'd_model': 256,
-        'nhead': 8,
-        "cnn_kernel_sizes": [1, 3, 5, 7, 10],
-        'num_encoder_layers': 4,
-        'dropout_rate': 0.3,
-    },
-
-    # 训练
-    "criterion": "EMDLoss",
-    "EMLossConfig": dict(p=2, label_smoothing=True, smooth_eps=0.1),
-    "DUAL_HEAD": False,   # 双头回归开关，默认关保 baseline
-    "PURE_REG": False,    # 纯回归消融开关（优先于 DUAL_HEAD）
-    "LAMBDA_REG": 0.2,    # DualLoss 回归项权重
-    "HUBER_DELTA": 1.0,   # Huber delta
-    "scheduler": "ReduceLROnPlateau",
-    'LEARNING_RATE': 1e-4,
-    'WEIGHT_DECAY': 1e-5,
-    'EPOCHS': 50,
-    'PATIENCE': 10,
-    'LOG_DIR': './logs',
-}
-
-# 派生
-config['num_classes'] = len(config['BINS']) + 1
-config["CNNTransformerConfig"]['num_classes'] = len(config['BINS']) + 1
-config["CNNTransformerConfig"]['seq_len'] = config['SEQ_LEN']
+config = make_default_config()
 
 
 def parse_args():
@@ -200,7 +139,7 @@ def main():
 
     # 若用户未指定验证集时间但 smoke，也创建验证集以测试完整链路
     # 当前仅训练/验证进入 Trainer；test 需全量数据落盘后评估，smoke 时不创建以免空数据报错
-    train_loader, val_loader, scaler_stats = ParquetDataset.create_dataloaders(
+    train_loader, val_loader, _scaler_stats = ParquetDataset.create_dataloaders(
         parquet_cfg,
         train_start=train_start,
         train_end=train_end,
@@ -227,8 +166,7 @@ def main():
 
     # 模型
     logger.info("=== 初始化模型 ===")
-    model_cfg = ModelConfig(**config["CNNTransformerConfig"])
-    model = CNNTransformer(model_cfg).to(config['DEVICE'])
+    model, model_cfg = build_model(config)
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"总参数量: {total_params:,}")
@@ -239,22 +177,12 @@ def main():
 
     # 损失 & 优化器
     logger.info("=== 初始化损失与优化器 ===")
+    criterion = build_criterion(config)
     if config['PURE_REG']:
-        criterion = PureRegLoss(num_classes=config['num_classes'], huber_delta=config['HUBER_DELTA'])
         logger.info(f"纯回归 PureRegLoss: Huber(δ={config['HUBER_DELTA']})，分类头 logits 不参与损失（无梯度）")
     elif config['DUAL_HEAD']:
-        criterion = DualLoss(num_classes=config['num_classes'], **config['EMLossConfig'],
-                             lambda_reg=config['LAMBDA_REG'], huber_delta=config['HUBER_DELTA'])
         logger.info(f"双头 DualLoss: EMD + λ={config['LAMBDA_REG']} Huber(δ={config['HUBER_DELTA']})")
-    else:
-        criterion = EMDLoss(num_classes=config['num_classes'], **config['EMLossConfig'])
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config['LEARNING_RATE'], weight_decay=config['WEIGHT_DECAY'])
-    if config['scheduler'] == "ReduceLROnPlateau":
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
-    elif config['scheduler'] == "CosineAnnealingWarmRestarts":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
-    else:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    optimizer, scheduler = build_optimizer_scheduler(model, config)
 
     # 训练
     logger.info("=== 开始训练 ===")
@@ -273,9 +201,13 @@ def main():
         logger.warning("训练被中断")
 
     # 可视化
-    train_losses, val_losses, train_accs, val_accs = trainer.get_training_history()
+    train_losses, _, train_accs, _ = trainer.get_training_history()
     try:
         vis_path = os.path.join(config["run_log_dir"], "training_curve.png")
+        if val_loader is not None:
+            _, val_losses, _, val_accs = trainer.get_training_history()
+        else:
+            val_losses, val_accs = [], []
         Visualizer.plot_training_curves(train_losses, val_losses, train_accs, val_accs, save_path=vis_path)
         logger.info(f"训练曲线已保存: {vis_path}")
     except Exception as e:
@@ -293,12 +225,6 @@ def main():
     print(f"\n训练完成，日志目录: {config['run_log_dir']}")
     print(f"最佳模型: {best_path}")
     print(f"训练曲线: {os.path.join(config['run_log_dir'], 'training_curve.png')}")
-
-    # Windows 下解释器退出阶段 CUDA/多进程清理会挂起（产物已全部落盘），强制退出绕过
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os._exit(0)
-
 
 if __name__ == "__main__":
     main()

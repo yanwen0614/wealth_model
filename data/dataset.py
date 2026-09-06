@@ -3,7 +3,7 @@
 数据契约（见 quant/scripts/export_training_data.py）：
 - OHLC/close = 后复权；amount=真实元；volume=真实股；TOT_SHARE=万股
 - is_trading=False 为合成行：OHLC/因子=NaN、volume/amount=0，训练侧必须过滤 is_trading
-- 48 因子 = EXPORT_FACTORS（29 live+19 keep），含 gross_margin 5094/5194 结构性缺席等
+- 48 因子 = EXPORT_FACTORS，含 gross_margin 5094/5194 结构性缺席等
 - 训练/回测口径统一，产物可复现（指纹含 git hash + 数据快照）
 
 本模块职责：
@@ -11,7 +11,7 @@
 - 按 code 分组、按 kline_time 排序、过滤 is_trading
 - 计算未来 N 日收益率标签（open-open 口径 open[t+1+horizon]/open[t+1]-1，与回测实盘 T+1 open 买入口径对齐）
 - 依据 BINS 离散化为多分类标签（与 main2.py EMDLoss 配套）
-- 滑动窗口生成 [seq_len, num_features] 样本，支持全局 z-score 归一化 + 分组归一化
+- 滑动窗口生成 [seq_len, num_features] 样本，默认输出 F=45
 - 构建全局索引，支持 DataLoader 多进程
 
 与旧 NPZ 链路对比：
@@ -25,31 +25,16 @@
 import os
 import pickle
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Dict, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
-# 与 quant 导出保持一致的 48 因子列（单一事实源复刻，用于默认特征列）
-EXPORT_FACTORS = [
-    "return_1d", "return_5d", "return_10d", "return_20d",
-    "volatility_5d", "volatility_10d", "volatility_20d",
-    "amihud", "volume_ratio_5d", "volume_ratio_10d",
-    "ma_5", "ma_10", "ma_20", "ma_60",
-    "ema_12", "ema_26", "macd", "dmi", "adx", "sar",
-    "boll", "atr", "kelch", "std_5", "std_10", "std_20",
-    "trend_duokong", "trend_shortline", "trend_duokong_dev",
-    "pe", "pb", "pcf", "ps",
-    "revenue_growth", "profit_growth", "revenue_growth_qoq", "profit_growth_qoq",
-    "gross_margin", "net_margin", "roe", "roa", "debt_to_equity",
-    "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio",
-    "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio",
-]
-
-BASE_COLUMNS = ["code", "kline_time", "open", "high", "low", "close", "volume", "amount", "TOT_SHARE", "is_trading"]
+from data.labels import _future_ret_open_open
+from data.schema import BASE_COLUMNS, EXPORT_FACTORS, _default_feature_cols  # noqa: F401
 
 
 @dataclass
@@ -85,47 +70,11 @@ class ParquetDataConfig:
     per_code_add_mask: bool = True
 
 
-def _default_feature_cols(all_columns: List[str], use_factor_only: bool = False) -> List[str]:
-    """自动推导特征列（per-code 共识，G6/G7 暂不入训）"""
-    if use_factor_only:
-        return [c for c in EXPORT_FACTORS if c in all_columns]
-    # 剔除：G2 return_*(标签)、TOT_SHARE(A)、volume/amount(绝对量)、close(恒0)、G6 估值 4、G7 成长 4
-    exclude = {
-        "code", "kline_time", "is_trading",
-        "return_1d", "return_5d", "return_10d", "return_20d",
-        "TOT_SHARE", "volume", "amount", "close",
-        "pe", "pb", "pcf", "ps",
-        "revenue_growth", "profit_growth", "revenue_growth_qoq", "profit_growth_qoq",
-    }
-    return [c for c in all_columns if c not in exclude]
-
-
-def _future_ret_open_open(open_arr: np.ndarray, horizon: int) -> np.ndarray:
-    """open-open 口径未来收益标签（向量化纯函数，与回测实盘可实现口径对齐）。
-
-    future_ret[t] = open[t + 1 + horizon] / open[t + 1] - 1
-    有效条件: open[t+1] 与 open[t+1+horizon] 均非 NaN 且 open[t+1] > 0，否则 NaN
-    尾部 t > n - 2 - horizon 无 open[t+1+horizon]，恒为 NaN
-    """
-    n = len(open_arr)
-    fr = np.full(n, np.nan, dtype=np.float64)
-    if horizon < 1 or n <= horizon + 1:
-        return fr
-    valid = ~np.isnan(open_arr)
-    o0 = open_arr[1: n - horizon]
-    o1 = open_arr[1 + horizon:]
-    ok = valid[1: n - horizon] & valid[1 + horizon:] & (o0 > 0)
-    vals = np.full(len(o0), np.nan, dtype=np.float64)
-    vals[ok] = o1[ok] / o0[ok] - 1.0
-    fr[: n - horizon - 1] = vals
-    return fr
-
-
 class ParquetDataset(Dataset):
     """基于单文件 parquet 的滑动窗口数据集
 
     每个样本：
-      x: [num_features, seq_len]  float32  (grouped 时 num_features 可能 +6 mask)
+      x: [num_features, seq_len]  float32  (per_code 时默认 F=45，可能追加 6 个 mask)
       y: int  (digitized future return)
 
     索引构建：
@@ -158,8 +107,8 @@ class ParquetDataset(Dataset):
         if missing:
             raise ValueError(f"特征列缺失于 parquet: {missing}, 可用列: {all_cols[:10]}...")
 
-        self.feature_cols = feature_cols  # 输入特征列（含55）
-        self.feature_cols_out = list(feature_cols)  # 输出特征列（grouped 可能追加 mask）
+        self.feature_cols = feature_cols  # 输入特征列（默认 F=45）
+        self.feature_cols_out = list(feature_cols)  # 输出特征列（per_code 可能追加 mask）
         self.num_features = len(feature_cols)
         print(f"[ParquetDataset] 特征列数: {self.num_features}, 特征: {feature_cols[:8]}...")
 
@@ -199,7 +148,7 @@ class ParquetDataset(Dataset):
             print(f"[ParquetDataset] 限制 max_codes={cfg.max_codes}, 保留 {len(keep_codes)} 只, 行数 {len(df):,}")
 
         # 2. 归一化统计
-        # 支持 grouped 与 per_code 分支（zscore 已删除），均支持外部传入 scaler_stats / 文件持久化 / 验证集复用
+        # per_code 支持外部传入 scaler_stats / 文件持久化 / 验证集复用
         if cfg.normalize == "per_code":
             from data.scaler import PerCodeGroupedScaler
             if scaler_stats is not None:
@@ -214,7 +163,7 @@ class ParquetDataset(Dataset):
                         self.scaler_stats = scaler_stats
                 else:
                     self.scaler_stats = scaler_stats
-                print(f"[ParquetDataset] 使用外部传入的 scaler_stats (per_code)")
+                print("[ParquetDataset] 使用外部传入的 scaler_stats (per_code)")
                 if hasattr(self.scaler_stats, "feature_cols_out"):
                     self.feature_cols_out = self.scaler_stats.feature_cols_out
                     self.num_features = len(self.feature_cols_out)
@@ -265,7 +214,7 @@ class ParquetDataset(Dataset):
             close = group["close"].values.astype(np.float64)
             open_arr = group["open"].values.astype(np.float64)
 
-            # NaN 填充 + 归一化（per_code 按 code 独立，grouped 全局）
+            # NaN 填充 + 归一化（per_code 按 code 独立）
             if cfg.normalize == "per_code":
                 # per-code：需传入 close 供 G1/macd relative
                 from data.scaler import PerCodeGroupedScaler
@@ -445,7 +394,7 @@ class ParquetDataset(Dataset):
             print(f"[create_dataloaders] 创建验证集: {val_start} -> {val_end}")
             # 复用训练集的 scaler（关键：避免验证集重新拟合泄露）
             val_dataset = cls(val_cfg, scaler_stats=train_dataset.scaler_stats)
-            # 校验特征数一致性：grouped 的 mask 会使两集一致，zscore 保持不变
+            # 校验训练集与验证集输出特征数一致
             if val_dataset.num_features != train_dataset.num_features:
                 print(f"[create_dataloaders] 警告：训练/验证特征数不一致 {train_dataset.num_features} vs {val_dataset.num_features}，以训练集为准")
             val_loader = DataLoader(
@@ -501,7 +450,8 @@ if __name__ == "__main__":
         break
 
     # 测试持久化与复用（仅 per_code）
-    import tempfile, os
+    import os
+    import tempfile
     tmp = tempfile.mktemp(suffix="_scaler.pkl")
     ds.scaler_stats.save(tmp)
     print(f"[Persistence] 保存成功: {tmp}")

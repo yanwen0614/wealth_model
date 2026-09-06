@@ -30,7 +30,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from config import DEFAULT_BINS
 from data.dataset import ParquetDataConfig, ParquetDataset
+from data.schema import validate_prediction_cache_arrays
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
 from training.metrics import calculate_latter_half_metrics
@@ -38,7 +40,7 @@ from training.metrics import calculate_latter_half_metrics
 CENTERS52 = np.linspace(-0.255, 0.255, 52)  # 52 类中心（小数单位）
 DEFAULT_BINS11_PCT = [-15, -10, -6, -3, -1, 1, 3, 6, 10, 15]  # 百分制，内部/100
 DEFAULT_BINS13_PCT = [-15, -10, -7, -4, -2, -0.5, 0.5, 2, 4, 7, 10, 15]  # 百分制，内部/100
-DEFAULT_BINS52 = (np.linspace(-25, 25, 51) / 100).tolist()  # 与 train.py DEFAULT_BINS 一致
+DEFAULT_BINS52 = DEFAULT_BINS
 NUM_CLASSES52 = 52
 
 
@@ -103,8 +105,13 @@ def build_val_loader(args) -> tuple[DataLoader, ParquetDataset]:
 
         scaler_stats = PerCodeGroupedScaler.load(args.scaler_path)
         print(f"[eval] 复用训练 scaler: {args.scaler_path}")
+    elif not args.allow_fit_scaler:
+        raise FileNotFoundError(
+            f"正式评估必须复用训练 scaler，但文件不存在: {args.scaler_path}；"
+            "调试时显式传入 --allow_fit_scaler"
+        )
     else:
-        print("[eval] 警告：scaler 不存在，验证集将自行拟合（仅调试可用，正式评估必须复用训练 scaler）")
+        print("[eval] 调试模式：scaler 不存在，验证集将自行拟合")
     ds = ParquetDataset(cfg, scaler_stats=scaler_stats)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=False)
@@ -129,9 +136,7 @@ def evaluate(args) -> dict:
     )
     device = args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
     model = CNNTransformer(model_cfg).to(device)
-    # 双头改造兼容：forward 恒返 tuple；旧单头 ckpt 含 fc.* 键（现为 fc_cls.*），
-    # model.py 已有 fc->fc_cls remap，此处 strict=False 容忍新增 fc_reg.* 缺失键
-    model.load_state_dict(torch.load(ckpt_path, map_location=device), strict=False)
+    model.load_state_dict(torch.load(ckpt_path, map_location=device), strict=True)
     model.eval()
 
     loader, ds = build_val_loader(args)
@@ -150,18 +155,18 @@ def evaluate(args) -> dict:
     for xb, yb, *_ in loader:  # dataset 现返 3 元 (x, y_cls, y_ret)，*_ 兼容双头
         n = xb.shape[0]
         out = model(xb.to(device))
-        logits = out[0] if isinstance(out, tuple) else out  # 双头恒返 tuple，取分类头
-        ret_pred = out[1] if isinstance(out, tuple) else None
-        if ret_pred is not None:
-            all_ret_pred.append(ret_pred.cpu().numpy())
+        if not isinstance(out, tuple) or len(out) != 2:
+            raise ValueError("checkpoint 模型必须返回唯一双头 schema: (logits, ret_pred)")
+        logits, ret_pred = out
+        all_ret_pred.append(ret_pred.cpu().numpy())
         probs = torch.softmax(logits, dim=1).cpu().numpy()
         all_probs.append(probs)
         all_pred52.append(probs.argmax(axis=1))
         all_true52.append(yb.numpy())
         # 按顺序对齐连续真值（shuffle=False，offset 与 dataset.index 对应）
-        def _get_true_ret(i):
-            lp = ds.index[offset + i][1] + ds.config.seq_len - 1
-            g = ds.groups[ds.index[offset + i][0]]
+        def _get_true_ret(i, base_offset=offset):
+            lp = ds.index[base_offset + i][1] + ds.config.seq_len - 1
+            g = ds.groups[ds.index[base_offset + i][0]]
             if args.y_ret_type == "open_close":
                 bo = g["open"][lp + 1]
                 sc = g["close"][lp + 1 + ds.config.horizon]
@@ -301,8 +306,14 @@ def evaluate(args) -> dict:
         print("  (无有效截面, 全部日期样本数<100)")
     print("=" * 60)
     if args.preds_cache:
-        np.savez(args.preds_cache, exp_ret=exp_ret, true_ret=true_ret, dates=dates,
-                 codes=np.concatenate(all_codes) if all_codes else np.asarray([], dtype="U1"))
+        cache = {
+            "exp_ret": exp_ret,
+            "true_ret": true_ret,
+            "dates": dates,
+            "codes": np.concatenate(all_codes) if all_codes else np.asarray([], dtype="U1"),
+        }
+        validate_prediction_cache_arrays(cache, args.preds_cache)
+        np.savez(args.preds_cache, **cache)
         print(f"[eval] 逐样本预测已缓存: {args.preds_cache} (exp_ret/true_ret/dates/codes, 后续统计免推理)")
     if args.out:
         with open(args.out, "w") as f:
@@ -325,6 +336,8 @@ def parse_args():
     p.add_argument("--max_codes", type=int, default=20)
     p.add_argument("--max_windows_per_code", type=int, default=None)
     p.add_argument("--scaler_path", default="logs/scaler_per_code.pkl")
+    p.add_argument("--allow_fit_scaler", action="store_true",
+                   help="仅调试：允许 scaler 缺失时在验证集自行拟合")
     p.add_argument("--bins11_pct", type=float, nargs="+", default=None, help="T02 冻结 bins（百分制），默认 [-15..15]")
     p.add_argument("--bins13_pct", type=float, nargs="+", default=None, help="13 映射 bins（百分制），默认 [-15..15]")
     p.add_argument("--seed", type=int, default=42)

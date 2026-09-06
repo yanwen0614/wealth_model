@@ -50,7 +50,6 @@ def calculate_latter_half_metrics(labels: torch.Tensor, preds: torch.Tensor,
         fn = np.sum(cm[i, :]) - tp
         
         # TN: 既不是该类也没有预测为该类的样本数
-        tn = np.sum(cm) - tp - fp - fn
         
         # 计算精确率 (Precision)
         if tp + fp == 0:
@@ -201,7 +200,7 @@ def print_detailed_metrics_report(labels: torch.Tensor, preds: torch.Tensor,
     
     # 打印前后半类划分信息
     first_half_end = num_classes // 2
-    print(f"\n类别划分:")
+    print("\n类别划分:")
     print(f"前半类: {list(range(first_half_end))}")
     print(f"后半类: {list(range(first_half_end, num_classes))}")
     print("=" * 60)
