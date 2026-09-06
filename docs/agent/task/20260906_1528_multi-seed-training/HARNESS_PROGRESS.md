@@ -7,7 +7,7 @@
 
 | Task | 名称 | 状态 | Quality Gate | 备注 |
 |------|------|------|--------------|------|
-| T01 | 创建 `scripts/multi_seed_train.py` | pending | - | 单一任务，无依赖 |
+| T01 | 创建 `scripts/multi_seed_train.py` | passed | PASS | 已完成 lint + smoke 验证 |
 
 ## 执行详情
 
