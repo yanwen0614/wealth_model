@@ -5,7 +5,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 
-DEFAULT_PARQUET = "Z:/test/train_data/train_data_v1_20130101-20260831_de850feab96a.parquet"
+DEFAULT_PARQUET = "Z:/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
 DEFAULT_BINS = (np.linspace(-25, 25, 51) / 100).tolist()
 
 _BASE_CONFIG = {

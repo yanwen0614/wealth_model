@@ -325,7 +325,7 @@ def evaluate(args) -> dict:
 def parse_args():
     p = argparse.ArgumentParser(description="52->11 零重训映射评估")
     p.add_argument("--checkpoint", default=None, help="best_model.pth，默认最新 logs/run_*/best_model.pth")
-    p.add_argument("--parquet", default="Z:/test/train_data/train_data_v1_20130101-20260831_de850feab96a.parquet")
+    p.add_argument("--parquet", default="Z:/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet")
     p.add_argument("--val_start", default="2025-07-01")
     p.add_argument("--val_end", default="2025-12-31")
     p.add_argument("--seq_len", type=int, default=60)
