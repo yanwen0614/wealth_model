@@ -1,10 +1,12 @@
 data.ipynb
 *.pth
+!logs/baseline/*.pth
 *.npy
 
 *.parquet
 *.pyc
 logs
+!logs/baseline/
 .ipynb_checkpoints/
 /dataset/
 *.tgz
