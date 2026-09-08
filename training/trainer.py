@@ -220,12 +220,12 @@ class Trainer:
                 if (epoch + 1) % 1 == 0:
                     self.print_confusion_matrix(all_labels, all_preds, epoch)
                 
-                # 计算并打印后半类加权指标
+                # 计算并打印涨跌二分类指标
                 try:
-                    latter_half_precision, latter_half_recall = calculate_latter_half_metrics(
-                        all_labels, all_preds, num_classes=self.config.get('num_classes'), weight_type='equal'
+                    precision, recall = calculate_latter_half_metrics(
+                        all_labels, all_preds, num_classes=self.config.get('num_classes')
                     )
-                    self.logger.info(f'后半类加权指标 - 精确率: {latter_half_precision:.4f}, 召回率: {latter_half_recall:.4f}')
+                    self.logger.info(f'涨跌二分类 - 涨类精确率: {precision:.4f}, 涨类召回率: {recall:.4f}')
                 except Exception as e:
                     self.logger.warning(f'计算后半类指标失败: {e}')
                 
