@@ -7,7 +7,7 @@
 截面样本数 < N 跳过该档该日。
 
 用法：
-  uv run --project . python scripts/plot_topn_curve.py \
+  uv run --project . python -m scripts.plot_topn_curve \
     --preds logs/preds_dual_ep7.npz logs/preds_base_ep4.npz \
     --labels dual-ep7 base-ep4 --out logs/topn_curve_val.png
 """
@@ -20,8 +20,6 @@ import sys
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays
 

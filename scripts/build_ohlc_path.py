@@ -11,8 +11,8 @@ open-open 口径：持仓毛收益 = open_t6 / open_t1 - 1。
 > 本脚本生成逻辑本就是 open-open 口径，与训练标签口径一致，无需随重训改动。
 
 用法：
-  uv run --project . python scripts/build_ohlc_path.py --val_start 2025-07-01 --val_end 2025-12-31
-  uv run --project . python scripts/build_ohlc_path.py --full --out logs/ohlc_full_val.npz
+  uv run --project . python -m scripts.build_ohlc_path --val_start 2025-07-01 --val_end 2025-12-31
+  uv run --project . python -m scripts.build_ohlc_path --full --out logs/ohlc_full_val.npz
 """
 from __future__ import annotations
 

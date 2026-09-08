@@ -263,35 +263,11 @@ name = "cnn"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "alembic" },
-    { name = "amazingdata" },
-    { name = "fastapi" },
-    { name = "gitpython" },
-    { name = "gymnasium" },
-    { name = "ipykernel" },
-    { name = "ipython" },
-    { name = "joblib" },
     { name = "matplotlib" },
-    { name = "numba" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "plotly" },
-    { name = "prometheus-client" },
     { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "ruff" },
     { name = "scikit-learn" },
-    { name = "scipy" },
-    { name = "sqlalchemy" },
-    { name = "stable-baselines3" },
-    { name = "streamlit" },
-    { name = "ta-lib" },
-    { name = "tables" },
-    { name = "tgw" },
     { name = "torch", version = "2.12.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.12.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux'" },
     { name = "torch", version = "2.12.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
@@ -299,53 +275,98 @@ dependencies = [
     { name = "torchvision", version = "0.27.0+cu126", source = { registry = "https://download.pytorch.org/whl/cu126" }, marker = "sys_platform == 'linux'" },
     { name = "torchvision", version = "0.27.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
     { name = "tqdm" },
-    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
+compute = [
+    { name = "numba" },
+    { name = "scipy" },
+    { name = "ta-lib" },
+]
 dev = [
     { name = "debugpy" },
+    { name = "ipykernel" },
+    { name = "ipython" },
     { name = "jupyter-client" },
+    { name = "pyright" },
+    { name = "ruff" },
+]
+rl = [
+    { name = "gymnasium" },
+    { name = "stable-baselines3" },
+]
+server = [
+    { name = "alembic" },
+    { name = "fastapi" },
+    { name = "prometheus-client" },
+    { name = "uvicorn" },
+]
+source = [
+    { name = "amazingdata" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tgw" },
+]
+storage = [
+    { name = "sqlalchemy" },
+    { name = "tables" },
+]
+tools = [
+    { name = "gitpython" },
+    { name = "joblib" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+]
+viz = [
+    { name = "plotly" },
+    { name = "streamlit" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "debugpy" },
+    { name = "ipykernel" },
+    { name = "ipython" },
+    { name = "jupyter-client" },
     { name = "pyright" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.18.5" },
-    { name = "amazingdata", path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" },
+    { name = "alembic", marker = "extra == 'server'", specifier = ">=1.18.5" },
+    { name = "amazingdata", marker = "extra == 'source'", path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" },
     { name = "debugpy", marker = "extra == 'dev'", specifier = ">=1.8" },
-    { name = "fastapi", specifier = ">=0.136" },
-    { name = "gitpython", specifier = ">=3.1" },
-    { name = "gymnasium", specifier = ">=1.2" },
-    { name = "ipykernel", specifier = ">=7.1" },
-    { name = "ipython", specifier = ">=9.8" },
-    { name = "joblib", specifier = ">=1.5" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.136" },
+    { name = "gitpython", marker = "extra == 'tools'", specifier = ">=3.1" },
+    { name = "gymnasium", marker = "extra == 'rl'", specifier = ">=1.2" },
+    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.1" },
+    { name = "ipython", marker = "extra == 'dev'", specifier = ">=9.8" },
+    { name = "joblib", marker = "extra == 'tools'", specifier = ">=1.5" },
     { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.7" },
     { name = "matplotlib", specifier = ">=3.10" },
-    { name = "numba", specifier = ">=0.65" },
+    { name = "numba", marker = "extra == 'compute'", specifier = ">=0.65" },
     { name = "numpy", specifier = ">=2.4" },
     { name = "pandas", specifier = ">=2.3" },
-    { name = "plotly", specifier = ">=6.7" },
-    { name = "prometheus-client", specifier = ">=0.20" },
+    { name = "plotly", marker = "extra == 'viz'", specifier = ">=6.7" },
+    { name = "prometheus-client", marker = "extra == 'server'", specifier = ">=0.20" },
     { name = "pyarrow", specifier = ">=22.0" },
-    { name = "pydantic", specifier = ">=2.12" },
-    { name = "pydantic-settings", specifier = ">=2.0" },
-    { name = "python-dotenv", specifier = ">=1.2" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "requests", specifier = ">=2.33" },
-    { name = "ruff", specifier = ">=0.15" },
+    { name = "pydantic", marker = "extra == 'tools'", specifier = ">=2.12" },
+    { name = "pydantic-settings", marker = "extra == 'tools'", specifier = ">=2.0" },
+    { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.411" },
+    { name = "python-dotenv", marker = "extra == 'source'", specifier = ">=1.2" },
+    { name = "pyyaml", marker = "extra == 'source'", specifier = ">=6.0" },
+    { name = "requests", marker = "extra == 'source'", specifier = ">=2.33" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
     { name = "scikit-learn", specifier = ">=1.8" },
-    { name = "scipy", specifier = ">=1.17" },
-    { name = "sqlalchemy", specifier = ">=2.0" },
-    { name = "stable-baselines3", specifier = ">=2.7" },
-    { name = "streamlit", specifier = ">=1.56" },
-    { name = "ta-lib", specifier = ">=0.6" },
-    { name = "tables", specifier = ">=3.10" },
-    { name = "tgw", path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" },
+    { name = "scipy", marker = "extra == 'compute'", specifier = ">=1.17" },
+    { name = "sqlalchemy", marker = "extra == 'storage'", specifier = ">=2.0" },
+    { name = "stable-baselines3", marker = "extra == 'rl'", specifier = ">=2.7" },
+    { name = "streamlit", marker = "extra == 'viz'", specifier = ">=1.56" },
+    { name = "ta-lib", marker = "extra == 'compute'", specifier = ">=0.6" },
+    { name = "tables", marker = "extra == 'storage'", specifier = ">=3.10" },
+    { name = "tgw", marker = "extra == 'source'", path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = "==2.12.0" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.12.0+cu126", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torch", marker = "sys_platform == 'win32'", specifier = "==2.12.0+cu130", index = "https://download.pytorch.org/whl/cu130" },
@@ -353,12 +374,19 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.27.0+cu126", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torchvision", marker = "sys_platform == 'win32'", specifier = "==0.27.0+cu130", index = "https://download.pytorch.org/whl/cu130" },
     { name = "tqdm", specifier = ">=4.67" },
-    { name = "uvicorn", specifier = ">=0.46" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.46" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["source", "compute", "storage", "tools", "viz", "server", "rl", "dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pyright", specifier = ">=1.1.411" }]
+dev = [
+    { name = "debugpy", specifier = ">=1.8" },
+    { name = "ipykernel", specifier = ">=7.1" },
+    { name = "ipython", specifier = ">=9.8" },
+    { name = "jupyter-client", specifier = ">=8.7" },
+    { name = "pyright", specifier = ">=1.1.411" },
+    { name = "ruff", specifier = ">=0.15" },
+]
 
 [[package]]
 name = "colorama"

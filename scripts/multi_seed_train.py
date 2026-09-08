@@ -1,9 +1,9 @@
 """多 seed 训练脚本：从 λ=0.2 开始，多个 seed 独立训练 + λ 随机波动 ±0.005 + 结果汇总
 
 使用：
-  uv run --project . python scripts/multi_seed_train.py --smoke --seeds 42,123
-  uv run --project . python scripts/multi_seed_train.py --seeds 42,123,2024,7,999 --epochs 50
-  uv run --project . python scripts/multi_seed_train.py --smoke --seeds 42 --lambda_reg 0.6 --lambda_jitter 0.01
+  uv run --project . python -m scripts.multi_seed_train --smoke --seeds 42,123
+  uv run --project . python -m scripts.multi_seed_train --seeds 42,123,2024,7,999 --epochs 50
+  uv run --project . python -m scripts.multi_seed_train --smoke --seeds 42 --lambda_reg 0.6 --lambda_jitter 0.01
 """
 import argparse
 import csv

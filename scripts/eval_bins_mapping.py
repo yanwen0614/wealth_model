@@ -11,17 +11,13 @@
   training/metrics.py 的 num_classes 默认 6 已过时，本脚本一律显式传参。
 
 用法：
-  uv run --project . python scripts/eval_bins_mapping.py --max_codes 20
-  uv run --project . python scripts/eval_bins_mapping.py --checkpoint logs/run_xxx/best_model.pth
+  uv run --project . python -m scripts.eval_bins_mapping --max_codes 20
+  uv run --project . python -m scripts.eval_bins_mapping --checkpoint logs/run_xxx/best_model.pth
 """
 from __future__ import annotations
 
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import argparse
+import sysimport argparse
 import glob
 import json
 import random

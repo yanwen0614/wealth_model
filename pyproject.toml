@@ -5,56 +5,76 @@ description = "CNN+Transformer 时序多分类训练项目（由 quant 因子数
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # 数据处理（与 quant 保持一致）
-    "pandas>=2.3",
+    # 核心数据与数值
     "numpy>=2.4",
-    "scipy>=1.17",
-    "scikit-learn>=1.8",
+    "pandas>=2.3",
     "pyarrow>=22.0",
-    "ta-lib>=0.6",
-    "numba>=0.65",
-    # 存储
-    "sqlalchemy>=2.0",
-    "tables>=3.10",
-    # 数据获取
-    "requests>=2.33",
-    "python-dotenv>=1.2",
-    "pyyaml>=6.0",
-    # 数据源（复用 quant 本地 wheel，保证环境完全一致）
-    "amazingdata>=1.1.8",
-    "tgw>=1.0.8",
-    # 模型与强化学习
-"torch==2.12.0+cu130 ; sys_platform == 'win32'",
+    "scikit-learn>=1.8",
+    "matplotlib>=3.10",
+    # 模型
+    "torch==2.12.0+cu130 ; sys_platform == 'win32'",
     "torch==2.12.0+cu126 ; sys_platform == 'linux'",
     "torch==2.12.0 ; sys_platform != 'win32' and sys_platform != 'linux'",
     "torchvision==0.27.0+cu130 ; sys_platform == 'win32'",
     "torchvision==0.27.0+cu126 ; sys_platform == 'linux'",
     "torchvision==0.27.0 ; sys_platform != 'win32' and sys_platform != 'linux'",
-    "stable-baselines3>=2.7",
-    "gymnasium>=1.2",
     # 工具
     "tqdm>=4.67",
-    "joblib>=1.5",
-    "pydantic>=2.12",
-    "pydantic-settings>=2.0",
-    # 可视化与 Web
-    "matplotlib>=3.10",
-    "plotly>=6.7",
-    "streamlit>=1.56",
-    # 开发
-    "ruff>=0.15",
-    "ipython>=9.8",
-    "ipykernel>=7.1",
-    # 服务
-    "fastapi>=0.136",
-    "uvicorn>=0.46",
-    "gitpython>=3.1",
-    "prometheus-client>=0.20",
-    "alembic>=1.18.5",
 ]
 
 [project.optional-dependencies]
-dev = ["debugpy>=1.8", "jupyter-client>=8.7"]
+# 数据获取（原始数据源）
+source = [
+    "requests>=2.33",
+    "python-dotenv>=1.2",
+    "pyyaml>=6.0",
+    "amazingdata>=1.1.8",
+    "tgw>=1.0.8",
+]
+# 科学计算扩展
+compute = [
+    "scipy>=1.17",
+    "ta-lib>=0.6",
+    "numba>=0.65",
+]
+# 存储
+storage = [
+    "sqlalchemy>=2.0",
+    "tables>=3.10",
+]
+# 工具库
+tools = [
+    "joblib>=1.5",
+    "pydantic>=2.12",
+    "pydantic-settings>=2.0",
+    "gitpython>=3.1",
+]
+# 可视化（除 matplotlib 外的补充）
+viz = [
+    "plotly>=6.7",
+    "streamlit>=1.56",
+]
+# 服务
+server = [
+    "fastapi>=0.136",
+    "uvicorn>=0.46",
+    "prometheus-client>=0.20",
+    "alembic>=1.18.5",
+]
+# 强化学习
+rl = [
+    "stable-baselines3>=2.7",
+    "gymnasium>=1.2",
+]
+# 开发
+dev = [
+    "ruff>=0.15",
+    "ipython>=9.8",
+    "ipykernel>=7.1",
+    "debugpy>=1.8",
+    "jupyter-client>=8.7",
+    "pyright>=1.1.411",
+]
 
 # PyTorch CUDA 源配置（与 quant 完全一致，跨平台）
 [[tool.uv.index]]
@@ -79,10 +99,15 @@ torchvision = [
 amazingdata = { path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" }
 tgw = { path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" }
 
-[tool.ruff]
-line-length = 120
-
 [dependency-groups]
 dev = [
+    "ruff>=0.15",
+    "ipython>=9.8",
+    "ipykernel>=7.1",
+    "debugpy>=1.8",
+    "jupyter-client>=8.7",
     "pyright>=1.1.411",
 ]
+
+[tool.ruff]
+line-length = 120

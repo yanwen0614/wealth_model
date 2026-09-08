@@ -5,9 +5,9 @@ preds npz 需含 exp_ret/true_ret/dates/codes（codes 由新版 eval_bins_mappin
 并计算全截面同口径等权基准（benchmark_nav），输出超额（算术差）。
 
 用法：
-  uv run --project . python scripts/run_backtest.py \
+  uv run --project . python -m scripts.run_backtest \
     --preds logs/preds_dual_ep7.npz logs/preds_base_ep4.npz --ohlc logs/ohlc_path_val.npz
-  uv run --project . python scripts/run_backtest.py --mode target \
+  uv run --project . python -m scripts.run_backtest --mode target \
     --preds logs/preds_dual_ep7.npz --full_ohlc logs/ohlc_full_val.npz \
     --target_size 100 --sell_buffer 200 --min_edge 0.01 --edge_tail_pct 0.3
 """
@@ -17,11 +17,6 @@ import argparse
 import csv
 import json
 import os
-import sys
-import time
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np

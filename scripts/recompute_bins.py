@@ -19,8 +19,8 @@
 输出 logs/bins_quantile.json + stdout 对照表（每类占比、熵 eff、tail）.
 
 用法:
-    uv run --project . python scripts/recompute_bins.py --max_codes 20   # 快速验证
-    uv run --project . python scripts/recompute_bins.py                   # 全量
+    uv run --project . python -m scripts.recompute_bins --max_codes 20   # 快速验证
+    uv run --project . python -m scripts.recompute_bins                   # 全量
 """
 
 from __future__ import annotations
