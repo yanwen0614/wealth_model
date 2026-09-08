@@ -17,7 +17,8 @@
 from __future__ import annotations
 
 import os
-import sysimport argparse
+import sys
+import argparse
 import glob
 import json
 import random
@@ -94,6 +95,7 @@ def build_val_loader(args) -> tuple[DataLoader, ParquetDataset]:
         max_windows_per_code=args.max_windows_per_code,
         start_date=args.val_start,
         end_date=args.val_end,
+        feature_cols=args.feature_cols,
     )
     scaler_stats = None
     if args.scaler_path and os.path.exists(args.scaler_path):
@@ -187,9 +189,9 @@ def evaluate(args) -> dict:
 
     # --- 52 原样指标 ---
     acc52 = float((pred52 == true52).mean())
-    lh_p, lh_r = calculate_latter_half_metrics(torch.from_numpy(true52), torch.from_numpy(pred52),
-                                                   num_classes=NUM_CLASSES52,
-                                                   weight_type="equal")
+    lh_p, lh_r = calculate_latter_half_metrics(
+        torch.from_numpy(true52), torch.from_numpy(pred52), num_classes=NUM_CLASSES52
+    )
     rank_ic = spearman(exp_ret, true_ret)
     # --- 11/13 映射指标 ---
     acc11 = float((pred11 == true11).mean())
@@ -340,6 +342,8 @@ def parse_args():
     p.add_argument("--parquet", default="Z:/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet")
     p.add_argument("--val_start", default="2025-07-01")
     p.add_argument("--val_end", default="2025-12-31")
+    p.add_argument("--feature_cols", nargs="*", default=None,
+                   help="特征列列表；默认 None 自动推导")
     p.add_argument("--seq_len", type=int, default=60)
     p.add_argument("--horizon", type=int, default=5)
     p.add_argument("--batch_size", type=int, default=512)
