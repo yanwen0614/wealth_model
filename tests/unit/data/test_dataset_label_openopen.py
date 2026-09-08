@@ -116,6 +116,7 @@ class TestDatasetOpenOpenIntegration(unittest.TestCase):
         cfg = ParquetDataConfig(
             parquet_path=self.parquet_path, seq_len=60, horizon=5,
             normalize="none", batch_size=8, num_workers=0,
+            feature_cols=["open", "high", "low"],
         )
         return ParquetDataset(cfg)
 

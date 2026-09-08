@@ -14,7 +14,8 @@
 - **TOT_SHARE**：A 方案，**剔除**，改用 `turnover`（或 `volume_ratio` 已覆盖）
 - **volume/amount**：**剔除**（绝对量不入训，仅保留比值）
 - **close 恒0**：`close/prev_close -1 =0` 恒0，**剔除** close 本身（信息由其他 price_rel 覆盖）
-- **有效特征**：`G1 12 + G3 7 + G4 3 + G5 6 + G8 5 + G9 6 = 39`（G6/G7 各4已剔除），+6 mask = **45**（原47+6=53 → 39+6=45）
+- **有效特征**：`G1 12 + G3 7 + G4 3 + G5 6 + G8 5 + G9 6 = 39`（G6/G7 各4已剔除），+6 mask = **45**（原47+6=53 → 39+6=45）。默认 selector 使用有序 39 列 whitelist；标识/时间/is_trading、G2、TOT_SHARE、volume/amount/close、G6/G7 为 named blacklist。
+- **双列表漂移保护**：既不在 whitelist 也不在 blacklist 的 parquet 列一律排除，并以 `warnings.warn` 显著列名提示维护者更新 whitelist/blacklist；whitelist 任一缺列直接报错。实验只能用显式 `feature_cols` 覆盖，且必须存在。
 
 > `48`、`55` 等历史组合数字保留用于解释数据 schema 和旧实验，不得直接当作当前模型 F。
 
@@ -48,7 +49,8 @@
 
 ## 4. 缺失分级（per-code 内）
 
-- **warmup <1%**（如 `ma_60 2.73%, return_*` 已剔除）：填0（经 relative/asinh 后 0 为中性）
+- **所有组**：仅对原始有效值计算/应用变换；变换完成后缺失或非有限输出为中性 `0`，不得先填原始 0 再 robust/winsor。
+- **warmup <1%**（如 `ma_60 2.73%, return_*` 已剔除）：最终填0。
 - **结构性 53~56% 两融**：填0 + 单 `margin_mask` 通道 `[0,1]`（1=observed）
 - **G8 金融行业**（`gross_margin` 9.8% 全空）：填0透传
 
@@ -56,10 +58,11 @@
 
 ## 5. 实现映射
 
-- 配置：`data/dataset.py` `ParquetDataConfig.normalize = "per_code"`，`per_code_add_mask=True`，`feature_cols` 自动剔除 `return_*/TOT_SHARE/volume/amount/close`
+- 配置：`data/dataset.py` `ParquetDataConfig.normalize = "per_code"`，`per_code_add_mask=True`，默认 `feature_cols` 为批准 39 列 whitelist
 - Scaler：`data/scaler.py` `PerCodeGroupedScaler`，`fit(df)` 按 code 独立算 `median/IQR/winsor`，`transform_code(code, feat, cols, close)` 按 code 应用
 - 验证集复用：重叠 code 用训练集 per-code 统计，未见 code 使用已保存的全局兜底统计；验证集不得重新 fit
-- 持久化：`logs/scaler_per_code.pkl`，内容为 `{per_code_stats, global_stats, feature_cols, version: v2_per_code}` pickle
+- 持久化：`logs/scaler_per_code.pkl` 仅接受 `v3_per_code` payload，含 canonical JSON SHA-256 `identity_manifest/identity_hash` 与 `schema_manifest`。identity 绑定 resolved parquet path、size/mtime_ns、parquet row/schema digest、fit 日期、特征顺序、normalization/mask/filter/max_codes 和 transform digest。训练仅复用 identity 和 schema 完全一致的缓存，否则重拟合覆盖；旧/非法 payload 不会回退为原始 pickle。验证始终接收内存中的训练 scaler，绝不 fit。
+- **验证日期 context**：有 `start_date` 时，每股只取一条此前最后 eligible `is_trading` 行参与 relative 变换；变换后立即移除，不能进入标签、group、window 或 index。
 - 模型：默认 `featurenum=45`（39 有效特征 + 6 G9 mask），由 `CNNTransformer` 使用（`train.py` 已有）
 
 ### 5.1 标签和回测边界

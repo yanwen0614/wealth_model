@@ -8,7 +8,7 @@
 
 1. 仅当 scaler identity hash 匹配时复用；至少绑定 parquet 指纹、训练日期范围、原始特征名及顺序、归一化/mask 配置和 scaler version；训练不匹配时重拟合。
 2. 缺失信号的最终输出为中性零。
-3. 用批准的显式特征 allowlist 取代 parquet denylist，并移除或修复无效 `use_factor_only`。
+3. 使用批准的显式特征 allowlist 与命名 blacklist；既不在白名单也不在黑名单的 parquet 列必须排除并输出显著 warning，提醒维护名单；移除或修复无效 `use_factor_only`。
 4. 校验加载的 scaler schema 与输出兼容性。
 5. 验证首日 relative 计算保留上一个收盘价，但 context 行不得创建验证样本。
 6. 未见 code 的 fallback 统计采用同一 transform/winsor 语义。
@@ -27,7 +27,7 @@
 
 | 模块 | 文件 | 操作 | 说明 |
 |---|---|---|---|
-| data | `data/schema.py` | modify | 39 列有序 allowlist，删除 `use_factor_only` 分支。 |
+| data | `data/schema.py` | modify | 39 列有序 allowlist、命名 blacklist、未知列 warning，删除 `use_factor_only` 分支。 |
 | data | `data/scaler.py` | modify | v3 identity/schema payload、严格 load、共享 global/per-code 变换统计。 |
 | data | `data/dataset.py` | modify | 训练缓存 refit policy、外部 reuse 校验、验证 context 行剔除。 |
 | scripts | `scripts/eval_bins_mapping.py` | modify | 评估时提供并验证训练 identity。 |
@@ -55,7 +55,7 @@
 
 | # | 关卡 | 检查项 | 优先级 |
 |---|---|---|---|
-| 1 | 规范一致性 | allowlist、G1 relative robust、G3/G4 winsor、G8 pass-through、G9 fill0+mask 与 spec 完全一致 | HIGH |
+| 1 | 规范一致性 | allowlist/blacklist/未知列 warning、G1 relative robust、G3/G4 winsor、G8 pass-through、G9 fill0+mask 与 spec 完全一致 | HIGH |
 | 2 | 模块边界 | 数据处理仅在 `data/`；训练只协调 dataloaders；评估只提供 identity，不在模型/训练层复制 scaler 逻辑 | HIGH |
 | 3 | Cache identity | canonical JSON、SHA-256、全部必需字段、不同 feature order/period/snapshot/config/version 均不复用 | HIGH |
 | 4 | Schema compatibility | payload 版本、input/output/mask 顺序、统计字段、F=45 和 transform configuration 均验证；无 pickle fallback | HIGH |

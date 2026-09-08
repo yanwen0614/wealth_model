@@ -22,10 +22,11 @@
 - 45特征=39+6 mask，G1/mcd robust(median/IQR)+clip±5、G3/G4 winsor 1/99、G9 rank透传+mask
 - per-code 按股独立拟合 via PerCodeGroupedScaler，验证集复用训练集 scaler 防泄露
 """
+import hashlib
 import os
 import pickle
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -42,30 +43,30 @@ class ParquetDataConfig:
     parquet_path: str = "data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet"
     seq_len: int = 60
     horizon: int = 5  # 未来 N 日收益作为标签
-    bins: List[float] = field(default_factory=lambda: (np.linspace(-25, 25, 51) / 100).tolist())
+    bins: list[float] = field(default_factory=lambda: (np.linspace(-25, 25, 51) / 100).tolist())
     batch_size: int = 256
     num_workers: int = 4
     # 特征列：None 时自动推导（排除 code/kline_time/is_trading，保留全部数值列）
     # 推荐显式传入以避免泄露：排除未来信息；默认排除 return_* 过去收益也可保留，按需配置
-    feature_cols: Optional[List[str]] = None
-    # 是否仅使用因子列（48列）作为特征，忽略 OHLC/volume 等
-    use_factor_only: bool = False
+    feature_cols: list[str] | None = None
     # 过滤 is_trading（必须 True，避免合成行污染窗口）
     filter_is_trading: bool = True
+    # 数据集职责决定缓存失配时是否允许拟合。
+    role: str = "training"  # "training" | "validation" | "evaluation"
     # 时间切分
-    start_date: Optional[str] = None  # "2013-01-01"
-    end_date: Optional[str] = None
-    split_date: Optional[str] = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
+    start_date: str | None = None  # "2013-01-01"
+    end_date: str | None = None
+    split_date: str | None = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
     # 归一化：per_code | none（per_code 为共识：不做 window 只 per-code 分组）
     normalize: str = "per_code"
     # 归一化统计文件（训练集拟合后保存，供验证集复用）
-    scaler_path: Optional[str] = None
+    scaler_path: str | None = None
     # NaN 填充策略（仅 none 分支使用，per_code 内置分级填充）
     fill_method: str = "median"  # "median" | "zero"
     # 小样本调试：仅取前 N 只股票
-    max_codes: Optional[int] = None
+    max_codes: int | None = None
     # 采样：每股最大窗口数（用于快速验证）
-    max_windows_per_code: Optional[int] = None
+    max_windows_per_code: int | None = None
     # per_code 专用：是否添加 G9 mask
     per_code_add_mask: bool = True
 
@@ -85,22 +86,44 @@ class ParquetDataset(Dataset):
       且窗口末端对应的 future_ret 非 NaN
     """
 
-    def __init__(self, config: ParquetDataConfig, scaler_stats: Optional[Union[Dict, object]] = None):
+    def __init__(self, config: ParquetDataConfig, scaler_stats: dict | object | None = None):
+        if not config.filter_is_trading:
+            raise ValueError("filter_is_trading 必须为 True，禁止将合成行用于训练/评估")
+        if config.role not in {"training", "validation", "evaluation"}:
+            raise ValueError(f"未知 dataset role: {config.role}")
         self.config = config
         self.bins = np.array(config.bins, dtype=np.float64)
 
         # 1. 读取 parquet
         self._load_and_prepare(scaler_stats)
 
-    def _load_and_prepare(self, scaler_stats: Optional[Union[Dict, object]]):
+    @staticmethod
+    def _scaler_identity(cfg: ParquetDataConfig, pf: pq.ParquetFile, feature_cols: list[str]) -> dict:
+        from data.scaler import SCALER_VERSION, PerCodeGroupedScaler
+
+        path = os.path.realpath(cfg.parquet_path)
+        stat = os.stat(path)
+        metadata = pf.metadata
+        schema = str(pf.schema_arrow)
+        return {
+            "parquet_path": path, "size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
+            "row_count": metadata.num_rows, "schema_fingerprint": hashlib.sha256(schema.encode()).hexdigest(),
+            "fit_start_date": cfg.start_date, "fit_end_date": cfg.end_date,
+            "feature_cols": list(feature_cols), "normalize": cfg.normalize,
+            "per_code_add_mask": cfg.per_code_add_mask, "filter_is_trading": cfg.filter_is_trading,
+            "max_codes": cfg.max_codes, "transform_digest": PerCodeGroupedScaler.transform_config_digest(),
+            "scaler_version": SCALER_VERSION,
+        }
+
+    def _load_and_prepare(self, scaler_stats: dict | object | None):
         cfg = self.config
         pf = pq.ParquetFile(cfg.parquet_path)
         # 快速校验列
         all_cols = pf.schema.names
         if cfg.feature_cols is not None:
-            feature_cols = cfg.feature_cols
+            feature_cols = list(cfg.feature_cols)
         else:
-            feature_cols = _default_feature_cols(all_cols, cfg.use_factor_only)
+            feature_cols = _default_feature_cols(all_cols)
 
         # 验证特征列存在
         missing = [c for c in feature_cols if c not in all_cols]
@@ -110,6 +133,7 @@ class ParquetDataset(Dataset):
         self.feature_cols = feature_cols  # 输入特征列（默认 F=45）
         self.feature_cols_out = list(feature_cols)  # 输出特征列（per_code 可能追加 mask）
         self.num_features = len(feature_cols)
+        expected_identity = self._scaler_identity(cfg, pf, feature_cols)
         print(f"[ParquetDataset] 特征列数: {self.num_features}, 特征: {feature_cols[:8]}...")
 
         # 读取全表（11M 行，约 3.5G parquet，内存约 4-5G）
@@ -123,27 +147,32 @@ class ParquetDataset(Dataset):
         df = table.to_pandas()
         print(f"[ParquetDataset] 原始行数: {len(df):,}, 列数: {len(df.columns)}")
 
-        # 过滤 is_trading
-        if cfg.filter_is_trading:
-            before = len(df)
-            df = df[df["is_trading"] == True]  # noqa: E712
-            print(f"[ParquetDataset] 过滤 is_trading False: {before:,} -> {len(df):,} (drop {before - len(df):,})")
+        # is_trading 已在构造时强制为 True。
+        before = len(df)
+        df = df[df["is_trading"] == True]
+        print(f"[ParquetDataset] 过滤 is_trading False: {before:,} -> {len(df):,} (drop {before - len(df):,})")
 
-        # 时间过滤
+        # 时间过滤；验证/评估起点前每股保留一行，仅供 relative 变换使用。
         df["kline_time"] = pd.to_datetime(df["kline_time"])
+        df["_transform_context"] = False
         if cfg.start_date:
-            df = df[df["kline_time"] >= pd.to_datetime(cfg.start_date)]
+            start = pd.to_datetime(cfg.start_date)
+            eligible = df[df["kline_time"] >= start]
+            context = df[df["kline_time"] < start].sort_values("kline_time").groupby("code", sort=False).tail(1)
+            context = context[context["code"].isin(eligible["code"].unique())].copy()
+            context["_transform_context"] = True
+            df = pd.concat([context, eligible], ignore_index=True)
         if cfg.end_date:
             df = df[df["kline_time"] <= pd.to_datetime(cfg.end_date)]
         print(f"[ParquetDataset] 时间过滤后: {len(df):,} 行, 范围 {df['kline_time'].min()} -> {df['kline_time'].max()}")
 
         # 按 code 分组排序
-        df = df.sort_values(["code", "kline_time"]).reset_index(drop=True)
+        df = cast(Any, df).sort_values(["code", "kline_time"]).reset_index(drop=True)
 
         # 限制调试股票数
         codes = df["code"].unique()
         if cfg.max_codes is not None and len(codes) > cfg.max_codes:
-            keep_codes = codes[: cfg.max_codes]
+            keep_codes = list(codes[: cfg.max_codes])
             df = df[df["code"].isin(keep_codes)]
             print(f"[ParquetDataset] 限制 max_codes={cfg.max_codes}, 保留 {len(keep_codes)} 只, 行数 {len(df):,}")
 
@@ -151,38 +180,42 @@ class ParquetDataset(Dataset):
         # per_code 支持外部传入 scaler_stats / 文件持久化 / 验证集复用
         if cfg.normalize == "per_code":
             from data.scaler import PerCodeGroupedScaler
+            self.scaler_stats = None
             if scaler_stats is not None:
-                if isinstance(scaler_stats, PerCodeGroupedScaler):
-                    self.scaler_stats = scaler_stats
-                elif isinstance(scaler_stats, dict) and "per_code_stats" in scaler_stats:
-                    # dict 形态
-                    try:
-                        # 尝试按 PerCodeGroupedScaler 还原
-                        self.scaler_stats = scaler_stats
-                    except Exception:
-                        self.scaler_stats = scaler_stats
-                else:
-                    self.scaler_stats = scaler_stats
+                if not isinstance(scaler_stats, PerCodeGroupedScaler):
+                    raise ValueError("外部 scaler_stats 必须是有效的 PerCodeGroupedScaler v3 对象")
+                if not scaler_stats.fitted:
+                    raise ValueError("外部 scaler_stats 未拟合")
+                if not scaler_stats.identity_manifest or not scaler_stats.identity_hash:
+                    raise ValueError("外部 scaler_stats 缺少训练 identity")
+                scaler_stats.validate_requested_schema(feature_cols, cfg.per_code_add_mask)
+                self.scaler_stats = scaler_stats
                 print("[ParquetDataset] 使用外部传入的 scaler_stats (per_code)")
                 if hasattr(self.scaler_stats, "feature_cols_out"):
                     self.feature_cols_out = self.scaler_stats.feature_cols_out
                     self.num_features = len(self.feature_cols_out)
-            elif cfg.scaler_path and os.path.exists(cfg.scaler_path):
+            elif cfg.role == "training" and cfg.scaler_path and os.path.exists(cfg.scaler_path):
                 try:
-                    self.scaler_stats = PerCodeGroupedScaler.load(cfg.scaler_path)
-                    print(f"[ParquetDataset] 从 {cfg.scaler_path} 加载 PerCodeGroupedScaler")
-                except Exception as e:
-                    print(f"[ParquetDataset] PerCodeGroupedScaler 加载失败 ({e})，尝试 pickle 回退")
-                    with open(cfg.scaler_path, "rb") as f:
-                        self.scaler_stats = pickle.load(f)
-                if hasattr(self.scaler_stats, "feature_cols_out"):
+                    cached = PerCodeGroupedScaler.load(cfg.scaler_path)
+                    cached.validate_requested_schema(feature_cols, cfg.per_code_add_mask)
+                    if cached.identity_hash != PerCodeGroupedScaler.identity_hash_for(expected_identity):
+                        raise ValueError("scaler cache identity 不匹配")
+                    self.scaler_stats = cached
+                    print(f"[ParquetDataset] 复用匹配的 {cfg.scaler_path} PerCodeGroupedScaler")
+                except (EOFError, OSError, pickle.UnpicklingError, ValueError) as e:
+                    print(f"[ParquetDataset] scaler cache 无效 ({e})，将在训练集重拟合")
+                    self.scaler_stats = None
+                if self.scaler_stats is not None:
                     self.feature_cols_out = self.scaler_stats.feature_cols_out
                     self.num_features = len(self.feature_cols_out)
-            else:
+            if self.scaler_stats is None:
+                if cfg.role != "training":
+                    raise ValueError(f"{cfg.role} 数据集必须提供兼容的已拟合训练 scaler")
                 print(f"[ParquetDataset] 拟合 PerCodeGroupedScaler (add_mask={cfg.per_code_add_mask}) ...")
                 scaler = PerCodeGroupedScaler(add_mask=cfg.per_code_add_mask)
                 # 限制 feature_cols 剔除项：return_*/TOT_SHARE/volume/amount/close 已在上层 feature_cols 中剔除
-                scaler.fit(df, feature_cols)
+                scaler.fit(df.loc[~df["_transform_context"]], feature_cols)
+                scaler.set_identity(expected_identity)
                 self.scaler_stats = scaler
                 self.feature_cols_out = scaler.feature_cols_out
                 self.num_features = len(self.feature_cols_out)
@@ -199,8 +232,8 @@ class ParquetDataset(Dataset):
         print(f"[ParquetDataset] 输出特征列数: {self.num_features}, 输出特征: {self.feature_cols_out[:8]}...")
 
         # 3. 按 code 构建分组数据与索引
-        self.groups: Dict[str, Dict] = {}
-        self.index: List[Tuple[str, int]] = []  # (code, window_start_pos)
+        self.groups: dict[str, dict] = {}
+        self.index: list[tuple[str, int]] = []  # (code, window_start_pos)
 
         # 统计
         total_windows = 0
@@ -208,7 +241,8 @@ class ParquetDataset(Dataset):
         grouped = df.groupby("code", sort=False)
         # per_code 分支：feat 变换移到循环内按 code 独立处理（_preprocess 已改为 per-code 内部用 close）
         for code, group in grouped:
-            group = group.sort_values("kline_time")
+            code = str(code)
+            group = cast(Any, group).sort_values("kline_time")
             # 提取 features 矩阵 [N, num_features_in]
             feat = group[feature_cols].values.astype(np.float64)  # 先 float64 便于处理 NaN
             close = group["close"].values.astype(np.float64)
@@ -228,6 +262,13 @@ class ParquetDataset(Dataset):
                     feat = self._preprocess_features(feat, feature_cols)
             else:
                 feat = self._preprocess_features(feat, feature_cols)
+
+            # Context was used above for prev_close but is never eligible for labels/windows.
+            keep = ~group["_transform_context"].to_numpy()
+            group = group.loc[keep].reset_index(drop=True)
+            feat = feat[keep]
+            close = close[keep]
+            open_arr = open_arr[keep]
 
             n = len(group)
             if n < cfg.seq_len + cfg.horizon + 1:
@@ -287,7 +328,7 @@ class ParquetDataset(Dataset):
         # 标签分布统计
         self._print_label_stats()
 
-    def _preprocess_features(self, feat: np.ndarray, feature_cols: List[str]) -> np.ndarray:
+    def _preprocess_features(self, feat: np.ndarray, feature_cols: list[str]) -> np.ndarray:
         """NaN 填充 + 归一化（仅 per_code/none，per_code 主循环已处理，此处兜底）"""
         cfg = self.config
         if cfg.normalize == "none":
@@ -351,12 +392,12 @@ class ParquetDataset(Dataset):
     def create_dataloaders(
         cls,
         config: ParquetDataConfig,
-        train_start: Optional[str] = None,
-        train_end: Optional[str] = None,
-        val_start: Optional[str] = None,
-        val_end: Optional[str] = None,
-        scaler_path: Optional[str] = None,
-    ) -> Tuple[DataLoader, Optional[DataLoader], Union[Dict, object]]:
+        train_start: str | None = None,
+        train_end: str | None = None,
+        val_start: str | None = None,
+        val_end: str | None = None,
+        scaler_path: str | None = None,
+    ) -> tuple[DataLoader, DataLoader | None, dict | object]:
         """创建训练/验证 DataLoader，自动处理归一化统计共享
 
         约定：
@@ -365,7 +406,7 @@ class ParquetDataset(Dataset):
         """
         # 训练集
         train_cfg = ParquetDataConfig(
-            **{**config.__dict__, "start_date": train_start, "end_date": train_end, "scaler_path": scaler_path}
+            **{**config.__dict__, "start_date": train_start, "end_date": train_end, "scaler_path": scaler_path, "role": "training"}
         )
         print("=" * 60)
         print(f"[create_dataloaders] 创建训练集: {train_start} -> {train_end}")
@@ -388,6 +429,7 @@ class ParquetDataset(Dataset):
                     "start_date": val_start,
                     "end_date": val_end,
                     "scaler_path": scaler_path,
+                    "role": "validation",
                 }
             )
             print("=" * 60)
@@ -438,8 +480,9 @@ if __name__ == "__main__":
     print(f"x shape: {x.shape}, y_cls: {y}, y_ret: {y_ret}")
     print(f"features_in: {len(ds.feature_cols)}, features_out: {ds.num_features} (out cols: {ds.feature_cols_out[:5]}... + mask {ds.feature_cols_out[-6:] if len(ds.feature_cols_out)>len(ds.feature_cols) else []})")
     print(f"seq_len: {cfg.seq_len}, num_classes: {len(cfg.bins)+1}")
-    if hasattr(ds, 'scaler_stats') and hasattr(ds.scaler_stats, 'per_code_stats'):
-        print(f"[PerCode Stats] per-code {len(ds.scaler_stats.per_code_stats)} 股, mask {getattr(ds.scaler_stats, 'mask_cols', [])}")
+    scaler = ds.scaler_stats
+    if scaler is not None and hasattr(scaler, "per_code_stats"):
+        print(f"[PerCode Stats] per-code {len(scaler.per_code_stats)} 股, mask {getattr(scaler, 'mask_cols', [])}")
         print(f"x stats: mean={x.float().mean().item():.3f} std={x.float().std().item():.3f} min={x.min().item():.3f} max={x.max().item():.3f}")
         print(f"x has_nan: {torch.isnan(x).any().item()}, has_inf: {torch.isinf(x).any().item()}")
 
@@ -450,24 +493,17 @@ if __name__ == "__main__":
         break
 
     # 测试持久化与复用（仅 per_code）
-    import os
-    import tempfile
-    tmp = tempfile.mktemp(suffix="_scaler.pkl")
-    ds.scaler_stats.save(tmp)
-    print(f"[Persistence] 保存成功: {tmp}")
-    cfg_val = ParquetDataConfig(
-        parquet_path=args.parquet,
-        seq_len=60,
-        horizon=5,
-        batch_size=64,
-        num_workers=0,
-        max_codes=args.max_codes,
-        normalize=args.normalize,
-    )
-    from data.scaler import PerCodeGroupedScaler
-    loaded = PerCodeGroupedScaler.load(tmp)
-    ds_val = ParquetDataset(cfg_val, scaler_stats=loaded)
-    print(f"[Reuse] 验证集特征数: {ds_val.num_features}, 样本数: {len(ds_val)}，与训练集一致: {ds_val.num_features==ds.num_features}")
-    os.remove(tmp)
-    print("[Test] 全流程验证通过")
+    if scaler is not None:
+        import tempfile
 
+        tmp = tempfile.mktemp(suffix="_scaler.pkl")
+        scaler.save(tmp)
+        print(f"[Persistence] 保存成功: {tmp}")
+        cfg_val = ParquetDataConfig(**{**cfg.__dict__, "role": "validation", "scaler_path": None})
+        from data.scaler import PerCodeGroupedScaler
+
+        loaded = PerCodeGroupedScaler.load(tmp)
+        ds_val = ParquetDataset(cfg_val, scaler_stats=loaded)
+        print(f"[Reuse] 验证集特征数: {ds_val.num_features}, 样本数: {len(ds_val)}，与训练集一致: {ds_val.num_features == ds.num_features}")
+        os.remove(tmp)
+    print("[Test] 全流程验证通过")

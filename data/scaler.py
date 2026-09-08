@@ -18,14 +18,19 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import pickle
-from typing import Dict, List, Optional
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 
 EPS = 1e-8
+SCALER_VERSION = "v3_per_code"
+TRANSFORM_VERSION = "per_code_transform_v3"
+REQUIRED_STAT_KEYS = {"group", "median", "iqr", "winsor_lower", "winsor_upper", "transform"}
 
 # ---- 分组（与 grouped_scaler 保持一致，但按用户最新剔除） ----
 # 有效特征 47 + 1 mask =48（已剔除 G2 4 + TOT 1 + volume/amount 2，close恒0剔除后 G1 12）
@@ -68,14 +73,44 @@ class PerCodeGroupedScaler:
 
     def __init__(self, add_mask: bool = True):
         self.add_mask = add_mask
-        self.per_code_stats: Dict[str, Dict[str, Dict]] = {}  # code -> col -> {median, iqr, winsor_lower, winsor_upper, transform}
-        self.global_stats: Dict[str, Dict] = {}  # 回退用
-        self.feature_cols: List[str] = []
-        self.feature_cols_out: List[str] = []
-        self.mask_cols: List[str] = []
+        self.per_code_stats: dict[str, dict[str, dict]] = {}  # code -> col -> {median, iqr, winsor_lower, winsor_upper, transform}
+        self.global_stats: dict[str, dict] = {}  # 回退用
+        self.feature_cols: list[str] = []
+        self.feature_cols_out: list[str] = []
+        self.mask_cols: list[str] = []
         self.fitted = False
+        self.identity_manifest: dict | None = None
+        self.identity_hash: str | None = None
 
-    def fit(self, df: pd.DataFrame, feature_cols: Optional[List[str]] = None) -> "PerCodeGroupedScaler":
+    @staticmethod
+    def identity_hash_for(manifest: dict) -> str:
+        encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def transform_config_digest() -> str:
+        payload = {"groups": GROUP_DEFS_PER_CODE, "config": PER_CODE_CONFIG, "version": TRANSFORM_VERSION}
+        return PerCodeGroupedScaler.identity_hash_for(payload)
+
+    def set_identity(self, manifest: dict) -> None:
+        identity_manifest = cast(dict, json.loads(json.dumps(manifest, sort_keys=True)))
+        self.identity_manifest = identity_manifest
+        self.identity_hash = self.identity_hash_for(identity_manifest)
+
+    def validate_requested_schema(self, feature_cols: list[str], add_mask: bool = True) -> None:
+        expected_out = list(feature_cols) + ([f"{c}_mask" for c in feature_cols if COL_TO_GROUP_PER_CODE.get(c) == "G9_Margin"] if add_mask else [])
+        if self.feature_cols != list(feature_cols) or self.add_mask != add_mask or self.feature_cols_out != expected_out:
+            raise ValueError("scaler feature schema 不匹配: feature_cols/add_mask/output columns")
+        if self.mask_cols != expected_out[len(feature_cols):]:
+            raise ValueError("scaler mask schema 不匹配")
+        if not self.fitted:
+            raise ValueError("scaler 未拟合")
+        for stats in [self.global_stats, *self.per_code_stats.values()]:
+            for col in self.feature_cols:
+                if col not in stats or not REQUIRED_STAT_KEYS.issubset(stats[col]):
+                    raise ValueError(f"scaler 统计缺失或不完整: {col}")
+
+    def fit(self, df: pd.DataFrame, feature_cols: list[str] | None = None) -> PerCodeGroupedScaler:
         if feature_cols is None:
             exclude = {"code", "kline_time", "is_trading"}
             feature_cols = [c for c in df.columns if c not in exclude]
@@ -86,11 +121,12 @@ class PerCodeGroupedScaler:
 
         # per-code
         for code, group in df.groupby("code", sort=False):
-            group = group.sort_values("kline_time")
+            code = str(code)
+            group = cast(Any, group).sort_values("kline_time")
             close = group["close"].values.astype(np.float64) if "close" in group.columns else None
             # need close for G1 relative; close itself is available as column
             # for each col, compute per-code stats on transformed valid values
-            code_stats: Dict[str, Dict] = {}
+            code_stats: dict[str, dict] = {}
             for col in self.feature_cols:
                 if col not in group.columns:
                     continue
@@ -119,7 +155,7 @@ class PerCodeGroupedScaler:
                 elif transform == "asinh":
                     # 先 asinh
                     # 缺失先不填，valid 上算
-                    valid = vals[~np.isnan(vals)]
+                    valid = vals[np.isfinite(vals)]
                     if len(valid) == 0:
                         code_stats[col] = {"group": grp, "median": 0.0, "iqr": 1.0, "winsor_lower": None, "winsor_upper": None, "transform": "asinh"}
                         continue
@@ -138,7 +174,7 @@ class PerCodeGroupedScaler:
 
                 # 对于需要 winsor 的组，计算 winsor 界
                 winsor = cfg.get("winsor")
-                valid = vals_t[~np.isnan(vals_t)]
+                valid = vals_t[np.isfinite(vals_t)]
                 if len(valid) == 0:
                     code_stats[col] = {"group": grp, "median": 0.0, "iqr": 1.0, "winsor_lower": None, "winsor_upper": None, "transform": transform}
                     continue
@@ -183,30 +219,34 @@ class PerCodeGroupedScaler:
         return self
 
     def _fit_global_fallback(self, df: pd.DataFrame):
-        # 为未见 code 准备全局 median/IQR（同 per-code 逻辑但全局）
-        for col in self.feature_cols:
-            vals = df[col].values.astype(np.float64)
-            valid = vals[~np.isnan(vals)]
-            if len(valid) == 0:
-                self.global_stats[col] = {"median": 0.0, "iqr": 1.0}
-                continue
-            grp = COL_TO_GROUP_PER_CODE.get(col, None)
+        """Fit fallback stats through the same pre-stat transform as per-code data."""
+        values_by_col = {col: [] for col in self.feature_cols}
+        for _, group in df.groupby("code", sort=False):
+            group = cast(Any, group).sort_values("kline_time")
+            close = group["close"].to_numpy(dtype=np.float64)
+            for col in self.feature_cols:
+                vals = group[col].to_numpy(dtype=np.float64)
+                group_name = COL_TO_GROUP_PER_CODE.get(col)
+                transform = PER_CODE_CONFIG.get(group_name, {}).get("transform") if group_name else None
+                if transform == "relative" or (transform == "relative_macd_only" and col == "macd"):
+                    vals = self._relative_transform(vals, close)
+                elif transform == "asinh":
+                    vals = _asinh(vals)
+                values_by_col[col].append(vals[np.isfinite(vals)])
+        for col, chunks in values_by_col.items():
+            valid = np.concatenate(chunks) if chunks else np.array([], dtype=np.float64)
+            grp = COL_TO_GROUP_PER_CODE.get(col)
             cfg = PER_CODE_CONFIG.get(grp, {}) if grp else {}
-            transform = cfg.get("transform")
-            # 对 asinh 组，先 asinh
-            if transform == "asinh":
-                valid_t = _asinh(valid)
-            elif transform in ("relative", "relative_macd_only"):
-                # 全局回退的 relative 难以定义（需 close），直接用原始 valid 算 median
-                valid_t = valid
-            else:
-                valid_t = valid
-            median = float(np.median(valid_t))
-            q75, q25 = np.percentile(valid_t, [75, 25])
-            iqr = float(q75 - q25) if (q75 - q25) > EPS else 1.0
-            self.global_stats[col] = {"median": median, "iqr": iqr}
+            lower = upper = None
+            if len(valid) and cfg.get("winsor"):
+                lower, upper = (float(v) for v in np.percentile(valid, cfg["winsor"]))
+            clipped = np.clip(valid, lower, upper) if lower is not None else valid
+            median = float(np.median(clipped)) if len(clipped) and cfg.get("robust") else 0.0
+            iqr = float(np.diff(np.percentile(clipped, [25, 75]))[0]) if len(clipped) and cfg.get("robust") else 1.0
+            self.global_stats[col] = {"group": grp, "median": median, "iqr": iqr if iqr > EPS else 1.0,
+                                      "winsor_lower": lower, "winsor_upper": upper, "transform": cfg.get("transform")}
 
-    def _relative_transform(self, vals: np.ndarray, close: Optional[np.ndarray]) -> np.ndarray:
+    def _relative_transform(self, vals: np.ndarray, close: np.ndarray | None) -> np.ndarray:
         if close is None:
             return vals
         # feature / prev_close -1
@@ -216,31 +256,31 @@ class PerCodeGroupedScaler:
         safe_prev = np.where((prev_close == 0) | np.isnan(prev_close), np.nan, prev_close)
         return vals / safe_prev - 1.0
 
-    def transform_code(self, code: str, feat: np.ndarray, feature_cols: List[str], close: Optional[np.ndarray] = None) -> np.ndarray:
+    def transform_code(self, code: str, feat: np.ndarray, feature_cols: list[str], close: np.ndarray | None = None) -> np.ndarray:
         """对单股的 [N, F] 做 per-code 变换，返回 [N, F_out]"""
         if not self.fitted:
             raise RuntimeError("未拟合")
         code_stats = self.per_code_stats.get(code, None)
         # 若 code 未见，用 global_stats
         use_global = code_stats is None
-        N, F = feat.shape
         out_cols = []
         masks = []
         for j, col in enumerate(feature_cols):
             vals = feat[:, j].astype(np.float64)
+            missing = ~np.isfinite(vals)
             grp = COL_TO_GROUP_PER_CODE.get(col, None)
             if grp == "G8_Quality" or grp is None:
                 # 跳过：已归一化不处理，缺失填0后原值透传（clip 兜底可选）
                 # 按用户要求 G8 跳过：填0后不做任何变换
-                vals_filled = np.where(np.isnan(vals), 0.0, vals)
+                vals_filled = np.where(missing, 0.0, vals)
                 # 仅 clip 到极端保护？跳过则不 clip
                 out_cols.append(vals_filled)
                 # G8 无 mask
                 continue
             if grp == "G9_Margin":
                 # 已 rank，不做 per-code，填0 + clip[0,1]
-                observed = (~np.isnan(vals)).astype(np.float32)
-                vals_filled = np.where(np.isnan(vals), 0.0, vals)
+                observed = (~missing).astype(np.float32)
+                vals_filled = np.where(missing, 0.0, vals)
                 vals_filled = np.clip(vals_filled, 0, 1)
                 out_cols.append(vals_filled)
                 if self.add_mask:
@@ -257,7 +297,7 @@ class PerCodeGroupedScaler:
                 # 回退全局
                 gstat = self.global_stats.get(col, {"median": 0.0, "iqr": 1.0})
                 # 构造 stat 占位
-                stat = {"median": gstat["median"], "iqr": gstat["iqr"], "winsor_lower": None, "winsor_upper": None, "transform": transform, "group": grp}
+                stat = gstat
 
             # 1. relative / asinh
             if transform == "relative":
@@ -273,7 +313,6 @@ class PerCodeGroupedScaler:
             elif transform == "asinh":
                 # 缺失填0后再 asinh? 先 asinh 有效值，缺失填0的 asinh(0)=0
                 # 这里先 fill NaN 0，再 asinh
-                vals = np.where(np.isnan(vals), 0.0, vals)
                 vals = _asinh(vals)
                 # 然后 robust
                 median = stat["median"]
@@ -282,8 +321,8 @@ class PerCodeGroupedScaler:
                 if cfg.get("clip"):
                     lo, hi = cfg["clip"]
                     vals = np.clip(vals, lo, hi)
-                vals = np.where(np.isnan(vals), 0.0, vals)
-                vals = np.where(np.isinf(vals), 0.0, vals)
+                vals[missing] = 0.0
+                vals[~np.isfinite(vals)] = 0.0
                 out_cols.append(vals)
                 continue
 
@@ -291,7 +330,7 @@ class PerCodeGroupedScaler:
             # 对于仅 clip 组，做 winsor clip
             if cfg.get("robust"):
                 # 缺失填0后，winsor? G1 无 winsor，仅 robust
-                vals_filled = np.where(np.isnan(vals), 0.0, vals)
+                vals_filled = vals.copy()
                 # 若有 winsor 界，先 clip
                 if stat.get("winsor_lower") is not None:
                     vals_filled = np.clip(vals_filled, stat["winsor_lower"], stat["winsor_upper"])
@@ -301,13 +340,15 @@ class PerCodeGroupedScaler:
                 if cfg.get("clip"):
                     lo, hi = cfg["clip"]
                     vals_filled = np.clip(vals_filled, lo, hi)
+                vals_filled[missing] = 0.0
                 out_cols.append(vals_filled)
             else:
                 # 仅 clip 组（G3/G4/G7）：winsor clip
-                vals_filled = np.where(np.isnan(vals), 0.0, vals)
+                vals_filled = vals.copy()
                 wl, wh = stat.get("winsor_lower"), stat.get("winsor_upper")
                 if wl is not None and wh is not None:
                     vals_filled = np.clip(vals_filled, wl, wh)
+                vals_filled[missing] = 0.0
                 # G3/G4/G7 无 robust，不做 median/IQR，仅 clip
                 out_cols.append(vals_filled)
 
@@ -322,6 +363,12 @@ class PerCodeGroupedScaler:
 
     # ---------- 持久化 ----------
     def save(self, path: str):
+        if not self.fitted:
+            raise ValueError("不能保存未拟合 scaler")
+        if not isinstance(self.identity_manifest, dict) or not isinstance(self.identity_hash, str):
+            raise TypeError("不能保存缺少 identity 的 scaler")
+        if self.identity_hash != self.identity_hash_for(self.identity_manifest):
+            raise ValueError("不能保存 identity hash 不匹配的 scaler")
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         payload = {
             "per_code_stats": self.per_code_stats,
@@ -330,22 +377,54 @@ class PerCodeGroupedScaler:
             "feature_cols_out": self.feature_cols_out,
             "mask_cols": self.mask_cols,
             "add_mask": self.add_mask,
-            "version": "v2_per_code",
+            "identity_manifest": self.identity_manifest,
+            "identity_hash": self.identity_hash,
+            "schema_manifest": {
+                "feature_cols": self.feature_cols,
+                "feature_cols_out": self.feature_cols_out,
+                "mask_cols": self.mask_cols,
+                "add_mask": self.add_mask,
+                "transform_version": TRANSFORM_VERSION,
+                "transform_digest": self.transform_config_digest(),
+            },
+            "version": SCALER_VERSION,
         }
         with open(path, "wb") as f:
             pickle.dump(payload, f)
         print(f"[PerCodeGroupedScaler] 已保存到 {path}, per-code {len(self.per_code_stats)} 股, {len(self.feature_cols)} -> {len(self.feature_cols_out)}")
 
     @classmethod
-    def load(cls, path: str) -> "PerCodeGroupedScaler":
+    def load(cls, path: str) -> PerCodeGroupedScaler:
         with open(path, "rb") as f:
             payload = pickle.load(f)
+        required = {"per_code_stats", "global_stats", "feature_cols", "feature_cols_out", "mask_cols", "add_mask",
+                    "identity_manifest", "identity_hash", "schema_manifest", "version"}
+        if (
+            not isinstance(payload, dict)
+            or payload.get("version") != SCALER_VERSION
+            or not required.issubset(payload)
+            or not isinstance(payload["identity_manifest"], dict)
+            or not isinstance(payload["identity_hash"], str)
+        ):
+            raise ValueError("不支持的 scaler payload；需要 v3_per_code")
         obj = cls(add_mask=payload.get("add_mask", True))
         obj.per_code_stats = payload["per_code_stats"]
         obj.global_stats = payload["global_stats"]
         obj.feature_cols = payload["feature_cols"]
         obj.feature_cols_out = payload["feature_cols_out"]
         obj.mask_cols = payload["mask_cols"]
+        obj.identity_manifest = payload["identity_manifest"]
+        obj.identity_hash = payload["identity_hash"]
         obj.fitted = True
+        if obj.identity_hash != obj.identity_hash_for(obj.identity_manifest):
+            raise ValueError("scaler identity hash 不匹配")
+        schema = payload["schema_manifest"]
+        if schema.get("transform_version") != TRANSFORM_VERSION or schema.get("transform_digest") != obj.transform_config_digest():
+            raise ValueError("scaler transform 配置不兼容")
+        obj.validate_requested_schema(obj.feature_cols, obj.add_mask)
+        for stats in [obj.global_stats, *obj.per_code_stats.values()]:
+            for col in obj.feature_cols:
+                if col not in stats or not REQUIRED_STAT_KEYS.issubset(stats[col]):
+                    raise ValueError(f"scaler 统计缺失或不完整: {col}")
         print(f"[PerCodeGroupedScaler] 从 {path} 加载, per-code {len(obj.per_code_stats)} 股")
         return obj

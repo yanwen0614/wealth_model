@@ -6,9 +6,11 @@ import numpy as np
 from data import dataset
 from data.labels import _future_ret_open_open
 from data.schema import (
+    APPROVED_RAW_FEATURES,
     BASE_COLUMNS,
     EXPORT_FACTORS,
     PREDICTION_CACHE_KEYS,
+    PROHIBITED_COLUMNS,
     _default_feature_cols,
     validate_prediction_cache_arrays,
     validate_prediction_cache_keys,
@@ -29,7 +31,17 @@ class TestDataSchemaLabels(unittest.TestCase):
         self.assertEqual(len(selected), 39)
         self.assertNotIn("close", selected)
         self.assertNotIn("return_1d", selected)
-        self.assertEqual(len(_default_feature_cols(columns, use_factor_only=True)), 48)
+        self.assertEqual(selected, APPROVED_RAW_FEATURES)
+        self.assertTrue(PROHIBITED_COLUMNS.issuperset({"code", "kline_time", "is_trading", "close"}))
+
+    def test_unknown_columns_warn_and_are_excluded(self):
+        with self.assertWarnsRegex(UserWarning, "mystery_feature"):
+            selected = _default_feature_cols(BASE_COLUMNS + APPROVED_RAW_FEATURES + ["mystery_feature"])
+        self.assertEqual(selected, APPROVED_RAW_FEATURES)
+
+    def test_missing_approved_column_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "open"):
+            _default_feature_cols([c for c in APPROVED_RAW_FEATURES if c != "open"])
 
     def test_label_function_uses_open_open(self):
         opens = np.arange(10.0, 21.0)

@@ -9,13 +9,13 @@ Make the per-code parquet feature pipeline reproducible and leakage-safe: reuse 
 
 ## Architecture
 
-`data/schema.py` will own an ordered, explicit 39-column raw-feature allowlist; the scaler appends the six G9 masks to retain F=45. `data/scaler.py` will persist a versioned identity manifest and a complete, validated transformation schema, while `data/dataset.py` will distinguish a training cache lookup/refit from validated external reuse for validation and evaluation. Validation loading will prepend one eligible prior row per code only for relative transformation context, then discard it before labels, windows, and samples are built.
+`data/schema.py` will own an ordered, explicit 39-column raw-feature allowlist and a named blacklist of prohibited columns; the scaler appends the six G9 masks to retain F=45. Unknown parquet columns will never enter the model, but will emit a prominent warning that names the columns and asks maintainers to classify them. `data/scaler.py` will persist a versioned identity manifest and a complete, validated transformation schema, while `data/dataset.py` will distinguish a training cache lookup/refit from validated external reuse for validation and evaluation. Validation loading will prepend one eligible prior row per code only for relative transformation context, then discard it before labels, windows, and samples are built.
 
 ## Key Decisions
 
 | Decision | Choice | Rejected | Reason |
 |---|---|---|---|
-| Raw feature selection | Ordered explicit 39-column allowlist | Parquet-derived denylist | Extra parquet columns cannot silently enter training; the order is hashable and F=45 is deterministic. |
+| Raw feature selection | Ordered 39-column allowlist plus named prohibited blacklist and unknown-column warning | Parquet-derived denylist | Extra columns cannot silently enter training; unknown columns visibly require classification; the approved order is hashable and F=45 is deterministic. |
 | `use_factor_only` | Remove it from `ParquetDataConfig` and `_default_feature_cols`; callers use explicit `feature_cols` for deliberate experiments | Retaining a flag that selects all 48 exported factors | Its true branch violates the approved G2/G6/G7 exclusions and F=45 contract. |
 | Cache identity | SHA-256 of canonical JSON manifest | Path-only or pickle-version-only reuse | Binds data snapshot, fitting period, feature order, normalization/mask semantics, and scaler implementation version. |
 | Parquet fingerprint | Resolved path, `st_size`, `st_mtime_ns`, plus parquet metadata row count/schema fingerprint when available | Filename only | Meets the minimum path/stat requirement and detects schema/snapshot drift without reading the 3.5G file. |
@@ -46,10 +46,10 @@ The persisted payload gains `identity_manifest`, `identity_hash`, `schema_manife
 
 ### T01: Define the Approved Feature Contract
 - **Files**: `data/schema.py` (modify), `data/dataset.py` (modify), `tests/unit/data/test_data_schema_labels.py` (modify)
-- **Description**: Add the ordered 39-column approved raw-feature allowlist from the normalization specification; make default selection require all listed parquet columns in that exact order. Remove `use_factor_only` and its invalid 48-factor branch; retain explicit `feature_cols` as the sole override and reject unavailable columns.
+- **Description**: Add the ordered 39-column approved raw-feature allowlist and named prohibited blacklist from the normalization specification; make default selection require all listed parquet columns in that exact order. Columns in neither list are excluded and produce a prominent warning that names them and requests a list update. Remove `use_factor_only` and its invalid 48-factor branch; retain explicit `feature_cols` as the sole override and reject unavailable columns.
 - **Dependencies**: None
 - **Estimated lines**: +55/-28, each source edit under 100 lines
-- **Acceptance criteria**: Default selection is exactly the approved 39 raw names; G2/G6/G7 and base `close`/absolute-volume fields are absent; per-code output remains 39+6=45; custom feature order is preserved.
+- **Acceptance criteria**: Default selection is exactly the approved 39 raw names; G2/G6/G7 and base `close`/absolute-volume fields are absent; unknown parquet columns are excluded with a visible warning; per-code output remains 39+6=45; custom feature order is preserved.
 - **Risk factors**: Existing callers using the removed field must fail clearly during migration rather than silently changing model input.
 
 ### T02: Add Versioned Scaler Identity and Schema Validation

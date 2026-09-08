@@ -1,5 +1,7 @@
 """训练 parquet 的列 schema 与默认特征选择。"""
 
+import warnings
+
 EXPORT_FACTORS = [
     "return_1d", "return_5d", "return_10d", "return_20d",
     "volatility_5d", "volatility_10d", "volatility_20d",
@@ -19,6 +21,23 @@ BASE_COLUMNS = [
     "code", "kline_time", "open", "high", "low", "close", "volume", "amount",
     "TOT_SHARE", "is_trading",
 ]
+
+APPROVED_RAW_FEATURES = [
+    "open", "high", "low", "ma_5", "ma_10", "ma_20", "ma_60", "ema_12", "ema_26", "sar",
+    "trend_duokong", "trend_shortline",
+    "volatility_5d", "volatility_10d", "volatility_20d", "std_5", "std_10", "std_20", "atr",
+    "volume_ratio_5d", "volume_ratio_10d", "amihud",
+    "macd", "dmi", "adx", "boll", "kelch", "trend_duokong_dev",
+    "gross_margin", "net_margin", "roe", "roa", "debt_to_equity",
+    "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio", "margin_balance_chg_5d",
+    "short_balance_ratio", "short_sell_vol_ratio",
+]
+
+PROHIBITED_COLUMNS = {
+    "code", "kline_time", "is_trading", "return_1d", "return_5d", "return_10d", "return_20d",
+    "TOT_SHARE", "volume", "amount", "close", "pe", "pb", "pcf", "ps",
+    "revenue_growth", "profit_growth", "revenue_growth_qoq", "profit_growth_qoq",
+}
 
 PREDICTION_CACHE_KEYS = ("exp_ret", "true_ret", "dates", "codes")
 
@@ -40,15 +59,16 @@ def validate_prediction_cache_arrays(arrays: dict, source: str = "预测缓存")
         raise ValueError(f"{source} 字段长度不一致: {lengths}")
 
 
-def _default_feature_cols(all_columns: list[str], use_factor_only: bool = False) -> list[str]:
-    """自动推导默认原始特征列，默认链路经 mask 后输出 F=45。"""
-    if use_factor_only:
-        return [c for c in EXPORT_FACTORS if c in all_columns]
-    exclude = {
-        "code", "kline_time", "is_trading",
-        "return_1d", "return_5d", "return_10d", "return_20d",
-        "TOT_SHARE", "volume", "amount", "close",
-        "pe", "pb", "pcf", "ps",
-        "revenue_growth", "profit_growth", "revenue_growth_qoq", "profit_growth_qoq",
-    }
-    return [c for c in all_columns if c not in exclude]
+def _default_feature_cols(all_columns: list[str]) -> list[str]:
+    """Return the approved ordered raw feature list, rejecting schema drift."""
+    missing = [col for col in APPROVED_RAW_FEATURES if col not in all_columns]
+    if missing:
+        raise ValueError(f"批准特征列缺失于 parquet: {missing}")
+    unknown = sorted(set(all_columns) - set(APPROVED_RAW_FEATURES) - PROHIBITED_COLUMNS)
+    if unknown:
+        warnings.warn(
+            f"未知 parquet 列将被排除: {unknown}; 请更新 whitelist/blacklist 后再纳入训练。",
+            UserWarning,
+            stacklevel=2,
+        )
+    return list(APPROVED_RAW_FEATURES)
