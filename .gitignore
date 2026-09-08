@@ -12,4 +12,5 @@ logs
 processed_data_train/
 processed_data_val/
 label_distribution_plots/
-# .opencode/
+.opencode/
+!.opencode/memory/
