@@ -209,6 +209,7 @@ def evaluate(args) -> dict:
     dates = np.concatenate(all_dates)
     uniq_dates = np.unique(dates)
     daily_ics, daily_spreads, xs_sizes = [], [], []
+    daily_lh_p, daily_lh_r = [], []
     t05_m, t05_p, t1_m, t1_p, t5_m, t5_p, t10_m, t10_p = [], [], [], [], [], [], [], []
     tn5_m, tn5_p, tn10_m, tn10_p, tn15_m, tn15_p, tn20_m, tn20_p = [], [], [], [], [], [], [], []
     for d in uniq_dates:
@@ -217,6 +218,18 @@ def evaluate(args) -> dict:
         if nsz < 100:
             continue
         e, r = exp_ret[m], true_ret[m]
+        p52 = pred52[m]
+        t52 = true52[m]
+        half = NUM_CLASSES52 // 2
+        bin_pred = (p52 >= half).astype(np.int32)
+        bin_true = (t52 >= half).astype(np.int32)
+        tp = int(np.sum((bin_true == 1) & (bin_pred == 1)))
+        fp = int(np.sum((bin_true == 0) & (bin_pred == 1)))
+        fn = int(np.sum((bin_true == 1) & (bin_pred == 0)))
+        lh_prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        lh_rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        daily_lh_p.append(lh_prec)
+        daily_lh_r.append(lh_rec)
         daily_ics.append(spearman(e, r))
         xs_sizes.append(nsz)
         for k, lm, lp in ((0.005, t05_m, t05_p), (0.01, t1_m, t1_p), (0.05, t5_m, t5_p), (0.10, t10_m, t10_p)):
@@ -250,6 +263,9 @@ def evaluate(args) -> dict:
         "xs_spread_mean": float(np.mean(daily_spreads)) if xs_ok else 0.0,
         "xs_spread_median": float(np.median(daily_spreads)) if xs_ok else 0.0,
         "xs_spread_pos_rate": float(np.mean(np.array(daily_spreads) > 0)) if xs_ok else 0.0,
+        "xs_lh_prec_mean": float(np.mean(daily_lh_p)) if xs_ok else 0.0,
+        "xs_lh_rec_mean": float(np.mean(daily_lh_r)) if xs_ok else 0.0,
+        "xs_lh_>0_prec_days": float(np.mean(np.array(daily_lh_p) > 0.5)) if xs_ok else 0.0,
         "xs_top1_daily_picks": max(1, int(avg_sz * 0.01)) if xs_ok else 0,
         "xs_top05_daily_picks": max(1, int(avg_sz * 0.005)) if xs_ok else 0,
         "xs_topn5_mean": float(np.mean(tn5_m)) if xs_ok else 0.0,
