@@ -31,6 +31,10 @@ APPROVED_RAW_FEATURES = [
     "gross_margin", "net_margin", "roe", "roa", "debt_to_equity",
     "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio", "margin_balance_chg_5d",
     "short_balance_ratio", "short_sell_vol_ratio",
+    "margin_balance_ratio_raw", "margin_buy_ratio_raw", "margin_net_buy_ratio_raw",
+    "margin_balance_chg_5d_raw", "short_balance_ratio_raw", "short_sell_vol_ratio_raw",
+    "margin_balance_ratio_ts", "margin_buy_ratio_ts", "margin_net_buy_ratio_ts",
+    "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts",
 ]
 
 PROHIBITED_COLUMNS = {

@@ -11,7 +11,7 @@
 - 按 code 分组、按 kline_time 排序、过滤 is_trading
 - 计算未来 N 日收益率标签（open-open 口径 open[t+1+horizon]/open[t+1]-1，与回测实盘 T+1 open 买入口径对齐）
 - 依据 BINS 离散化为多分类标签（与 main2.py EMDLoss 配套）
-- 滑动窗口生成 [seq_len, num_features] 样本，默认输出 F=45
+- 滑动窗口生成 [seq_len, num_features] 样本，默认输出 F=69（51 特征 + 18 G9 mask）
 - 构建全局索引，支持 DataLoader 多进程
 
 与旧 NPZ 链路对比：
@@ -19,7 +19,7 @@
 - 新：parquet 直读，无需中间 npz，特征维度 ~50，标签为未来 5日累计收益
 
 分组归一化（per-code 共识，精简后仅保留 per_code）：
-- 45特征=39+6 mask，G1/mcd robust(median/IQR)+clip±5、G3/G4 winsor 1/99、G9 rank透传+mask
+- 69特征=51+18 mask（G9 两融 18 列各带 1 mask），G1/mcd robust(median/IQR)+clip±5、G3/G4 winsor 1/99、G9 rank透传+mask
 - per-code 按股独立拟合 via PerCodeGroupedScaler，验证集复用训练集 scaler 防泄露
 """
 import hashlib
@@ -457,7 +457,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--parquet", default="data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet")
+    parser.add_argument("--parquet", default="data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet")
     parser.add_argument("--max_codes", type=int, default=10)
     parser.add_argument("--normalize", type=str, default="per_code", choices=["per_code", "none"], help="归一化方式")
     parser.add_argument("--scaler_path", type=str, default=None, help="scaler 持久化路径")

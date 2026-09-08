@@ -42,7 +42,11 @@ GROUP_DEFS_PER_CODE = {
     "G6_Valuation": ["pe", "pb", "pcf", "ps"],
     "G7_Growth": ["revenue_growth", "profit_growth", "revenue_growth_qoq", "profit_growth_qoq"],
     "G8_Quality": ["gross_margin", "net_margin", "roe", "roa", "debt_to_equity"],
-    "G9_Margin": ["margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio", "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio"],
+    "G9_Margin": ["margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio", "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio",
+                   "margin_balance_ratio_raw", "margin_buy_ratio_raw", "margin_net_buy_ratio_raw",
+                   "margin_balance_chg_5d_raw", "short_balance_ratio_raw", "short_sell_vol_ratio_raw",
+                   "margin_balance_ratio_ts", "margin_buy_ratio_ts", "margin_net_buy_ratio_ts",
+                   "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts"],
 }
 
 COL_TO_GROUP_PER_CODE = {c: g for g, cols in GROUP_DEFS_PER_CODE.items() for c in cols}

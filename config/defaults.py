@@ -1,11 +1,17 @@
 """训练入口共用的默认配置。"""
 
 from copy import deepcopy
+import sys
 
 import numpy as np
 import torch
 
-DEFAULT_PARQUET = "Z:/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
+if sys.platform == "win32":
+    _DEFAULT_PARQUET = "Z:/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
+else:
+    _DEFAULT_PARQUET = "data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
+
+DEFAULT_PARQUET = _DEFAULT_PARQUET
 DEFAULT_BINS = (np.linspace(-25, 25, 51) / 100).tolist()
 
 _BASE_CONFIG = {
@@ -26,7 +32,7 @@ _BASE_CONFIG = {
 }
 
 _BASE_CONFIG["CNNTransformerConfig"] = {
-    "featurenum": 45, "seq_len": 60, "num_classes": 52,
+    "featurenum": 69, "seq_len": 60, "num_classes": 52,
     "cnn_out_channels": 128, "d_model": 256, "nhead": 8,
     "cnn_kernel_sizes": [1, 3, 5, 7, 10], "num_encoder_layers": 4,
     "dropout_rate": 0.3,
