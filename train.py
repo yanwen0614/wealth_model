@@ -163,6 +163,10 @@ def main():
     if actual_featurenum != config["CNNTransformerConfig"]['featurenum']:
         logger.warning(f"特征数不匹配: config={config['CNNTransformerConfig']['featurenum']} vs 实际={actual_featurenum}，已自动校正")
         config["CNNTransformerConfig"]['featurenum'] = actual_featurenum
+        log_config["CNNTransformerConfig"]['featurenum'] = actual_featurenum
+        with open(os.path.join(config["run_log_dir"], "config.json"), "w") as f:
+            json.dump(log_config, f, indent=2, ensure_ascii=False)
+        logger.info(f"已重写 config.json: featurenum={actual_featurenum}")
 
     # 模型
     logger.info("=== 初始化模型 ===")
