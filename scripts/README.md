@@ -14,6 +14,8 @@
 | `recompute_bins.py` | 全量 bins 分位离线重算 |
 | `plot_topn_curve.py` | TopN 收益折线图（多模型对比） |
 | `run_backtest.py` | 逐日回测 CLI |
+| `run_eval_pipeline.py` | scaler → 推理缓存 → OHLC 路径表 —步到位 |
+| `run_eval_full.sh` | shell 一键：推理 → rolling 回测 → TopN 曲线 |
 
 ---
 
