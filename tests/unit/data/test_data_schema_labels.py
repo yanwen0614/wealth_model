@@ -9,6 +9,7 @@ from data.schema import (
     APPROVED_RAW_FEATURES,
     BASE_COLUMNS,
     EXPORT_FACTORS,
+    G9_MASK_COLUMNS,
     PREDICTION_CACHE_KEYS,
     PROHIBITED_COLUMNS,
     _default_feature_cols,
@@ -24,11 +25,12 @@ class TestDataSchemaLabels(unittest.TestCase):
         self.assertIs(dataset._default_feature_cols, _default_feature_cols)
         self.assertIs(dataset._future_ret_open_open, _future_ret_open_open)
 
-    def test_default_feature_columns_feed_45_dimensional_output(self):
-        columns = BASE_COLUMNS + EXPORT_FACTORS
+    def test_default_feature_columns_feed_69_dimensional_output(self):
+        columns = BASE_COLUMNS + APPROVED_RAW_FEATURES
         selected = _default_feature_cols(columns)
-        # 默认输入为 39 列，per_code scaler 追加 6 个 mask，输出为 F=45。
-        self.assertEqual(len(selected), 39)
+        self.assertEqual(len(selected), 51)
+        self.assertEqual(len(G9_MASK_COLUMNS), 18)
+        self.assertEqual(len(selected) + len(G9_MASK_COLUMNS), 69)
         self.assertNotIn("close", selected)
         self.assertNotIn("return_1d", selected)
         self.assertEqual(selected, APPROVED_RAW_FEATURES)

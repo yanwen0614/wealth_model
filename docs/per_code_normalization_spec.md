@@ -1,10 +1,11 @@
-# Per-Code 分组归一化共识文档（不做 Window，只 Per-Code 分组）
+# Per-Code 分组归一化共识文档（frozen 基线与 rolling 实验边界）
 
 > 生成时间：2026-09-03  
 > 数据：`data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet`（11.4M行，5166股，58列）  
 > 基准：`quant/scripts/export_training_data.py` 的原始因子集合为 48 列；基础列与剔除规则见下。
-> 当前默认输出：39 个有效特征 + 6 个 G9 mask = **F=45**。`55` 不是当前默认模型输入。
-> 总基调：**per-code 分组归一化，不做 window**（用户 2026-09-03 确认）
+> 当前默认输出：51 个 raw feature + 18 个 G9 observation mask = **F=69**。
+> `F=45`（39+6）和 `F=55` 均为历史 schema/实验，不是当前默认输入。
+> frozen 基线总基调：**per-code 分组归一化，不做 window**（用户 2026-09-03 确认）；rolling 仅按 5.1 的 CNN 实验边界启用。
 
 ---
 
@@ -14,14 +15,17 @@
 - **TOT_SHARE**：A 方案，**剔除**，改用 `turnover`（或 `volume_ratio` 已覆盖）
 - **volume/amount**：**剔除**（绝对量不入训，仅保留比值）
 - **close 恒0**：`close/prev_close -1 =0` 恒0，**剔除** close 本身（信息由其他 price_rel 覆盖）
-- **有效特征**：`G1 12 + G3 7 + G4 3 + G5 6 + G8 5 + G9 6 = 39`（G6/G7 各4已剔除），+6 mask = **45**（原47+6=53 → 39+6=45）。默认 selector 使用有序 39 列 whitelist；标识/时间/is_trading、G2、TOT_SHARE、volume/amount/close、G6/G7 为 named blacklist。
+- **当前 schema**：默认 selector 使用有序 51 列 raw feature whitelist，G9 的 18 列各追加 observation mask，模型输入为 **F=69**。`close` 是辅助列，不进入模型输入；标识/时间/is_trading、G2、TOT_SHARE、volume/amount、G6/G7 为 named blacklist。
 - **双列表漂移保护**：既不在 whitelist 也不在 blacklist 的 parquet 列一律排除，并以 `warnings.warn` 显著列名提示维护者更新 whitelist/blacklist；whitelist 任一缺列直接报错。实验只能用显式 `feature_cols` 覆盖，且必须存在。
 
-> `48`、`55` 等历史组合数字保留用于解释数据 schema 和旧实验，不得直接当作当前模型 F。
+> `39+6=45`、`48`、`55` 等历史组合数字保留用于解释旧 schema 和旧实验，不得直接当作当前模型 F。
 
 ---
 
 ## 2. 各组归一化决策（逐组确认）
+
+> 本表保留早期 frozen 39+6 schema 的分组决策记录；当前运行 schema 以第 1 节的 51 raw + 18 G9 mask 为准，
+> rolling 实验的字段范围和算法以第 5.1 节为准。
 
 | 组 | 成员（剔除后） | 缺失率 | 分布特征 | 变换 | Per-Code 操作 | 备注 |
 |---|---|---|---|---|---|---|
@@ -58,14 +62,26 @@
 
 ## 5. 实现映射
 
-- 配置：`data/dataset.py` `ParquetDataConfig.normalize = "per_code"`，`per_code_add_mask=True`，默认 `feature_cols` 为批准 39 列 whitelist
+- 配置：`data/dataset.py` `ParquetDataConfig.normalize = "per_code"`，`per_code_add_mask=True`，默认 `feature_cols` 为批准 51 列 whitelist
 - Scaler：`data/scaler.py` `PerCodeGroupedScaler`，`fit(df)` 按 code 独立算 `median/IQR/winsor`，`transform_code(code, feat, cols, close)` 按 code 应用
 - 验证集复用：重叠 code 用训练集 per-code 统计，未见 code 使用已保存的全局兜底统计；验证集不得重新 fit
 - 持久化：`logs/scaler_per_code.pkl` 仅接受 `v3_per_code` payload，含 canonical JSON SHA-256 `identity_manifest/identity_hash` 与 `schema_manifest`。identity 绑定 resolved parquet path、size/mtime_ns、parquet row/schema digest、fit 日期、特征顺序、normalization/mask/filter/max_codes 和 transform digest。训练仅复用 identity 和 schema 完全一致的缓存，否则重拟合覆盖；旧/非法 payload 不会回退为原始 pickle。验证始终接收内存中的训练 scaler，绝不 fit。
-- **验证日期 context**：有 `start_date` 时，每股只取一条此前最后 eligible `is_trading` 行参与 relative 变换；变换后立即移除，不能进入标签、group、window 或 index。
-- 模型：默认 `featurenum=45`（39 有效特征 + 6 G9 mask），由 `CNNTransformer` 使用（`train.py` 已有）
+- **验证日期 context（frozen）**：有 `start_date` 时，每股只取一条此前最后 eligible `is_trading` 行参与 relative 变换；变换后立即移除，不能进入标签、group、window 或 index。rolling validation 另按第 5.1 节最多使用 251 个有效交易日。
+- 模型：默认 `featurenum=69`（51 raw feature + 18 G9 mask），由 `CNNTransformer` 使用（`train.py` 已有）
 
-### 5.1 标签和回测边界
+### 5.1 Rolling 实验边界
+
+- 默认 `normalize="per_code"` 为 frozen，旧训练命令和逻辑不变；rolling 只可显式使用 `--normalize rolling`。
+- 第一阶段 rolling 仅处理 `open/high/low/ma_5/ma_10/ma_20/ma_60/ema_12/ema_26`、`macd`、
+  `volatility_5d/10d/20d`、`volume_ratio_5d/10d` 和 `amihud`。价格类与 `macd` 先 relative，再按 `[t-251,t]`
+  做 rolling median/IQR robust 并 clip；其余指定列做 rolling 1%/99% winsor。
+- `close` 仅作 relative/rolling 辅助列，不作为模型输入；`sar`、`trend_*`、`std_*`、`atr` 等暂不 rolling，
+  其他特征按 passthrough/G9 mask 规则处理。
+- validation 可使用 split 前最多 251 个有效交易日作为 rolling context；context 不进入 labels、windows 或 index。
+- frozen 与 rolling 的 mode、version、schema、state、transform digest 和 checkpoint identity 必须隔离，禁止互用。
+- rolling 目前只在 CNN 内实现实验，不实现 quant exporter；quant 回迁仍是未来阶段。
+
+### 5.2 标签和回测边界
 
 - 窗口长度 `T=60`，默认 horizon=5。
 - 标签收益：`open[t+1+horizon]/open[t+1]-1`，51 个 BINS 边界对应 `C=52` 类。
@@ -78,5 +94,5 @@
 
 - [x] G1~G9 逐组讨论确认
 - [x] 按本 spec 改造 `dataset.py` 支持 `per_code` 分支并打通 `train.py` 训练（`normalize="per_code"`）
-- [x] 小样本验证：`--max_codes 10 --normalize per_code` 检查默认 `x [45,60]` 无 NaN/inf
+- [x] 小样本验证：`--max_codes 10 --normalize per_code` 检查默认 `x [69,60]` 无 NaN/inf
 - [ ] 全量冒烟：`--max_codes 100 --normalize per_code --epochs 1` 验证 loss 收敛

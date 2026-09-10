@@ -37,6 +37,16 @@ APPROVED_RAW_FEATURES = [
     "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts",
 ]
 
+G9_RAW_FEATURES = (
+    "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio",
+    "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio",
+    "margin_balance_ratio_raw", "margin_buy_ratio_raw", "margin_net_buy_ratio_raw",
+    "margin_balance_chg_5d_raw", "short_balance_ratio_raw", "short_sell_vol_ratio_raw",
+    "margin_balance_ratio_ts", "margin_buy_ratio_ts", "margin_net_buy_ratio_ts",
+    "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts",
+)
+G9_MASK_COLUMNS = tuple(f"{column}_mask" for column in G9_RAW_FEATURES)
+
 PROHIBITED_COLUMNS = {
     "code", "kline_time", "is_trading", "return_1d", "return_5d", "return_10d", "return_20d",
     "TOT_SHARE", "volume", "amount", "close", "pe", "pb", "pcf", "ps",

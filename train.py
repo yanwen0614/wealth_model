@@ -1,9 +1,9 @@
 """Parquet 直通训练入口：quant 最新因子数据 -> CNNTransformer -> EMDLoss
 
 链路（per-code 共识）：
-  data/test/train_data/train_data_v1_*.parquet (45特征=39+6 mask, 11M行, G6/G7已剔除)
+  data/test/train_data/train_data_v1_*.parquet (51 raw特征+18 G9 mask=F=69, 11M行, G6/G7已剔除)
     -> ParquetDataset (is_trading过滤, future_ret=open[t+6]/open[t+1]-1 52类, per-code分组归一化)
-    -> CNNTransformer (featurenum=45, seq_len=60)
+    -> CNNTransformer (featurenum=69, seq_len=60)
     -> EMDLoss (有序分类)
     -> Trainer (早停 + 调度)
 
@@ -11,23 +11,65 @@
   uv run --project . python train.py --max_codes 20 --epochs 2 --batch_size 256
   uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31
 
-历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=45 和 future 5d open-open 标签。
+历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=69 和 future 5d open-open 标签。
+F=45 仅代表旧特征/历史 checkpoint，不属于当前默认训练契约。
 旧模型 checkpoint 不属于当前加载契约，历史结果仅供参考且不可与当前口径混用。
 """
 import argparse
+import json
 import logging
 import os
+from typing import Any, cast
+
 import numpy as np
 import torch
 
 from config.defaults import make_default_config
-from data.dataset import ParquetDataConfig, ParquetDataset
+from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
 from log_manager import LoggerManager
 from training import Trainer
 from training.factory import build_criterion, build_model, build_optimizer_scheduler
 from visualization import Visualizer
 
 config = make_default_config()
+
+
+def configure_preprocessing(config: dict, normalize: str) -> None:
+    """Apply the explicit preprocessing choice and isolate its artifacts."""
+    if normalize not in {"per_code", "rolling"}:
+        raise ValueError(f"未知 normalize: {normalize}")
+    config["NORMALIZE"] = normalize
+    if normalize == "rolling":
+        config["SCALER_PATH"] = "logs/rolling/scaler_rolling.pkl"
+        config["LOG_DIR"] = "./logs/rolling"
+
+
+def build_preprocessing_metadata(
+    mode: str,
+    preprocessing_state,
+    feature_cols: list[str],
+    featurenum: int,
+    seq_len: int,
+    num_classes: int,
+) -> dict:
+    """Build JSON-safe run metadata and reject incompatible model dimensions."""
+    if featurenum != 69:
+        raise ValueError(f"preprocessing metadata featurenum 不匹配: {featurenum}, expected 69")
+    metadata = {
+        "mode": mode,
+        "featurenum": featurenum,
+        "seq_len": seq_len,
+        "num_classes": num_classes,
+        "feature_cols": list(feature_cols),
+    }
+    if mode == "rolling":
+        if not isinstance(preprocessing_state, _RollingDatasetState):
+            raise TypeError("rolling metadata 缺少 RollingDatasetState")
+        if feature_cols != preprocessing_state.feature_cols:
+            raise ValueError("rolling metadata feature schema 不匹配")
+        metadata["schema_manifest"] = preprocessing_state.schema_manifest
+        metadata["schema_identity"] = preprocessing_state.identity_hash
+    return metadata
 
 
 def parse_args():
@@ -54,6 +96,7 @@ def parse_args():
     p.add_argument("--pure_reg", action="store_true", help="纯回归消融：仅 Huber(ret_pred)，分类头无梯度")
     p.add_argument("--lambda_reg", type=float, default=config['LAMBDA_REG'], help="双头回归项权重 λ")
     p.add_argument("--huber_delta", type=float, default=config['HUBER_DELTA'], help="Huber delta")
+    p.add_argument("--normalize", choices=["per_code", "rolling"], default=config["NORMALIZE"])
     return p.parse_args()
 
 
@@ -88,6 +131,7 @@ def main():
     config['PURE_REG'] = args.pure_reg
     config['LAMBDA_REG'] = args.lambda_reg
     config['HUBER_DELTA'] = args.huber_delta
+    configure_preprocessing(config, args.normalize)
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
     config["CNNTransformerConfig"]['seq_len'] = config['SEQ_LEN']
@@ -147,19 +191,53 @@ def main():
         val_end=val_end,
         scaler_path=config['SCALER_PATH'],
     )
-    logger.info(f"训练集样本数: {len(train_loader.dataset):,}")
-    if val_loader:
-        logger.info(f"验证集样本数: {len(val_loader.dataset):,}")
+    train_dataset = cast(ParquetDataset, train_loader.dataset)
+    dataset_scaler = train_dataset.scaler_stats
+    if config["NORMALIZE"] == "rolling":
+        if not isinstance(dataset_scaler, _RollingDatasetState):
+            raise ValueError("rolling 数据集缺少有效 preprocessing identity")
+        preprocessing_metadata = build_preprocessing_metadata(
+            "rolling",
+            dataset_scaler,
+            train_dataset.feature_cols,
+            train_dataset.num_features,
+            config["SEQ_LEN"],
+            config["CNNTransformerConfig"]["num_classes"],
+        )
+        preprocessing_metadata["rolling_audit"] = dict(train_dataset.rolling_audit)
+    else:
+        preprocessing_metadata = {
+            "mode": "per_code",
+            "schema_manifest": getattr(dataset_scaler, "identity_manifest", None),
+            "schema_identity": getattr(dataset_scaler, "identity_hash", None),
+            "feature_cols": list(train_dataset.feature_cols),
+            "featurenum": train_dataset.num_features,
+            "seq_len": config["SEQ_LEN"],
+            "num_classes": config["CNNTransformerConfig"]["num_classes"],
+        }
+    log_config["preprocessing"] = preprocessing_metadata
+    config["preprocessing"] = preprocessing_metadata
+    with open(os.path.join(config["run_log_dir"], "config.json"), "w", encoding="utf-8") as f:
+        json.dump(log_config, f, indent=2, ensure_ascii=False)
+    logger.info(f"训练集样本数: {len(train_dataset):,}")
+    if val_loader is not None:
+        val_dataset = cast(ParquetDataset, val_loader.dataset)
+        logger.info(f"验证集样本数: {len(val_dataset):,}")
     # test 集日志（不入 Trainer，仅记录，待 2026 数据增量后可用）
     if test_start:
         logger.info(f"测试集预留: {test_start} ~ {test_end or '至今'} (当前 parquet 至 2025-12-31，暂为空)")
 
     # 校验 val 非空（新切分 2025下半年样本较少，smoke 20股可能仅 ~2k 窗口）
-    if val_loader and len(val_loader.dataset) == 0:
+    if val_loader is not None and len(cast(ParquetDataset, val_loader.dataset)) == 0:
         logger.warning("验证集为空，请检查 VAL_START/VAL_END 与 max_codes 组合")
 
     # 自动校正 featurenum
-    actual_featurenum = train_loader.dataset.num_features
+    actual_featurenum = train_dataset.num_features
+    if config["NORMALIZE"] == "rolling" and actual_featurenum != config["CNNTransformerConfig"]["featurenum"]:
+        raise ValueError(
+            "rolling preprocessing 与模型 featurenum 不匹配，拒绝加载旧/错误维度配置: "
+            f"config={config['CNNTransformerConfig']['featurenum']} actual={actual_featurenum}"
+        )
     if actual_featurenum != config["CNNTransformerConfig"]['featurenum']:
         logger.warning(f"特征数不匹配: config={config['CNNTransformerConfig']['featurenum']} vs 实际={actual_featurenum}，已自动校正")
         config["CNNTransformerConfig"]['featurenum'] = actual_featurenum
@@ -194,10 +272,10 @@ def main():
         model=model,
         config=config,
         train_loader=train_loader,
-        val_loader=val_loader,
+        val_loader=cast(torch.utils.data.DataLoader, val_loader),
         criterion=criterion,
         optimizer=optimizer,
-        scheduler=scheduler,
+        scheduler=cast(Any, scheduler),
     )
     try:
         trainer.train()
@@ -214,7 +292,7 @@ def main():
             val_losses, val_accs = [], []
         Visualizer.plot_training_curves(train_losses, val_losses, train_accs, val_accs, save_path=vis_path)
         logger.info(f"训练曲线已保存: {vis_path}")
-    except Exception as e:
+    except (OSError, RuntimeError, TypeError, ValueError) as e:
         logger.warning(f"可视化失败: {e}")
 
     # 加载最佳模型

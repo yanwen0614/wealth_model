@@ -81,12 +81,14 @@ class TestFeaturePipeline(unittest.TestCase):
         rows = []
         for code in ["A", "B"]:
             for day in range(8):
-                rows.append({"code": code, "kline_time": pd.Timestamp("2020-01-01") + pd.Timedelta(days=day),
-                             "is_trading": True, "close": 10.0 + day, "open": 10.0 + day,
-                             "high": 11.0 + day, "low": 9.0 + day, "ma_5": 10.0 + day, "ma_10": 10.0 + day,
-                             "ma_20": 10.0 + day, "ma_60": 10.0 + day, "ema_12": 10.0 + day, "ema_26": 10.0 + day,
-                             "sar": 10.0 + day, "trend_duokong": 10.0 + day, "trend_shortline": 10.0 + day,
-                             **{col: 0.1 for col in ["volatility_5d", "volatility_10d", "volatility_20d", "std_5", "std_10", "std_20", "atr", "volume_ratio_5d", "volume_ratio_10d", "amihud", "macd", "dmi", "adx", "boll", "kelch", "trend_duokong_dev", "gross_margin", "net_margin", "roe", "roa", "debt_to_equity", "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio", "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio"]}})
+                row: dict[str, object] = {col: 0.1 for col in APPROVED_RAW_FEATURES}
+                price = 10.0 + day
+                row.update({
+                    "code": code, "kline_time": pd.Timestamp("2020-01-01") + pd.Timedelta(days=day),
+                    "is_trading": True, "close": price, "open": price,
+                    "high": price + 1.0, "low": price - 1.0,
+                })
+                rows.append(row)
         with tempfile.NamedTemporaryFile(suffix=".parquet") as file:
             pq.write_table(pa.Table.from_pandas(pd.DataFrame(rows)), file.name)
             train = ParquetDataset(ParquetDataConfig(parquet_path=file.name, seq_len=2, horizon=1, end_date="2020-01-04"))

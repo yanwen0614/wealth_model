@@ -23,6 +23,7 @@
 - per-code 按股独立拟合 via PerCodeGroupedScaler，验证集复用训练集 scaler 防泄露
 """
 import hashlib
+import json
 import os
 import pickle
 from dataclasses import dataclass, field
@@ -35,6 +36,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from data.labels import _future_ret_open_open
+from data.rolling_scaler import RollingNormalizationConfig, RollingNormalizer
+from data.scaler import SCALER_VERSION, PerCodeGroupedScaler
 from data.schema import BASE_COLUMNS, EXPORT_FACTORS, _default_feature_cols  # noqa: F401
 
 
@@ -57,7 +60,7 @@ class ParquetDataConfig:
     start_date: str | None = None  # "2013-01-01"
     end_date: str | None = None
     split_date: str | None = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
-    # 归一化：per_code | none（per_code 为共识：不做 window 只 per-code 分组）
+    # 归一化：per_code | none | rolling（rolling 必须显式 opt-in）
     normalize: str = "per_code"
     # 归一化统计文件（训练集拟合后保存，供验证集复用）
     scaler_path: str | None = None
@@ -71,11 +74,105 @@ class ParquetDataConfig:
     per_code_add_mask: bool = True
 
 
+class _RollingDatasetState:
+    """Training/validation rolling identity; it never fits or calls frozen code."""
+
+    PAYLOAD_VERSION = "v1_rolling_state"
+
+    def __init__(
+        self,
+        normalizer: RollingNormalizer,
+        source_manifest: dict,
+        feature_cols: list[str],
+        fallback_scaler: PerCodeGroupedScaler,
+    ):
+        if not isinstance(fallback_scaler, PerCodeGroupedScaler):
+            raise TypeError("rolling state fallback 必须是 PerCodeGroupedScaler")
+        fallback_scaler.validate_requested_schema(feature_cols, fallback_scaler.add_mask)
+        self.normalizer = normalizer
+        self.source_manifest = source_manifest
+        self.feature_cols = list(feature_cols)
+        self.fallback_scaler = fallback_scaler
+        self.schema_manifest = {
+            **normalizer.schema_manifest(feature_cols),
+            "fallback": {
+                "mode": "per_code",
+                "version": SCALER_VERSION,
+                "transform_digest": PerCodeGroupedScaler.transform_config_digest(),
+                "feature_cols_out": list(fallback_scaler.feature_cols_out),
+                "identity_hash": fallback_scaler.identity_hash,
+            },
+        }
+        self.identity_manifest = {
+            "preprocessing": self.schema_manifest,
+            "source": json.loads(json.dumps(source_manifest, sort_keys=True)),
+        }
+        self.identity_hash = self._identity_hash(self.identity_manifest)
+
+    @staticmethod
+    def _identity_hash(manifest: dict) -> str:
+        encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def validate(self, source_manifest: dict, feature_cols: list[str]) -> None:
+        self.fallback_scaler.validate_requested_schema(feature_cols, self.fallback_scaler.add_mask)
+        requested_manifest = {
+            "preprocessing": self.schema_manifest,
+            "source": json.loads(json.dumps(source_manifest, sort_keys=True)),
+        }
+        requested = self._identity_hash(requested_manifest)
+        if requested != self.identity_hash:
+            raise ValueError("rolling preprocessing identity 不匹配")
+        if self.feature_cols != list(feature_cols):
+            raise ValueError("rolling feature schema 不匹配")
+
+    def save(self, path: str) -> None:
+        payload = {
+            "version": self.PAYLOAD_VERSION,
+            "mode": "rolling",
+            "normalizer_config": self.normalizer.config.__dict__,
+            "source_manifest": self.source_manifest,
+            "feature_cols": self.feature_cols,
+            "schema_manifest": self.schema_manifest,
+            "identity_manifest": self.identity_manifest,
+            "identity_hash": self.identity_hash,
+            "fallback_scaler": self.fallback_scaler,
+        }
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "wb") as file:
+            pickle.dump(payload, file)
+
+    @classmethod
+    def load(cls, path: str) -> "_RollingDatasetState":
+        with open(path, "rb") as file:
+            payload = pickle.load(file)
+        required = {
+            "version", "mode", "normalizer_config", "source_manifest", "feature_cols",
+            "schema_manifest", "identity_manifest", "identity_hash", "fallback_scaler",
+        }
+        if not isinstance(payload, dict) or payload.get("version") != cls.PAYLOAD_VERSION:
+            raise ValueError("不支持的 rolling state payload")
+        if payload.get("mode") != "rolling" or not required.issubset(payload):
+            raise ValueError("rolling state payload schema 不匹配")
+        normalizer = RollingNormalizer(RollingNormalizationConfig(**payload["normalizer_config"]))
+        fallback_scaler = payload["fallback_scaler"]
+        if not isinstance(fallback_scaler, PerCodeGroupedScaler):
+            raise TypeError("rolling state fallback payload 类型不匹配")
+        state = cls(normalizer, payload["source_manifest"], payload["feature_cols"], fallback_scaler)
+        if (
+            state.schema_manifest != payload["schema_manifest"]
+            or state.identity_manifest != payload["identity_manifest"]
+            or state.identity_hash != payload["identity_hash"]
+        ):
+            raise ValueError("rolling state identity 不匹配")
+        return state
+
+
 class ParquetDataset(Dataset):
     """基于单文件 parquet 的滑动窗口数据集
 
     每个样本：
-      x: [num_features, seq_len]  float32  (per_code 时默认 F=45，可能追加 6 个 mask)
+      x: [num_features, seq_len]  float32  (当前默认输出为 51 raw + 18 G9 mask)
       y: int  (digitized future return)
 
     索引构建：
@@ -130,7 +227,7 @@ class ParquetDataset(Dataset):
         if missing:
             raise ValueError(f"特征列缺失于 parquet: {missing}, 可用列: {all_cols[:10]}...")
 
-        self.feature_cols = feature_cols  # 输入特征列（默认 F=45）
+        self.feature_cols = feature_cols  # 输入 raw 特征列（默认 F=51）
         self.feature_cols_out = list(feature_cols)  # 输出特征列（per_code 可能追加 mask）
         self.num_features = len(feature_cols)
         expected_identity = self._scaler_identity(cfg, pf, feature_cols)
@@ -152,13 +249,17 @@ class ParquetDataset(Dataset):
         df = df[df["is_trading"] == True]
         print(f"[ParquetDataset] 过滤 is_trading False: {before:,} -> {len(df):,} (drop {before - len(df):,})")
 
-        # 时间过滤；验证/评估起点前每股保留一行，仅供 relative 变换使用。
+        # 时间过滤；frozen 只保留一行 relative context，rolling validation 可保留 251 行。
         df["kline_time"] = pd.to_datetime(df["kline_time"])
         df["_transform_context"] = False
         if cfg.start_date:
             start = pd.to_datetime(cfg.start_date)
             eligible = df[df["kline_time"] >= start]
-            context = df[df["kline_time"] < start].sort_values("kline_time").groupby("code", sort=False).tail(1)
+            context_limit = 251 if cfg.normalize == "rolling" and cfg.role != "training" else 1
+            context = (
+                df[df["kline_time"] < start].sort_values("kline_time")
+                .groupby("code", sort=False).tail(context_limit)
+            )
             context = context[context["code"].isin(eligible["code"].unique())].copy()
             context["_transform_context"] = True
             df = pd.concat([context, eligible], ignore_index=True)
@@ -179,7 +280,6 @@ class ParquetDataset(Dataset):
         # 2. 归一化统计
         # per_code 支持外部传入 scaler_stats / 文件持久化 / 验证集复用
         if cfg.normalize == "per_code":
-            from data.scaler import PerCodeGroupedScaler
             self.scaler_stats = None
             if scaler_stats is not None:
                 if not isinstance(scaler_stats, PerCodeGroupedScaler):
@@ -226,14 +326,52 @@ class ParquetDataset(Dataset):
             self.scaler_stats = None
             self.feature_cols_out = list(self.feature_cols)
             self.num_features = len(self.feature_cols_out)
+        elif cfg.normalize == "rolling":
+            normalizer = RollingNormalizer()
+            source_identity = dict(expected_identity)
+            source_identity.pop("fit_start_date", None)
+            source_identity.pop("fit_end_date", None)
+            source_identity.pop("transform_digest", None)
+            source_identity.pop("scaler_version", None)
+            source_identity.pop("max_codes", None)
+            if scaler_stats is None:
+                if cfg.role != "training":
+                    raise ValueError("validation rolling 数据集必须提供训练 rolling identity")
+                fallback_scaler = PerCodeGroupedScaler(add_mask=cfg.per_code_add_mask)
+                fallback_scaler.fit(df.loc[~df["_transform_context"]], feature_cols)
+                fallback_identity = dict(expected_identity)
+                fallback_identity["normalize"] = "rolling_fallback_per_code"
+                fallback_scaler.set_identity(fallback_identity)
+                self.scaler_stats = _RollingDatasetState(
+                    normalizer, source_identity, feature_cols, fallback_scaler
+                )
+            else:
+                if not isinstance(scaler_stats, _RollingDatasetState):
+                    raise ValueError("外部 scaler_stats 必须是匹配的 rolling identity")
+                scaler_stats.validate(source_identity, feature_cols)
+                self.scaler_stats = scaler_stats
+            self.feature_cols_out = normalizer.output_feature_cols(feature_cols)
+            self.num_features = len(self.feature_cols_out)
+            if scaler_stats is None and cfg.scaler_path:
+                self.scaler_stats.save(cfg.scaler_path)
         else:
-            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 per_code/none")
+            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 per_code/none/rolling")
 
         print(f"[ParquetDataset] 输出特征列数: {self.num_features}, 输出特征: {self.feature_cols_out[:8]}...")
 
         # 3. 按 code 构建分组数据与索引
         self.groups: dict[str, dict] = {}
         self.index: list[tuple[str, int]] = []  # (code, window_start_pos)
+        self.rolling_audit: dict[str, int | float] = {
+            "total_rows": 0,
+            "rolling_values": 0,
+            "fallback_values": 0,
+            "neutral_fallback_values": 0,
+            "passthrough_values": 0,
+            "missing_values": 0,
+            "constant_iqr_values": 0,
+            "fallback_ratio": 0.0,
+        }
 
         # 统计
         total_windows = 0
@@ -251,15 +389,26 @@ class ParquetDataset(Dataset):
             # NaN 填充 + 归一化（per_code 按 code 独立）
             if cfg.normalize == "per_code":
                 # per-code：需传入 close 供 G1/macd relative
-                from data.scaler import PerCodeGroupedScaler
                 if isinstance(self.scaler_stats, PerCodeGroupedScaler):
                     feat = self.scaler_stats.transform_code(code, feat, feature_cols, close)
                     # 同步更新 feature_cols_out 长度（首次循环后已一致）
                     if len(self.feature_cols_out) != feat.shape[1]:
                         # 首次 code 的 F_out 可能与全局不一致，动态修正（理论上一致）
                         pass
-                else:
-                    feat = self._preprocess_features(feat, feature_cols)
+                    else:
+                        feat = self._preprocess_features(feat, feature_cols)
+            elif cfg.normalize == "rolling":
+                if not isinstance(self.scaler_stats, _RollingDatasetState):
+                    raise ValueError("rolling 数据集缺少有效 preprocessing identity")
+                frozen_fallback = self.scaler_stats.fallback_scaler.transform_code(
+                    code, feat, feature_cols, close
+                )
+                result = self.scaler_stats.normalizer.transform_code(
+                    feat, feature_cols, close, frozen_fallback=frozen_fallback
+                )
+                feat = result.values
+                for key, value in vars(result.audit).items():
+                    self.rolling_audit[key] = int(self.rolling_audit[key]) + int(value)
             else:
                 feat = self._preprocess_features(feat, feature_cols)
 
@@ -322,6 +471,20 @@ class ParquetDataset(Dataset):
 
         print(f"[ParquetDataset] 分组完成: 保留 {len(self.groups)} 只股票, 跳过 {skipped_codes} 只 (长度不足/无有效标签)")
         print(f"[ParquetDataset] 总样本数 (窗口): {total_windows:,}")
+        if cfg.normalize == "rolling":
+            audited = int(self.rolling_audit["fallback_values"]) + int(
+                self.rolling_audit["rolling_values"]
+            )
+            self.rolling_audit["fallback_ratio"] = (
+                int(self.rolling_audit["fallback_values"]) / audited if audited else 0.0
+            )
+            print(
+                "[ParquetDataset] rolling audit: "
+                f"fallback_ratio={self.rolling_audit['fallback_ratio']:.6f}, "
+                f"fallback={self.rolling_audit['fallback_values']}, "
+                f"neutral={self.rolling_audit['neutral_fallback_values']}, "
+                f"rolling={self.rolling_audit['rolling_values']}"
+            )
         if total_windows == 0:
             raise ValueError("无有效样本，请检查数据过滤条件（is_trading/时间范围/特征列）")
 
@@ -482,7 +645,8 @@ if __name__ == "__main__":
     print(f"seq_len: {cfg.seq_len}, num_classes: {len(cfg.bins)+1}")
     scaler = ds.scaler_stats
     if scaler is not None and hasattr(scaler, "per_code_stats"):
-        print(f"[PerCode Stats] per-code {len(scaler.per_code_stats)} 股, mask {getattr(scaler, 'mask_cols', [])}")
+        per_code_stats = cast(Any, scaler).per_code_stats
+        print(f"[PerCode Stats] per-code {len(per_code_stats)} 股, mask {getattr(scaler, 'mask_cols', [])}")
         print(f"x stats: mean={x.float().mean().item():.3f} std={x.float().std().item():.3f} min={x.min().item():.3f} max={x.max().item():.3f}")
         print(f"x has_nan: {torch.isnan(x).any().item()}, has_inf: {torch.isinf(x).any().item()}")
 
