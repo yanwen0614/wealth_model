@@ -20,6 +20,8 @@ dependencies = [
     "torchvision==0.27.0 ; sys_platform != 'win32' and sys_platform != 'linux'",
     # 工具
     "tqdm>=4.67",
+    # 回测核心（本地路径依赖，见 [tool.uv.sources]；quant/cnn/goal 共享）
+    "backtest-core",
 ]
 
 [project.optional-dependencies]
@@ -98,6 +100,7 @@ torchvision = [
 ]
 amazingdata = { path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" }
 tgw = { path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" }
+backtest-core = { path = "../backtest-core", editable = true }
 
 [dependency-groups]
 dev = [
