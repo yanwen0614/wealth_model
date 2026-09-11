@@ -1,11 +1,11 @@
-import torch
+
 import numpy as np
+import torch
 from sklearn.metrics import confusion_matrix
-from typing import Tuple, List
 
 
 def calculate_latter_half_metrics(labels: torch.Tensor, preds: torch.Tensor,
-                                 num_classes: int = 52) -> Tuple[float, float]:
+                                 num_classes: int = 52) -> tuple[float, float]:
     """
     将 52 类映射为二分类（前半=跌=0，后半=涨=1），
     计算"涨"类的精确率和召回率，评估模型预测涨跌方向的准确性。
@@ -44,7 +44,7 @@ def calculate_latter_half_metrics(labels: torch.Tensor, preds: torch.Tensor,
 
 
 def calculate_all_class_metrics(labels: torch.Tensor, preds: torch.Tensor, 
-                               num_classes: int = 6) -> Tuple[List[float], List[float]]:
+                               num_classes: int = 6) -> tuple[list[float], list[float]]:
     """
     计算所有类别的精确率和召回率
     

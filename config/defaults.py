@@ -1,7 +1,7 @@
 """训练入口共用的默认配置。"""
 
-from copy import deepcopy
 import sys
+from copy import deepcopy
 
 import numpy as np
 import torch

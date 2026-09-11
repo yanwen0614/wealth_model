@@ -1,9 +1,8 @@
-import numpy as np
-import torch
-import torch.nn as nn
 import logging
 
-
+import numpy as np
+import torch
+from torch import nn
 
 
 class EarlyStopping:

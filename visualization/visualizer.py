@@ -1,10 +1,9 @@
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import logging
-from typing import List
 
-
+import matplotlib.pyplot as plt
 
 
 class Visualizer:
@@ -13,8 +12,8 @@ class Visualizer:
     职责：负责训练结果的可视化展示
     """
     @staticmethod
-    def plot_training_curves(train_losses: List[float], val_losses: List[float],
-                            train_accs: List[float], val_accs: List[float],
+    def plot_training_curves(train_losses: list[float], val_losses: list[float],
+                            train_accs: list[float], val_accs: list[float],
                             save_path: str = 'training_curve.png'):
         """
         绘制训练曲线
