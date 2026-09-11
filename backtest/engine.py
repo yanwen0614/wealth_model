@@ -9,6 +9,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import NamedTuple
 
+# OLD_LOGIC（阶段 3 N01）：旧 rolling/target 引擎路径标记，默认入口不再调用；
+# 复用须经 backtest.legacy.guard_legacy_disabled 显式 opt-in。
+OLD_LOGIC = True
+
 import numpy as np
 
 LIMIT_BASE = 1.098
