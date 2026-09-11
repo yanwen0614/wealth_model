@@ -87,6 +87,14 @@ class _FakeAccount:
         return self._cash + sum((pos.market_value or 0.0) for pos in self._positions.values())
 
 
+class _FakeMarket:
+    """MarketView 形状替身：本策略不消费行情（`del market`），仅满足协议类型。"""
+
+    def get_bars(self, instrument_ids, start, end, interval="1d"):
+        ids = [instrument_ids] if isinstance(instrument_ids, str) else list(instrument_ids)
+        return {code: [] for code in ids}
+
+
 class _TempDirMixin(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="b04_")
@@ -103,7 +111,7 @@ class TestTopNSelection(_TempDirMixin):
         strategy = _make_strategy(self, codes, scores=[0.01, 0.05, 0.03, 0.04])
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(), market=None)
+                                     account=_FakeAccount(), market=_FakeMarket())
         buys = [order for order in orders if order.side is Side.BUY]
         self.assertEqual([order.instrument_id for order in buys], ["000002", "000004"])
 
@@ -114,7 +122,7 @@ class TestTopNSelection(_TempDirMixin):
         strategy = _make_strategy(self, codes, scores=[0.02, 0.02, 0.02], top_n=2)
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(), market=None)
+                                     account=_FakeAccount(), market=_FakeMarket())
         buys = [order for order in orders if order.side is Side.BUY]
         self.assertEqual([order.instrument_id for order in buys], ["000001", "000002"])
 
@@ -127,7 +135,7 @@ class TestEqualWeightCash(_TempDirMixin):
         strategy = _make_strategy(self, codes, scores=[0.01, 0.05, 0.03, 0.04])
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(cash=100000.0), market=None)
+                                     account=_FakeAccount(cash=100000.0), market=_FakeMarket())
         buys = [order for order in orders if order.side is Side.BUY]
         self.assertEqual(len(buys), 2)
         for order in buys:
@@ -142,7 +150,7 @@ class TestEqualWeightCash(_TempDirMixin):
         held = {"000002": _FakePosition(300, 10.0)}
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(positions=held), market=None)
+                                     account=_FakeAccount(positions=held), market=_FakeMarket())
         self.assertEqual([order.instrument_id for order in orders if order.side is Side.BUY], ["000004"])
         self.assertEqual([order for order in orders if order.side is Side.SELL], [])
 
@@ -152,7 +160,7 @@ class TestEqualWeightCash(_TempDirMixin):
         strategy = _make_strategy(self, ["000001", "000002"])
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(cash=0.0), market=None)
+                                     account=_FakeAccount(cash=0.0), market=_FakeMarket())
         self.assertEqual([order for order in orders if order.side is Side.BUY], [])
 
 
@@ -165,7 +173,7 @@ class TestExitSells(_TempDirMixin):
         held = {"000001": _FakePosition(500, 10.0), "000002": _FakePosition(200, 10.0)}
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(positions=held), market=None)
+                                     account=_FakeAccount(positions=held), market=_FakeMarket())
         sells = [order for order in orders if order.side is Side.SELL]
         self.assertEqual([(order.instrument_id, order.shares) for order in sells], [("000001", 500)])
         self.assertEqual(orders[0].side, Side.SELL)
@@ -177,7 +185,7 @@ class TestExitSells(_TempDirMixin):
         held = {"000003": _FakePosition(100, 10.0), "000002": _FakePosition(100, 10.0)}
         orders = strategy.orders_for(trading_date=date(2025, 3, 3),
                                      signal_time=strategy.signal_time_for(date(2025, 3, 3)),
-                                     account=_FakeAccount(positions=held), market=None)
+                                     account=_FakeAccount(positions=held), market=_FakeMarket())
         sells = [order for order in orders if order.side is Side.SELL]
         self.assertEqual([order.instrument_id for order in sells], ["000002", "000003"])
 
@@ -188,7 +196,7 @@ class TestFailFastDate(_TempDirMixin):
         with self.assertRaises(ValueError):
             strategy.orders_for(trading_date=date(2025, 4, 1),
                                 signal_time=strategy.signal_time_for(date(2025, 4, 1)),
-                                account=_FakeAccount(), market=None)
+                                account=_FakeAccount(), market=_FakeMarket())
 
     def test_signal_time_date_mismatch_raises(self):
         import datetime
@@ -199,7 +207,7 @@ class TestFailFastDate(_TempDirMixin):
         bad_time = datetime.datetime(2025, 3, 4, 15, 0, tzinfo=SHANGHAI_TZ)
         with self.assertRaises(ValueError):
             strategy.orders_for(trading_date=date(2025, 3, 3), signal_time=bad_time,
-                                account=_FakeAccount(), market=None)
+                                account=_FakeAccount(), market=_FakeMarket())
 
 
 class TestNoShadowAccount(_TempDirMixin):
@@ -212,7 +220,7 @@ class TestNoShadowAccount(_TempDirMixin):
         strategy = _make_strategy(self, codes)
         kwargs = {"trading_date": date(2025, 3, 3),
                   "signal_time": strategy.signal_time_for(date(2025, 3, 3)),
-                  "account": _FakeAccount(), "market": None}
+                  "account": _FakeAccount(), "market": _FakeMarket()}
         first = strategy.orders_for(**kwargs)
         second = strategy.orders_for(**kwargs)
         self.assertEqual(first, second)

@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import torch
 
-from data.dataset import ParquetDataset, ParquetDataConfig
+from data.dataset import ParquetDataConfig, ParquetDataset
 
 
 def _mock_ds(seq_len=60, feat=45):

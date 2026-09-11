@@ -7,8 +7,7 @@ import unittest
 
 import numpy as np
 
-from backtest.engine import (BacktestResult, benchmark_nav, limit_up_mask, nav_metrics, run_backtest,
-                             run_backtest_target)
+from backtest.engine import BacktestResult, benchmark_nav, limit_up_mask, nav_metrics, run_backtest, run_backtest_target
 
 NET = 1.1 * 0.9985 - 1
 
