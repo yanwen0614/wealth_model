@@ -25,10 +25,11 @@ class TestDataSchemaLabels(unittest.TestCase):
         self.assertIs(dataset._future_ret_open_open, _future_ret_open_open)
 
     def test_default_feature_columns_feed_45_dimensional_output(self):
-        columns = BASE_COLUMNS + EXPORT_FACTORS
+        columns = (BASE_COLUMNS + EXPORT_FACTORS
+                   + [c for c in APPROVED_RAW_FEATURES if c not in EXPORT_FACTORS and c not in BASE_COLUMNS])
         selected = _default_feature_cols(columns)
-        # 默认输入为 39 列，per_code scaler 追加 6 个 mask，输出为 F=45。
-        self.assertEqual(len(selected), 39)
+        # 默认输入为 51 列，per_code scaler 追加 6 个 mask，输出为 F=57。
+        self.assertEqual(len(selected), 51)
         self.assertNotIn("close", selected)
         self.assertNotIn("return_1d", selected)
         self.assertEqual(selected, APPROVED_RAW_FEATURES)
