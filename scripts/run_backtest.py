@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,9 +24,9 @@ plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
 plt.rcParams["axes.unicode_minus"] = False
 
 from backtest.cnn_adapter.runner import run_cnn_backtest
-from backtest.engine import benchmark_nav, nav_metrics, run_backtest, run_backtest_target  # noqa: E402
+from backtest.engine import benchmark_nav, nav_metrics, run_backtest, run_backtest_target
 from backtest.legacy import LegacyBacktestDisabledError, guard_legacy_disabled, mark_legacy_result
-from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays  # noqa: E402
+from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays
 
 logger = logging.getLogger(__name__)
 

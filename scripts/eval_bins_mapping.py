@@ -16,11 +16,10 @@
 """
 from __future__ import annotations
 
-import os
-import sys
 import argparse
 import glob
 import json
+import os
 import random
 
 import numpy as np
