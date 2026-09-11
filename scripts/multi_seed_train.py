@@ -11,6 +11,7 @@ import logging
 import os
 import random
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -106,11 +107,11 @@ def run_single_seed(seed: int, cfg: dict, scaler_stats=None):
             val_end=cfg['VAL_END'],
             scaler_path=cfg['SCALER_PATH'],
         )
-        logger.info(f"训练集: {len(train_loader.dataset):,}")
+        logger.info(f"训练集: {len(cast(Any, train_loader.dataset)):,}")
         if val_loader:
-            logger.info(f"验证集: {len(val_loader.dataset):,}")
+            logger.info(f"验证集: {len(cast(Any, val_loader.dataset)):,}")
 
-        actual_fn = train_loader.dataset.num_features
+        actual_fn = cast(Any, train_loader.dataset).num_features
         model_cfg_dict = dict(cfg['CNNTransformerConfig'])
         if actual_fn != model_cfg_dict['featurenum']:
             logger.warning(f"特征校正: {model_cfg_dict['featurenum']} -> {actual_fn}")
@@ -123,8 +124,8 @@ def run_single_seed(seed: int, cfg: dict, scaler_stats=None):
         local_cfg = dict(cfg)
         local_cfg["run_log_dir"] = run_log_dir
         trainer = Trainer(model=model, config=local_cfg, train_loader=train_loader,
-                          val_loader=val_loader, criterion=criterion,
-                          optimizer=optimizer, scheduler=scheduler)
+                          val_loader=cast(Any, val_loader), criterion=criterion,
+                          optimizer=optimizer, scheduler=cast(Any, scheduler))
         trainer.train()
 
         train_losses, val_losses, train_accs, val_accs = trainer.get_training_history()

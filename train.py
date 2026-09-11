@@ -15,8 +15,11 @@
 旧模型 checkpoint 不属于当前加载契约，历史结果仅供参考且不可与当前口径混用。
 """
 import argparse
+import json
 import logging
 import os
+from typing import Any, cast
+
 import numpy as np
 import torch
 
@@ -147,19 +150,19 @@ def main():
         val_end=val_end,
         scaler_path=config['SCALER_PATH'],
     )
-    logger.info(f"训练集样本数: {len(train_loader.dataset):,}")
+    logger.info(f"训练集样本数: {len(cast(Any, train_loader.dataset)):,}")
     if val_loader:
-        logger.info(f"验证集样本数: {len(val_loader.dataset):,}")
+        logger.info(f"验证集样本数: {len(cast(Any, val_loader.dataset)):,}")
     # test 集日志（不入 Trainer，仅记录，待 2026 数据增量后可用）
     if test_start:
         logger.info(f"测试集预留: {test_start} ~ {test_end or '至今'} (当前 parquet 至 2025-12-31，暂为空)")
 
     # 校验 val 非空（新切分 2025下半年样本较少，smoke 20股可能仅 ~2k 窗口）
-    if val_loader and len(val_loader.dataset) == 0:
+    if val_loader and len(cast(Any, val_loader.dataset)) == 0:
         logger.warning("验证集为空，请检查 VAL_START/VAL_END 与 max_codes 组合")
 
     # 自动校正 featurenum
-    actual_featurenum = train_loader.dataset.num_features
+    actual_featurenum = cast(Any, train_loader.dataset).num_features
     if actual_featurenum != config["CNNTransformerConfig"]['featurenum']:
         logger.warning(f"特征数不匹配: config={config['CNNTransformerConfig']['featurenum']} vs 实际={actual_featurenum}，已自动校正")
         config["CNNTransformerConfig"]['featurenum'] = actual_featurenum
@@ -194,10 +197,10 @@ def main():
         model=model,
         config=config,
         train_loader=train_loader,
-        val_loader=val_loader,
+        val_loader=cast(Any, val_loader),
         criterion=criterion,
         optimizer=optimizer,
-        scheduler=scheduler,
+        scheduler=cast(Any, scheduler),
     )
     try:
         trainer.train()
@@ -214,7 +217,7 @@ def main():
             val_losses, val_accs = [], []
         Visualizer.plot_training_curves(train_losses, val_losses, train_accs, val_accs, save_path=vis_path)
         logger.info(f"训练曲线已保存: {vis_path}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - 可视化失败不阻塞训练收尾
         logger.warning(f"可视化失败: {e}")
 
     # 加载最佳模型
