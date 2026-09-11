@@ -32,13 +32,14 @@ import glob
 import json
 import os
 import sys
-import time
+from typing import cast
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 from config import DEFAULT_BINS, DEFAULT_PARQUET
 from data.dataset import ParquetDataConfig, ParquetDataset
@@ -46,7 +47,6 @@ from data.scaler import PerCodeGroupedScaler
 from data.schema import validate_prediction_cache_keys
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
-from torch.utils.data import DataLoader
 from scripts.build_ohlc_path import build_ohlc_path
 
 CENTERS52 = np.linspace(-0.255, 0.255, 52)
@@ -61,7 +61,7 @@ def resolve_latest_checkpoint() -> str:
     return cands[-1]
 
 
-def load_checkpoint_config(ckpt_path: str) -> dict:
+def load_checkpoint_config(ckpt_path: str) -> tuple[dict, dict]:
     cfg_path = os.path.join(os.path.dirname(ckpt_path), "config.json")
     if not os.path.exists(cfg_path):
         raise FileNotFoundError(f"checkpoint 同目录缺少 config.json: {cfg_path}")
@@ -85,9 +85,9 @@ def build_scaler(
             if cached.fitted:
                 print(f"[pipeline] 复用已存在的 scaler: {scaler_path}")
                 return cached
-        except Exception:
-            print(f"[pipeline] scaler 损坏，准备重拟合")
-    print(f"[pipeline] 拟合 PerCodeGroupedScaler ...")
+        except Exception:  # noqa: BLE001 - scaler 损坏时重拟合，宽捕获是预期的
+            print("[pipeline] scaler 损坏，准备重拟合")
+    print("[pipeline] 拟合 PerCodeGroupedScaler ...")
     ds = ParquetDataset(
         ParquetDataConfig(
             parquet_path=parquet,
@@ -104,6 +104,7 @@ def build_scaler(
         )
     )
     os.makedirs(os.path.dirname(os.path.abspath(scaler_path)), exist_ok=True)
+    assert ds.scaler_stats is not None  # training role 必拟合 scaler
     ds.scaler_stats.save(scaler_path)
     print(f"[pipeline] scaler saved: {scaler_path}")
     return ds.scaler_stats
@@ -177,7 +178,7 @@ def run_inference(
                 logits, ret_pred = out
                 all_ret_pred.append(ret_pred.cpu().numpy())
             else:
-                logits = out
+                logits = cast(torch.Tensor, out)
             probs = torch.softmax(logits, dim=1).cpu().numpy()
             all_probs.append(probs)
             # 真值和日期
@@ -222,7 +223,6 @@ def main():
     max_codes = args.max_codes if args.max_codes > 0 else None
     scaler_path = args.scaler_path if args.scaler_path else run_cfg.get("SCALER_PATH", "logs/scaler_per_code.pkl")
 
-    ts = time.strftime("%Y%m%d_%H%M%S")
     preds_out = args.preds_out or f"logs/preds_{ckpt_stem}_{end}.npz"
     ohlc_out = args.ohlc_out or f"logs/ohlc_path_{start}_{end}.npz"
 
@@ -256,7 +256,7 @@ def main():
         np.savez(ohlc_out, **ohlc)
         print(f"[pipeline] ohlc path saved: {ohlc_out} ({len(ohlc['codes']):,} rows)")
 
-    print(f"[pipeline] 完成")
+    print("[pipeline] 完成")
 
 
 def parse_args():
