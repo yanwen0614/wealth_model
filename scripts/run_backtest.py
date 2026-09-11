@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
 import os
 import time
 import matplotlib
@@ -23,8 +24,10 @@ plt.rcParams["axes.unicode_minus"] = False
 
 from backtest.cnn_adapter.runner import run_cnn_backtest
 from backtest.engine import benchmark_nav, nav_metrics, run_backtest, run_backtest_target  # noqa: E402
-from backtest.legacy import LegacyBacktestDisabledError, guard_legacy_disabled
+from backtest.legacy import LegacyBacktestDisabledError, guard_legacy_disabled, mark_legacy_result
 from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 OHLC_KEYS = ("codes", "dates", "t_close", "open_t1", "open_t6")
 FULL_OHLC_KEYS = ("codes", "dates", "open_m", "close_m")
@@ -114,8 +117,10 @@ def save_holdings_csv(holdings: np.ndarray, out_csv: str) -> None:
                         float(h["ret_gross"]), float(h["ret_net"])])
 
 
-# OLD_LOGIC（阶段 3 N01）：以下旧 rolling/target 体默认不可达；
-# 复用须 --legacy + CNN_ALLOW_LEGACY=1 双显式 opt-in（target 模式尚无 adapter 等价，转 N02）。
+# OLD_LOGIC（阶段 3 N01/N02）：以下旧 rolling/target 体默认不可达；
+# 复用须 --legacy + CNN_ALLOW_LEGACY=1 双显式 opt-in。N02 决策：target 仅
+# legacy（opt-in 可达），不设 adapter 等价——target 滞后带/费用感知需新策
+# 略类 + runner 接线（>100 行），超收口范围；rolling 已由 adapter 覆盖。
 def run_legacy_rolling(args, out_dir: str) -> None:
     guard_legacy_disabled("scripts/run_backtest:rolling")
     if not args.ohlc:
@@ -156,6 +161,7 @@ def run_legacy_rolling(args, out_dir: str) -> None:
     png_path = os.path.join(out_dir, "nav_curves.png")
     plt.savefig(png_path, dpi=150, bbox_inches="tight")
     plt.close()
+    metrics = mark_legacy_result(metrics)
     metrics_path = os.path.join(out_dir, "metrics.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
@@ -165,6 +171,7 @@ def run_legacy_rolling(args, out_dir: str) -> None:
 
 
 def run_target_mode(args, out_dir: str) -> None:
+    """旧目标持仓体（N02 决策：仅 legacy opt-in 可达，不设 adapter 等价）。"""
     guard_legacy_disabled("scripts/run_backtest:target")
     if not args.full_ohlc:
         raise ValueError("--mode target 需要 --full_ohlc 指定全期日频矩阵 npz（build_ohlc_path.py --full 产出）")
@@ -205,6 +212,7 @@ def run_target_mode(args, out_dir: str) -> None:
     png_path = os.path.join(out_dir, "nav_curves.png")
     plt.savefig(png_path, dpi=150, bbox_inches="tight")
     plt.close()
+    metrics = mark_legacy_result(metrics)
     metrics_path = os.path.join(out_dir, "metrics.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
@@ -224,6 +232,8 @@ def main(argv=None):
     if args.legacy:
         run_legacy_rolling(args, out_dir)
         return
+    if args.ohlc is not None:
+        logger.warning("--ohlc 在默认 adapter 路径被忽略（adapter 直读 --parquet 真实 OHLC）；旧路径表请走 --legacy")
     if not args.parquet:
         raise ValueError("默认 adapter 路径需要 --parquet 指定 train parquet；旧 ohlc 路径表请走 --legacy")
     run_adapter_rolling(args, out_dir)
@@ -243,7 +253,7 @@ def parse_args(argv=None):
     p.add_argument("--cost_rate", type=float, default=0.0015)
     p.add_argument("--horizon", type=int, default=5)
     p.add_argument("--mode", choices=["rolling", "target"], default="rolling",
-                   help="rolling=订单引擎等权（默认）；target=旧目标持仓（仅 --legacy，无 adapter 等价）")
+                   help="rolling=订单引擎等权（默认）；target=旧目标持仓（仅 legacy opt-in 可达，N02 决策无 adapter 等价）")
     p.add_argument("--target_size", type=int, default=100, help="target 模式：买入带 rank<=target_size")
     p.add_argument("--sell_buffer", type=int, default=200, help="target 模式：rank>target_size+sell_buffer 才卖出")
     p.add_argument("--min_edge", type=float, default=0.01, help="target 模式：费用感知过滤的预测分数阈值")

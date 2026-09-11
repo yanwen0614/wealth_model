@@ -8,6 +8,8 @@ set -euo pipefail
 CKPT="${1:-}"
 START="${2:-2026-01-01}"
 END="${3:-2026-08-31}"
+# N02：adapter 直读 train parquet 真实 OHLC，默认与 config.DEFAULT_PARQUET 一致，可第 4 参覆盖
+PARQUET="${4:-data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet}"
 
 CKPT_ARG=""
 if [ -n "$CKPT" ]; then
@@ -38,16 +40,24 @@ fi
 PREDS="logs/preds_${CKPT_BASENAME}_${END}.npz"
 OHLC="logs/ohlc_path_${START}_${END}.npz"
 
-# Step 2: TopN rolling 回测
+# Step 2: TopN rolling 回测（N02：默认 adapter 口径，需 --parquet；旧 ohlc 路径表仅 --legacy，见下注释）
 echo ""
 echo "[Step 2] TopN rolling 回测"
 uv run --project . python -m scripts.run_backtest \
   --preds "$PREDS" \
-  --ohlc "$OHLC" \
+  --parquet "$PARQUET" \
   --topn 5 10 20 50 100 \
-  --cost_rate 0.0015 \
-  --horizon 5 \
   --out_dir "logs/backtest_${CKPT_BASENAME}_${START}_${END}"
+
+# 旧 rolling 口径（legacy opt-in，另需 CNN_ALLOW_LEGACY=1；保留备查，默认不跑）：
+# uv run --project . python -m scripts.run_backtest \
+#   --preds "$PREDS" \
+#   --ohlc "$OHLC" \
+#   --legacy \
+#   --topn 5 10 20 50 100 \
+#   --cost_rate 0.0015 \
+#   --horizon 5 \
+#   --out_dir "logs/backtest_${CKPT_BASENAME}_${START}_${END}"
 
 # Step 3: TopN 收益折线
 echo ""
