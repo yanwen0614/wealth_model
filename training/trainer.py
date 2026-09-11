@@ -1,17 +1,17 @@
 import logging
 import os
-from typing import List, Optional, Tuple
+from typing import Any, cast
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from sklearn.metrics import confusion_matrix
+from torch import nn, optim
 from tqdm import tqdm
 
 from .batch import _compute_loss, _unpack_batch, _unpack_outputs
 from .early_stopping import EarlyStopping
 from .metrics import calculate_latter_half_metrics
 from .reporting import save_confusion_matrix
+
 
 class Trainer:
     """
@@ -28,8 +28,8 @@ class Trainer:
         scheduler: 学习率调度器（可选）
     """
     def __init__(self, model: nn.Module, config: dict,
-                 train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader = None,
-                 criterion: nn.Module = None, optimizer: optim.Optimizer = None, scheduler: optim.lr_scheduler._LRScheduler = None):
+                 train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader | None = None,
+                 criterion: nn.Module | None = None, optimizer: optim.Optimizer | None = None, scheduler: optim.lr_scheduler._LRScheduler | None = None):
         self.model = model
         self.config = config
         self.train_loader = train_loader
@@ -64,6 +64,7 @@ class Trainer:
         # 设备配置
         self.device = config.get('DEVICE', 'cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
+        assert self.criterion is not None, "Trainer 需要 criterion（损失函数）"
         self.criterion.to(self.device)
         
         # 日志记录器
@@ -72,7 +73,7 @@ class Trainer:
         # 全局步数计数器
         self.global_step = 0
         
-    def train_epoch(self, epoch: int) -> Tuple[float, float]:
+    def train_epoch(self, epoch: int) -> tuple[float, float]:
         """
         训练一个epoch
         
@@ -83,6 +84,7 @@ class Trainer:
             avg_train_loss: 平均训练损失
             avg_train_acc: 平均训练准确率
         """
+        assert self.optimizer is not None, "训练需要 optimizer"
         self.model.train()
         train_loss = 0.0
         train_correct = 0
@@ -114,7 +116,7 @@ class Trainer:
         avg_train_acc = train_correct / train_total
         return avg_train_loss, avg_train_acc
     
-    def validate_epoch(self) -> Tuple[float, float, torch.Tensor, torch.Tensor]:
+    def validate_epoch(self) -> tuple[float, float, torch.Tensor, torch.Tensor]:
         """
         验证一个epoch
         
@@ -124,6 +126,7 @@ class Trainer:
             all_labels: 所有真实标签
             all_preds: 所有预测标签
         """
+        assert self.val_loader is not None, "验证需要 val_loader"
         self.model.eval()
         val_loss = 0.0 
         val_correct = 0
@@ -154,9 +157,10 @@ class Trainer:
         
         return avg_val_loss, avg_val_acc, all_labels, all_preds
     
-    def print_confusion_matrix(self, labels: torch.Tensor, preds: torch.Tensor, epoch: Optional[int] = None):
+    def print_confusion_matrix(self, labels: torch.Tensor, preds: torch.Tensor, epoch: int | None = None):
         """打印并保存混淆矩阵。"""
         num_classes = self.config.get('num_classes')
+        assert isinstance(num_classes, int), "config 缺少 num_classes(int)"
         class_names = [str(i) for i in range(num_classes)]
         cm = confusion_matrix(labels.numpy(), preds.numpy(), labels=range(num_classes))
         
@@ -171,22 +175,23 @@ class Trainer:
             self.logger.info(row_str)
         self.save_confusion_matrix(cm, class_names, epoch)
 
-    def save_confusion_matrix(self, cm, class_names, epoch: Optional[int] = None):
+    def save_confusion_matrix(self, cm, class_names, epoch: int | None = None):
         """保留旧接口，实际输出由 reporting 模块完成。"""
         save_confusion_matrix(cm, class_names, self.config.get('run_log_dir', './logs'), epoch, self.logger)
     
     def train(self):
         """执行完整的训练流程"""
         # 检查验证集是否存在
-        has_val = self.val_loader is not None
-        if len(self.train_loader.dataset) == 0:
+        val_loader = self.val_loader
+        has_val = val_loader is not None
+        if len(cast(Any, self.train_loader.dataset)) == 0:
             raise ValueError("训练集为空，无法开始训练")
-        if has_val and len(self.val_loader.dataset) == 0:
+        if val_loader is not None and len(cast(Any, val_loader.dataset)) == 0:
             raise ValueError("验证集为空，无法执行验证")
-        
+
         # 打印训练基本信息
-        train_size = len(self.train_loader.dataset)
-        val_size = len(self.val_loader.dataset) if has_val else 0
+        train_size = len(cast(Any, self.train_loader.dataset))
+        val_size = len(cast(Any, val_loader.dataset)) if val_loader is not None else 0
         self.logger.info(f"开始训练（总样本数: {train_size + val_size}, "
               f"训练集: {train_size}, 验证集: {val_size}）")
         
@@ -202,6 +207,7 @@ class Trainer:
             self.train_accs.append(avg_train_acc)
             
             # 打印当前学习率
+            assert self.optimizer is not None, "训练需要 optimizer"
             current_lr = self.optimizer.param_groups[0]['lr']
             self.logger.info(f"Epoch [{epoch+1}/{epochs}], 当前学习率: {current_lr:.6f}")
             
@@ -212,21 +218,21 @@ class Trainer:
                 self.val_accs.append(avg_val_acc)
                 
                 # 更新最佳验证结果
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                if avg_val_acc > best_val_acc:
-                    best_val_acc = avg_val_acc
+                best_val_loss = min(best_val_loss, avg_val_loss)
+                best_val_acc = max(best_val_acc, avg_val_acc)
                 
                 if (epoch + 1) % 1 == 0:
                     self.print_confusion_matrix(all_labels, all_preds, epoch)
                 
                 # 计算并打印涨跌二分类指标
                 try:
+                    num_classes_metric = self.config.get('num_classes')
+                    assert isinstance(num_classes_metric, int), "config 缺少 num_classes(int)"
                     precision, recall = calculate_latter_half_metrics(
-                        all_labels, all_preds, num_classes=self.config.get('num_classes')
+                        all_labels, all_preds, num_classes=num_classes_metric
                     )
                     self.logger.info(f'涨跌二分类 - 涨类精确率: {precision:.4f}, 涨类召回率: {recall:.4f}')
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - 指标计算失败只告警，不中断训练
                     self.logger.warning(f'计算后半类指标失败: {e}')
                 
                 # 打印epoch结果（包含最佳验证结果）
@@ -274,7 +280,7 @@ class Trainer:
             if hasattr(self.scheduler, 'get_last_lr'):
                 self.logger.info(f"当前学习率：{self.scheduler.get_last_lr()}")
 
-    def get_training_history(self) -> Tuple[List[float], List[float], List[float], List[float]]:
+    def get_training_history(self) -> tuple[list[float], list[float], list[float], list[float]]:
         """
         获取训练历史记录
         

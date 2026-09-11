@@ -1,8 +1,9 @@
+import json
 import logging
 import os
 import sys
 from datetime import datetime
-import json
+
 
 class LoggerManager:
     """
@@ -17,8 +18,8 @@ class LoggerManager:
         self.log_dir = log_dir
         self.config = config
         
-        # 创建带时间戳的日志文件夹
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 创建带时间戳的日志文件夹（沿用本地 wall time，run 目录命名契约）
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # noqa: DTZ005 - run 目录时间戳刻意用本地时间
         self.run_log_dir = os.path.join(log_dir, f"run_{self.timestamp}")
         
         # 创建日志目录
@@ -68,7 +69,7 @@ class LoggerManager:
         with open(config_file, 'w', encoding='utf-8') as f:
             f.write(json.dumps(self.config,indent=2,ensure_ascii=False))
         
-        logging.info(f"配置已保存到: {config_file}")
+        logging.getLogger(__name__).info(f"配置已保存到: {config_file}")
     
     def get_log_dir(self) -> str:
         """获取当前运行的日志目录"""
