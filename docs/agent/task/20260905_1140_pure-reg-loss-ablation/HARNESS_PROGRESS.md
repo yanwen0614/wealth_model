@@ -19,7 +19,7 @@
 ## 执行详情
 
 ### T01: PureRegLoss + TDD 单测
-- **状态**：pending
+- **状态**：done
 - **依赖**：无
 - **文件**：
   - criterion/pure_reg_loss.py (create)
@@ -31,11 +31,11 @@
   3. getattr(criterion, 'is_dual_head') is True；4 参调用返回 tuple[0] 为标量
   4. 最小 ModelConfig CNNTransformer forward [B,10,20] -> (logits[B,52], ret_pred[B])；backward 后 logits.grad is None、ret_pred.grad 非 None
   5. pytest tests/unit/criterion/ 全绿；ruff check 通过
-- **Quality Gate 结果**：-
+- **Quality Gate 结果**：PASS
 - **修复轮次**：0/2
 
 ### T02: train.py 接线 PURE_REG
-- **状态**：pending
+- **状态**：done
 - **依赖**：T01
 - **文件**：
   - train.py (modify)
@@ -44,11 +44,11 @@
   1. py_compile 通过；--help 含 --pure_reg
   2. 冒烟 run 目录 config.json 含 "PURE_REG": true（LoggerManager 自动持久化，log_manager/__init__.py:65-70）
   3. 不带 --pure_reg 时走原 EMD/Dual 分支，行为与现状一致
-- **Quality Gate 结果**：-
+- **Quality Gate 结果**：PASS
 - **修复轮次**：0/2
 
 ### T03: eval_bins_mapping.py pure_reg 分支
-- **状态**：pending
+- **状态**：done
 - **依赖**：T01（联调依赖 T02）
 - **文件**：
   - scripts/eval_bins_mapping.py (modify)
@@ -57,11 +57,11 @@
   1. py_compile 通过
   2. base/dual 旧 ckpt（config.json 无 PURE_REG 键）评估结果与改动前一致
   3. pure_reg ckpt 下 exp_ret=ret_pred 路径生效，report 含 mode 与"分类头未训练"标注
-- **Quality Gate 结果**：-
+- **Quality Gate 结果**：PASS
 - **修复轮次**：0/2
 
 ### T04: 冒烟 + eval 端到端验证
-- **状态**：pending
+- **状态**：done
 - **依赖**：T01, T02, T03
 - **文件**：无（运行验证；日志落 logs/）
 - **预估行数**：0
@@ -70,7 +70,7 @@
   2. uv run --project . python scripts/eval_bins_mapping.py --checkpoint <pure_reg_run>/best_model.pth --max_codes 200 走 ret_pred 路径
   3. base（run_20260905_025222）/ dual（run_20260905_025822）ckpt 对照评估数值一致（回归不破坏）
   4. ruff check . 通过；52acc ≈ 1/52 佐证分类头未训练
-- **Quality Gate 结果**：-
+- **Quality Gate 结果**：PASS
 - **修复轮次**：0/2
 
 ## 环境注意事项（全程有效）
