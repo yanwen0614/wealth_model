@@ -39,6 +39,9 @@ DEFAULT_BINS11_PCT = [-15, -10, -6, -3, -1, 1, 3, 6, 10, 15]  # 百分制，内�
 DEFAULT_BINS13_PCT = [-15, -10, -7, -4, -2, -0.5, 0.5, 2, 4, 7, 10, 15]  # 百分制，内部/100
 DEFAULT_BINS52 = DEFAULT_BINS
 NUM_CLASSES52 = 52
+# T04: eval scaler 回退默认（T03 Quality Gate MEDIUM 移交：旧 logs/rolling/ 路径已废弃）。
+ROLLING_DEFAULT_SCALER_PATH = "logs/rolling_e4/scaler_rolling_e4.pkl"
+PER_CODE_DEFAULT_SCALER_PATH = "logs/scaler_per_code.pkl"
 
 
 @dataclass(frozen=True)
@@ -76,8 +79,17 @@ def _load_run_config(ckpt_path: str) -> dict:
         return json.load(file)
 
 
-def load_eval_preprocessing(ckpt_path: str, scaler_override: str | None = None) -> EvalPreprocessing:
-    """Load the checkpoint's preprocessing contract before constructing evaluation data."""
+def load_eval_preprocessing(
+    ckpt_path: str, scaler_override: str | None = None, scope_override: str | None = None
+) -> EvalPreprocessing:
+    """Load the checkpoint's preprocessing contract before constructing evaluation data.
+
+    scaler 解析优先级（T04）：① checkpoint 同目录 config.json 的
+    preprocessing.state_path/scaler_path/SCALER_PATH（+顶层 SCALER_PATH，以此为准）；
+    ② 无元数据时 rolling 默认 ``logs/rolling_e4/scaler_rolling_e4.pkl``（旧
+    logs/rolling/ 路径已废弃）；③ per_code 沿用既有默认。异 scope
+    （state scope != 请求 scope）直接抛错，不静默复用。
+    """
     run_cfg = _load_run_config(ckpt_path)
     metadata = run_cfg.get("preprocessing") or {}
     mode = metadata.get("mode", "per_code")
@@ -87,17 +99,25 @@ def load_eval_preprocessing(ckpt_path: str, scaler_override: str | None = None) 
     if feature_cols is not None:
         feature_cols = list(feature_cols)
     configured_path = (
-        metadata.get("state_path") or metadata.get("scaler_path") or run_cfg.get("SCALER_PATH")
-        or ("logs/rolling/scaler_rolling.pkl" if mode == "rolling" else "logs/scaler_per_code.pkl")
+        metadata.get("state_path") or metadata.get("scaler_path") or metadata.get("SCALER_PATH")
+        or run_cfg.get("SCALER_PATH")
+        or (ROLLING_DEFAULT_SCALER_PATH if mode == "rolling" else PER_CODE_DEFAULT_SCALER_PATH)
     )
     scaler_path = scaler_override or configured_path
     if scaler_path and not os.path.isabs(scaler_path):
         candidates = [scaler_path, os.path.join(os.path.dirname(ckpt_path), scaler_path)]
         scaler_path = next((path for path in candidates if os.path.exists(path)), candidates[0])
+    if scope_override is not None and scope_override not in {"e2", "e3", "e4"}:
+        raise ValueError(f"rolling scope 非法: {scope_override!r}，仅支持 e2/e3/e4")
     if mode == "rolling":
         if not scaler_path or not os.path.exists(scaler_path):
             raise FileNotFoundError(f"rolling evaluation 必须提供 rolling state: {scaler_path}")
         state = _RollingDatasetState.load(scaler_path)
+        requested_scope = scope_override or metadata.get("scope")
+        if requested_scope is not None and state.normalizer.config.scope != requested_scope:
+            raise ValueError(
+                f"rolling scope 不匹配：state={state.normalizer.config.scope!r} vs 请求={requested_scope!r}"
+            )
         if metadata.get("schema_identity") and metadata["schema_identity"] != state.identity_hash:
             raise ValueError("rolling schema identity 不匹配")
         if feature_cols is not None and feature_cols != state.feature_cols:
@@ -175,6 +195,16 @@ def spearman(x: np.ndarray, y: np.ndarray) -> float:
     return float((xr * yr).sum() / denom) if denom > 0 else 0.0
 
 
+def _resolve_eval_rolling_scope(preprocessing: EvalPreprocessing) -> str:
+    """评估 rolling_scope：优先 checkpoint preprocessing.scope，其次 state 自带 scope，默认 e4。"""
+    metadata = preprocessing.run_config.get("preprocessing") or {}
+    if metadata.get("scope"):
+        return str(metadata["scope"])
+    normalizer = getattr(preprocessing.scaler_stats, "normalizer", None)
+    scope = getattr(getattr(normalizer, "config", None), "scope", None)
+    return str(scope) if scope else "e4"
+
+
 def build_val_loader(args, preprocessing: EvalPreprocessing) -> tuple[DataLoader, ParquetDataset]:
     cfg = ParquetDataConfig(
         parquet_path=args.parquet,
@@ -184,6 +214,7 @@ def build_val_loader(args, preprocessing: EvalPreprocessing) -> tuple[DataLoader
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         normalize=preprocessing.mode,
+        rolling_scope=(_resolve_eval_rolling_scope(preprocessing) if preprocessing.mode == "rolling" else "e4"),
         max_codes=(args.max_codes if args.max_codes > 0 else None),
         max_windows_per_code=args.max_windows_per_code,
         start_date=args.val_start,
@@ -212,7 +243,7 @@ def evaluate(args) -> dict:
     set_seed(args.seed)
     ckpt_path = resolve_checkpoint(args.checkpoint)
     print(f"[eval] checkpoint: {ckpt_path}")
-    preprocessing = load_eval_preprocessing(ckpt_path, args.scaler_path)
+    preprocessing = load_eval_preprocessing(ckpt_path, args.scaler_path, getattr(args, "rolling_scope", None))
     mc = load_run_model_cfg(ckpt_path)
     validate_preprocessing_dimensions(preprocessing, mc, args.seq_len, args.feature_cols)
     pure_reg = bool(mc.get("pure_reg", False))
@@ -446,6 +477,8 @@ def parse_args():
     p.add_argument("--max_codes", type=int, default=20)
     p.add_argument("--max_windows_per_code", type=int, default=None)
     p.add_argument("--scaler_path", default=None, help="覆盖 checkpoint metadata 中的 scaler/state 路径")
+    p.add_argument("--rolling_scope", choices=["e2", "e3", "e4"], default=None,
+                   help="仅 rolling：声明期望 scope，与 state/metadata 不一致直接报错（不静默复用）")
     p.add_argument("--allow_fit_scaler", action="store_true",
                    help="保留旧 CLI 兼容；正式 evaluation 始终禁止临时 fit scaler")
     p.add_argument("--bins11_pct", type=float, nargs="+", default=None, help="T02 冻结 bins（百分制），默认 [-15..15]")

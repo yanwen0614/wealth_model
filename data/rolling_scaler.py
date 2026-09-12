@@ -39,6 +39,13 @@ ROLLING_VOLUME_FEATURES = (
 ROLLING_WINSOR_FEATURES = ("macd",) + ROLLING_VOLATILITY_FEATURES + ROLLING_VOLUME_FEATURES
 ROLLING_FEATURES = ROLLING_PRICE_FEATURES + ROLLING_WINSOR_FEATURES
 
+ROLLING_SCOPE_FEATURES: dict[str, tuple[str, ...]] = {
+    "e2": ROLLING_PRICE_FEATURES + ("macd",),
+    "e3": ROLLING_PRICE_FEATURES + ("macd",) + ROLLING_VOLATILITY_FEATURES,
+    "e4": ROLLING_FEATURES,
+}
+ROLLING_SCOPES = tuple(ROLLING_SCOPE_FEATURES)
+
 
 @dataclass(frozen=True)
 class RollingNormalizationConfig:
@@ -51,6 +58,7 @@ class RollingNormalizationConfig:
     upper_percentile: float = 99.0
     robust_clip: float = 5.0
     add_g9_masks: bool = True
+    scope: str = "e4"
 
     def __post_init__(self) -> None:
         if self.window < 1 or not 1 <= self.min_periods <= self.window:
@@ -59,6 +67,8 @@ class RollingNormalizationConfig:
             raise ValueError("rolling kernel 只支持 include_current_t=True")
         if not 0 <= self.lower_percentile < self.upper_percentile <= 100:
             raise ValueError("rolling percentile 配置无效")
+        if self.scope not in ROLLING_SCOPE_FEATURES:
+            raise ValueError(f"rolling scope 非法: {self.scope!r}，仅支持 e2/e3/e4")
 
 
 @dataclass
@@ -90,15 +100,24 @@ class RollingNormalizer:
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
         return hashlib.sha256(encoded).hexdigest()
 
+    def scope_features(self) -> tuple[str, ...]:
+        return ROLLING_SCOPE_FEATURES[self.config.scope]
+
     def transform_config_digest(self) -> str:
+        # scope 经“解析后的子集列组”进入 digest：e4 解析结果与旧常量逐字一致，
+        # payload 字节级不变（E4 回归零风险）；e2/e3 子集更小故 digest 互异。
+        # config 明细剔除 scope 后参与哈希，避免默认值漂移。
+        config_dict = asdict(self.config)
+        config_dict.pop("scope", None)
+        scope_subset = set(self.scope_features())
         payload = {
             "mode": ROLLING_MODE,
             "version": ROLLING_TRANSFORM_VERSION,
-            "config": asdict(self.config),
+            "config": config_dict,
             "price_strategy": "relative_then_rolling_median_iqr_clip",
             "winsor_strategy": "rolling_percentile_clip",
-            "rolling_price_features": ROLLING_PRICE_FEATURES,
-            "rolling_winsor_features": ROLLING_WINSOR_FEATURES,
+            "rolling_price_features": [c for c in ROLLING_PRICE_FEATURES if c in scope_subset],
+            "rolling_winsor_features": [c for c in ROLLING_WINSOR_FEATURES if c in scope_subset],
             "g9_strategy": "finite_fill_zero_clip_0_1_plus_observed_mask",
             "other_strategy": "finite_or_zero_passthrough_without_frozen_transform",
         }
@@ -116,6 +135,8 @@ class RollingNormalizer:
             "window": self.config.window,
             "min_periods": self.config.min_periods,
             "include_current_t": self.config.include_current_t,
+            "scope": self.config.scope,
+            "rolling_scope_features": list(self.scope_features()),
             "raw_feature_cols": list(feature_cols),
             "output_feature_cols": self.output_feature_cols(feature_cols),
             "helper_cols": list(ROLLING_HELPER_COLUMNS),
@@ -194,11 +215,12 @@ class RollingNormalizer:
         output_count = len(self.output_feature_cols(feature_cols))
         fallback_mask = np.zeros((row_count, output_count), dtype=bool)
         audit = RollingAudit(total_rows=row_count)
+        rolling_cols = set(self.scope_features())
 
         for column_index, column in enumerate(feature_cols):
             raw = values[:, column_index]
             audit.missing_values += int((~np.isfinite(raw)).sum())
-            if column in ROLLING_FEATURES:
+            if column in rolling_cols:
                 prepared = self._relative(raw, helper) if (
                     column in ROLLING_PRICE_FEATURES or column == "macd"
                 ) else raw.copy()

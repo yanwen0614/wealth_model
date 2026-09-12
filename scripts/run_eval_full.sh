@@ -4,6 +4,24 @@ set -euo pipefail
 # 用法：bash scripts/run_eval_full.sh [checkpoint_path] [start_date] [end_date]
 #
 # 默认取最新 checkpoint，评估 2026-01-01 ~ 2026-08-31，执行 TopN rolling 回测 + TopN 曲线
+#
+# T04 scope 说明：本脚本已按 checkpoint 通用（位置参数 $1 直接透传 pipeline），
+#   无需 --scope 硬改——checkpoint 路径本身已按 scope 隔离
+#   （logs/rolling_e2|e3|e4/<run>/best_model.pth），pipeline 从同目录 config.json 的
+#   preprocessing.mode/scope 解析并校验，异 scope 直接报错。per_code 路径零改动。
+#
+# E1–E4 评估命令：
+#   bash scripts/run_eval_full.sh logs/rolling_e2/<run>/best_model.pth 2026-01-01 2026-08-31
+#   bash scripts/run_eval_full.sh logs/rolling_e3/<run>/best_model.pth 2026-01-01 2026-08-31
+#   bash scripts/run_eval_full.sh logs/rolling_e4/<run>/best_model.pth 2026-01-01 2026-08-31
+#
+# 五项取数（见 run_eval_pipeline.py 模块 docstring）：
+#   IC/ICIR → eval 报告 rank_ic_exp_vs_true + xs_rank_ic_*；
+#   top-bottom → top10_bottom10_spread + xs_spread_*；
+#   换手成本后收益 → Step 2 metrics.json（--cost_rate 0.0015，双边一次性扣减）；
+#   fallback 比例 → jq .preprocessing.rolling_audit.<run>/config.json（fallback_ratio）；
+#   winsor 统计 → 同一 rolling_audit（constant_iqr_values/missing_values）。
+# 回测口径（引用 backtest/engine.py，不重实现）：T 日决策→T+1 open 买→T+6 open 卖（horizon=5）。
 
 CKPT="${1:-}"
 START="${2:-2026-01-01}"

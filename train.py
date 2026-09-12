@@ -19,6 +19,7 @@ import argparse
 import json
 import logging
 import os
+import random
 from typing import Any, cast
 
 import numpy as np
@@ -34,14 +35,44 @@ from visualization import Visualizer
 config = make_default_config()
 
 
-def configure_preprocessing(config: dict, normalize: str) -> None:
+ROLLING_SCOPES = ("e2", "e3", "e4")
+
+
+def set_all_seeds(seed: int):
+    """设置所有随机种子，确保可复现（random/numpy/torch/cuda）。"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def configure_preprocessing(config: dict, normalize: str, rolling_scope: str = "e4") -> None:
     """Apply the explicit preprocessing choice and isolate its artifacts."""
     if normalize not in {"per_code", "rolling"}:
         raise ValueError(f"未知 normalize: {normalize}")
     config["NORMALIZE"] = normalize
     if normalize == "rolling":
-        config["SCALER_PATH"] = "logs/rolling/scaler_rolling.pkl"
-        config["LOG_DIR"] = "./logs/rolling"
+        if rolling_scope not in ROLLING_SCOPES:
+            raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 e2/e3/e4")
+        config["ROLLING_SCOPE"] = rolling_scope
+        config["SCALER_PATH"] = f"logs/rolling_{rolling_scope}/scaler_rolling_{rolling_scope}.pkl"
+        config["LOG_DIR"] = f"./logs/rolling_{rolling_scope}"
+
+
+def load_rolling_state(path: str, expected_scope: str | None = None) -> _RollingDatasetState:
+    """加载 rolling preprocessing state，异 scope 直接拒绝（不做静默复用）。
+
+    scope 校验复用 T02 `_RollingDatasetState.validate` 的 scope 参数语义：
+    state 自带 scope 必须 == 请求 scope，否则抛 ValueError。
+    """
+    state = _RollingDatasetState.load(path)
+    if expected_scope is not None and state.normalizer.config.scope != expected_scope:
+        raise ValueError(
+            f"rolling scope 不匹配：state={state.normalizer.config.scope!r} vs 请求={expected_scope!r}"
+        )
+    return state
 
 
 def build_preprocessing_metadata(
@@ -51,22 +82,32 @@ def build_preprocessing_metadata(
     featurenum: int,
     seq_len: int,
     num_classes: int,
+    scope: str | None = None,
+    seed: int | None = None,
 ) -> dict:
     """Build JSON-safe run metadata and reject incompatible model dimensions."""
     if featurenum != 69:
         raise ValueError(f"preprocessing metadata featurenum 不匹配: {featurenum}, expected 69")
-    metadata = {
+    metadata: dict = {
         "mode": mode,
         "featurenum": featurenum,
         "seq_len": seq_len,
         "num_classes": num_classes,
         "feature_cols": list(feature_cols),
     }
+    if seed is not None:
+        metadata["seed"] = seed
     if mode == "rolling":
         if not isinstance(preprocessing_state, _RollingDatasetState):
             raise TypeError("rolling metadata 缺少 RollingDatasetState")
         if feature_cols != preprocessing_state.feature_cols:
             raise ValueError("rolling metadata feature schema 不匹配")
+        state_scope = preprocessing_state.normalizer.config.scope
+        if scope is not None and state_scope != scope:
+            raise ValueError(f"rolling scope 不匹配：state={state_scope!r} vs 请求={scope!r}")
+        metadata["scope"] = state_scope
+        metadata["digest"] = preprocessing_state.normalizer.transform_config_digest()
+        metadata["identity"] = preprocessing_state.identity_hash
         metadata["schema_manifest"] = preprocessing_state.schema_manifest
         metadata["schema_identity"] = preprocessing_state.identity_hash
     return metadata
@@ -97,11 +138,16 @@ def parse_args():
     p.add_argument("--lambda_reg", type=float, default=config['LAMBDA_REG'], help="双头回归项权重 λ")
     p.add_argument("--huber_delta", type=float, default=config['HUBER_DELTA'], help="Huber delta")
     p.add_argument("--normalize", choices=["per_code", "rolling"], default=config["NORMALIZE"])
+    p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=config["ROLLING_SCOPE"],
+                   help="rolling 子集范围 e2/e3/e4（默认 e4=全量；非 rolling 时忽略）")
+    p.add_argument("--seed", type=int, default=config["SEED"], help="全局随机种子（默认 42）")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    # seed 必须在数据构建与模型初始化之前生效，保证 E1–E4 同一种子可复现
+    set_all_seeds(args.seed)
     if args.smoke:
         args.max_codes = 20
         args.epochs = 1
@@ -131,7 +177,9 @@ def main():
     config['PURE_REG'] = args.pure_reg
     config['LAMBDA_REG'] = args.lambda_reg
     config['HUBER_DELTA'] = args.huber_delta
-    configure_preprocessing(config, args.normalize)
+    config['SEED'] = args.seed
+    config['ROLLING_SCOPE'] = args.rolling_scope
+    configure_preprocessing(config, args.normalize, args.rolling_scope)
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
     config["CNNTransformerConfig"]['seq_len'] = config['SEQ_LEN']
@@ -164,6 +212,7 @@ def main():
         batch_size=config['BATCH_SIZE'],
         num_workers=config['NUM_WORKERS'],
         normalize=config['NORMALIZE'],
+        rolling_scope=config['ROLLING_SCOPE'],
         scaler_path=config['SCALER_PATH'],
         max_codes=config['MAX_CODES'],
         max_windows_per_code=config['MAX_WINDOWS_PER_CODE'],
@@ -203,11 +252,14 @@ def main():
             train_dataset.num_features,
             config["SEQ_LEN"],
             config["CNNTransformerConfig"]["num_classes"],
+            scope=config["ROLLING_SCOPE"],
+            seed=config["SEED"],
         )
         preprocessing_metadata["rolling_audit"] = dict(train_dataset.rolling_audit)
     else:
         preprocessing_metadata = {
             "mode": "per_code",
+            "seed": config.get("SEED"),
             "schema_manifest": getattr(dataset_scaler, "identity_manifest", None),
             "schema_identity": getattr(dataset_scaler, "identity_hash", None),
             "feature_cols": list(train_dataset.feature_cols),

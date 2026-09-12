@@ -62,6 +62,8 @@ class ParquetDataConfig:
     split_date: str | None = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
     # 归一化：per_code | none | rolling（rolling 必须显式 opt-in）
     normalize: str = "per_code"
+    # rolling 子集范围：e2 | e3 | e4（默认 e4 = 现有 16 列全量；仅 rolling 分支使用）
+    rolling_scope: str = "e4"
     # 归一化统计文件（训练集拟合后保存，供验证集复用）
     scaler_path: str | None = None
     # NaN 填充策略（仅 none 分支使用，per_code 内置分级填充）
@@ -114,8 +116,12 @@ class _RollingDatasetState:
         encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
         return hashlib.sha256(encoded).hexdigest()
 
-    def validate(self, source_manifest: dict, feature_cols: list[str]) -> None:
+    def validate(self, source_manifest: dict, feature_cols: list[str], scope: str | None = None) -> None:
         self.fallback_scaler.validate_requested_schema(feature_cols, self.fallback_scaler.add_mask)
+        if scope is not None and self.normalizer.config.scope != scope:
+            raise ValueError(
+                f"rolling scope 不匹配：state={self.normalizer.config.scope!r} vs 请求={scope!r}"
+            )
         requested_manifest = {
             "preprocessing": self.schema_manifest,
             "source": json.loads(json.dumps(source_manifest, sort_keys=True)),
@@ -327,7 +333,7 @@ class ParquetDataset(Dataset):
             self.feature_cols_out = list(self.feature_cols)
             self.num_features = len(self.feature_cols_out)
         elif cfg.normalize == "rolling":
-            normalizer = RollingNormalizer()
+            normalizer = RollingNormalizer(RollingNormalizationConfig(scope=cfg.rolling_scope))
             source_identity = dict(expected_identity)
             source_identity.pop("fit_start_date", None)
             source_identity.pop("fit_end_date", None)
@@ -348,7 +354,7 @@ class ParquetDataset(Dataset):
             else:
                 if not isinstance(scaler_stats, _RollingDatasetState):
                     raise ValueError("外部 scaler_stats 必须是匹配的 rolling identity")
-                scaler_stats.validate(source_identity, feature_cols)
+                scaler_stats.validate(source_identity, feature_cols, scope=cfg.rolling_scope)
                 self.scaler_stats = scaler_stats
             self.feature_cols_out = normalizer.output_feature_cols(feature_cols)
             self.num_features = len(self.feature_cols_out)

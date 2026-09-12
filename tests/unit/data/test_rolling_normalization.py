@@ -11,8 +11,12 @@ import pyarrow.parquet as pq
 
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
 from data.rolling_scaler import (
+    ROLLING_FEATURES,
     ROLLING_MODE,
+    ROLLING_PRICE_FEATURES,
+    ROLLING_SCOPE_FEATURES,
     ROLLING_VERSION,
+    ROLLING_VOLATILITY_FEATURES,
     RollingNormalizationConfig,
     RollingNormalizer,
 )
@@ -280,6 +284,126 @@ class TestRollingNormalization(unittest.TestCase):
         self.assertIsNot(train.rolling_audit, val.rolling_audit)
 
 
+class TestRollingScopeSubsets(unittest.TestCase):
+    CURRENT_DIGEST = "1983dd5c74b5136e7f033d06619630c8dc689248388333f3cb82683aff941e0d"
+
+    def test_default_digest_equals_current_e4_value(self):
+        self.assertEqual(RollingNormalizer().transform_config_digest(), self.CURRENT_DIGEST)
+        self.assertEqual(
+            RollingNormalizer(RollingNormalizationConfig(scope="e4")).transform_config_digest(),
+            self.CURRENT_DIGEST,
+        )
+
+    def test_scope_digests_are_pairwise_different(self):
+        digests = {
+            scope: RollingNormalizer(RollingNormalizationConfig(scope=scope)).transform_config_digest()
+            for scope in ("e2", "e3", "e4")
+        }
+        self.assertEqual(len(set(digests.values())), 3)
+
+    def test_invalid_scope_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            RollingNormalizationConfig(scope="e5")
+
+    def test_scope_presets_cover_expected_columns(self):
+        self.assertEqual(len(ROLLING_SCOPE_FEATURES["e2"]), 10)
+        self.assertEqual(len(ROLLING_SCOPE_FEATURES["e3"]), 13)
+        self.assertEqual(tuple(ROLLING_SCOPE_FEATURES["e4"]), tuple(ROLLING_FEATURES))
+        self.assertEqual(
+            tuple(ROLLING_SCOPE_FEATURES["e2"]),
+            tuple(ROLLING_PRICE_FEATURES) + ("macd",),
+        )
+        self.assertEqual(
+            tuple(ROLLING_SCOPE_FEATURES["e3"]),
+            tuple(ROLLING_SCOPE_FEATURES["e2"]) + tuple(ROLLING_VOLATILITY_FEATURES),
+        )
+
+    def test_schema_manifest_contains_scope(self):
+        manifest = RollingNormalizer(RollingNormalizationConfig(scope="e2")).schema_manifest(
+            ["open", "volatility_5d"]
+        )
+        self.assertEqual(manifest["scope"], "e2")
+
+    def test_e2_nonsubset_column_is_passthrough(self):
+        normalizer = RollingNormalizer(RollingNormalizationConfig(scope="e2"))
+        raw = np.array([2.5, np.nan, -3.0, np.inf])
+        result = normalizer.transform_code(raw[:, None], ["volatility_5d"], np.ones(4))
+        np.testing.assert_array_equal(result.values[:, 0], [2.5, 0.0, -3.0, 0.0])
+        self.assertEqual(result.audit.passthrough_values, 4)
+
+    def test_output_feature_cols_still_69(self):
+        normalizer = RollingNormalizer(RollingNormalizationConfig(scope="e2"))
+        self.assertEqual(len(normalizer.output_feature_cols(APPROVED_RAW_FEATURES)), 69)
+
+
+class TestDatasetScope(unittest.TestCase):
+    def test_mismatched_scope_state_raises_on_validate(self):
+        frame = _dataset_frame(180)
+        with _parquet(frame) as path:
+            train = ParquetDataset(ParquetDataConfig(
+                parquet_path=path, seq_len=10, horizon=2, normalize="rolling",
+                rolling_scope="e2", feature_cols=["open", "high", "low"],
+                end_date="2025-04-30", num_workers=0,
+            ))
+            with self.assertRaises(ValueError):
+                ParquetDataset(ParquetDataConfig(
+                    parquet_path=path, seq_len=10, horizon=2, normalize="rolling",
+                    rolling_scope="e3", feature_cols=["open", "high", "low"],
+                    start_date="2025-05-01", role="validation", num_workers=0,
+                ), scaler_stats=train.scaler_stats)
+
+    def test_same_scope_reuse_passes_and_propagates_scope(self):
+        frame = _dataset_frame(180)
+        with _parquet(frame) as path:
+            train = ParquetDataset(ParquetDataConfig(
+                parquet_path=path, seq_len=10, horizon=2, normalize="rolling",
+                rolling_scope="e2", feature_cols=["open", "high", "low"],
+                end_date="2025-04-30", num_workers=0,
+            ))
+            val = ParquetDataset(ParquetDataConfig(
+                parquet_path=path, seq_len=10, horizon=2, normalize="rolling",
+                rolling_scope="e2", feature_cols=["open", "high", "low"],
+                start_date="2025-05-01", role="validation", num_workers=0,
+            ), scaler_stats=train.scaler_stats)
+        train_state = cast(_RollingDatasetState, train.scaler_stats)
+        self.assertEqual(train_state.normalizer.config.scope, "e2")
+        self.assertEqual(train_state.schema_manifest["scope"], "e2")
+        self.assertGreater(len(val), 0)
+
+    def test_each_scope_output_num_features_69(self):
+        for scope in ("e2", "e3", "e4"):
+            with self.subTest(scope=scope):
+                frame = _approved_frame(150)
+                with _parquet(frame) as path:
+                    ds = ParquetDataset(ParquetDataConfig(
+                        parquet_path=path, seq_len=10, horizon=2, normalize="rolling",
+                        rolling_scope=scope, feature_cols=list(APPROVED_RAW_FEATURES),
+                        num_workers=0,
+                    ))
+                self.assertEqual(ds.num_features, 69)
+                self.assertEqual(tuple(ds[0][0].shape), (69, 10))
+                state = cast(_RollingDatasetState, ds.scaler_stats)
+                self.assertEqual(state.normalizer.config.scope, scope)
+
+    def test_invalid_scope_raises_value_error(self):
+        frame = _dataset_frame(150)
+        with _parquet(frame) as path, self.assertRaises(ValueError):
+            ParquetDataset(ParquetDataConfig(
+                parquet_path=path, seq_len=10, horizon=2, normalize="rolling",
+                rolling_scope="e5", feature_cols=["open", "high", "low"],
+                num_workers=0,
+            ))
+
+    def test_per_code_ignores_rolling_scope(self):
+        frame = _dataset_frame(150)
+        with _parquet(frame) as path:
+            ds = ParquetDataset(ParquetDataConfig(
+                parquet_path=path, seq_len=10, horizon=2,
+                rolling_scope="e2", feature_cols=["open", "high", "low"], num_workers=0,
+            ))
+        self.assertEqual(ds.config.normalize, "per_code")
+
+
 def _dataset_frame(rows: int) -> pd.DataFrame:
     return pd.DataFrame({
         "code": ["000001"] * rows,
@@ -288,6 +412,17 @@ def _dataset_frame(rows: int) -> pd.DataFrame:
         "low": np.arange(0.5, rows + 0.5), "close": np.arange(1.5, rows + 1.5),
         "is_trading": True,
     })
+
+
+def _approved_frame(rows: int) -> pd.DataFrame:
+    frame = _dataset_frame(rows)
+    rng = np.random.default_rng(42)
+    base = np.arange(1.0, rows + 1)
+    for column in APPROVED_RAW_FEATURES:
+        if column in frame.columns:
+            continue
+        frame[column] = base * (1.0 + 0.01 * rng.standard_normal(rows)) + 5.0
+    return frame
 
 
 def _rolling_state(normalizer, source, feature_cols):

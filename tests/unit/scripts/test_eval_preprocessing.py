@@ -97,6 +97,59 @@ class TestEvalPreprocessing(unittest.TestCase):
             )
 
 
+class TestEvalPreprocessingT04(unittest.TestCase):
+    """T04: eval scaler 回退优先级 + 异 scope 拒绝（MEDIUM 移交：旧 logs/rolling/ 默认已废弃）。"""
+
+    def _checkpoint(self, config):
+        directory = Path(tempfile.mkdtemp())
+        checkpoint = directory / "best_model.pth"
+        checkpoint.touch()
+        (directory / "config.json").write_text(json.dumps(config), encoding="utf-8")
+        return str(checkpoint)
+
+    def test_rolling_fallback_without_metadata_uses_e4_path(self):
+        checkpoint = self._checkpoint({"preprocessing": {"mode": "rolling"}})
+        with self.assertRaises(FileNotFoundError) as ctx:
+            evaluation.load_eval_preprocessing(checkpoint)
+        self.assertIn("logs/rolling_e4/scaler_rolling_e4.pkl", str(ctx.exception))
+        self.assertNotIn("logs/rolling/scaler_rolling.pkl", str(ctx.exception))
+
+    def test_metadata_scaler_path_takes_priority_over_top_level(self):
+        from data.rolling_scaler import RollingNormalizationConfig
+
+        with tempfile.NamedTemporaryFile(suffix=".pkl") as state_file:
+            state = _rolling_state_scope(RollingNormalizationConfig(scope="e4"))
+            state.save(state_file.name)
+            checkpoint = self._checkpoint({
+                "SCALER_PATH": "/nonexistent/top_level_scaler.pkl",
+                "preprocessing": {"mode": "rolling", "feature_cols": state.feature_cols,
+                                  "schema_identity": state.identity_hash,
+                                  "SCALER_PATH": state_file.name},
+            })
+            result = evaluation.load_eval_preprocessing(checkpoint)
+            self.assertEqual(result.mode, "rolling")
+            self.assertEqual(result.scaler_path, state_file.name)
+
+    def test_mismatched_scope_raises_instead_of_silent_reuse(self):
+        from data.rolling_scaler import RollingNormalizationConfig
+
+        with tempfile.NamedTemporaryFile(suffix=".pkl") as state_file:
+            state = _rolling_state_scope(RollingNormalizationConfig(scope="e2"))
+            state.save(state_file.name)
+            bad_meta = self._checkpoint({"preprocessing": {
+                "mode": "rolling", "scope": "e3", "feature_cols": state.feature_cols,
+                "schema_identity": state.identity_hash, "state_path": state_file.name,
+            }})
+            with self.assertRaisesRegex(ValueError, "scope"):
+                evaluation.load_eval_preprocessing(bad_meta)
+            ok_meta = self._checkpoint({"preprocessing": {
+                "mode": "rolling", "scope": "e2", "feature_cols": state.feature_cols,
+                "schema_identity": state.identity_hash, "state_path": state_file.name,
+            }})
+            with self.assertRaisesRegex(ValueError, "scope"):
+                evaluation.load_eval_preprocessing(ok_meta, scope_override="e3")
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -112,3 +165,20 @@ def _rolling_state(source, feature_cols):
     fallback.fit(frame, feature_cols)
     fallback.set_identity({"dataset": "fallback", "feature_cols": feature_cols})
     return _RollingDatasetState(RollingNormalizer(), source, feature_cols, fallback)
+
+
+def _rolling_state_scope(config):
+    """T04 helper: 用给定 RollingNormalizationConfig（含 scope）构造最小 rolling state。"""
+    from data.schema import APPROVED_RAW_FEATURES as _APPROVED
+
+    features = list(_APPROVED)
+    frame = pd.DataFrame({
+        "code": ["x"] * 3,
+        "kline_time": pd.date_range("2025-01-01", periods=3),
+        "close": [1.0, 2.0, 3.0],
+        **{column: [1.0, 2.0, 3.0] for column in features},
+    })
+    fallback = PerCodeGroupedScaler()
+    fallback.fit(frame, features)
+    fallback.set_identity({"dataset": "fallback", "feature_cols": features})
+    return _RollingDatasetState(RollingNormalizer(config), {"dataset": "test"}, features, fallback)
