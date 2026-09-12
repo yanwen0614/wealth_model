@@ -53,3 +53,9 @@
 ## execution_order
 
 T01 → T02 → T03 → T04（串行，TDD 先单测后实现；全量训练 tmux 串行禁并行）。
+
+## E1–E4 全量执行（2026-09-12 21:00 启动）
+- tmux 会话 `cnn_e1e4`，E1(per_code)→E2→E3→E4 串行（&& 链，失败即停），seed=42，epochs=50，batch=256，num_workers=0，日志 /tmp/opencode/e1e4_chain.log。
+- E1 首跑 run_20260912_205911，训练集 10,485,087 行（scaler cache 无效→重拟合，符合预期）。
+- [2026-09-12 22:4x 中止] GTX 970M 实测 3.83it/s，单 epoch≈2.9h+验证，E1 跑 1h35m 仅 56%（22400/39659）。4 组串行需 1–2 周，不可接受，已 kill tmux cnn_e1e4。待切 RTX3070 重跑（见下）。
+- RTX3070 重跑清单：git pull（分支 feature/rolling-normalization-cnn，含 4cc9632）；确认数据路径（DEFAULT_PARQUET 按平台：win32 走 Z:，linux 走 data/test/train_data/ 软链接→../quant）；uv sync；logs/scaler_per_code.pkl 已是本轮新鲜拟合（F=69），identity 匹配可直接复用；起跑命令见 PLAN.md E1–E4 节（seed 42 / epochs 50 / batch 256 / num_workers 0，tmux cnn_e1e4 串行链）。
