@@ -33,6 +33,24 @@ _FEATURES_NAME = "features.npy"
 _META_NAME = "meta.json"
 _OK_NAME = ".ok"
 
+# 进程内按绝对路径共享的只读 memmap 注册表。
+# Windows spawn 训练下 groups 中每个 code 一个 _FeatureView；pickle 反序列化时若每个
+# 对象都 np.load 整个 features 文件，会创建数千个全量映射并耗尽映射/提交资源
+# （OSError WinError 1455）。注册表保证同一进程内同一路径只保留 1 个映射，所有视图共享。
+# 反序列化在 worker 内单线程执行，简单 dict 足够，无需额外锁。
+_MMAP_REGISTRY: dict[str, np.ndarray] = {}
+
+
+def _open_shared_mmap(path: str) -> np.ndarray:
+    """按绝对路径复用进程内唯一的只读 memmap；未命中则加载并登记。"""
+    key = os.path.abspath(str(path))
+    cached = _MMAP_REGISTRY.get(key)
+    if cached is not None:
+        return cached
+    mmap = np.load(key, mmap_mode="r")
+    _MMAP_REGISTRY[key] = mmap
+    return mmap
+
 
 def _canonical_digest(payload: Any) -> str:
     encoded = json.dumps(
@@ -171,7 +189,7 @@ class _FeatureView:
         self.num_features = int(state["num_features"])
         if "path" in state:
             self._path = state["path"]
-            self._mmap = np.load(state["path"], mmap_mode="r")
+            self._mmap = _open_shared_mmap(state["path"])
         else:
             self._path = None
             self._mmap = state["data"]

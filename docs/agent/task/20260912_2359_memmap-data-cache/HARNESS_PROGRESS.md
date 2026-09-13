@@ -14,6 +14,7 @@
 | T02 | dataset 接入与访问器兼容 | pass | T01 | full | true | +180 | PASS | 风险 high；fix 1 轮（CLI rolling + 训练命中 scaler）；含 audit 持久化 |
 | T03 | 训练入口/配置默认开启与 CLI 透传 | pass | T02 | full | true | +60 | PASS | 含真实 `--smoke`（SMOKE_EXIT=0，train/val key 隔离）|
 | T04 | 单测与文档同步 | pass | T01,T02,T03 | fast | true | +2 用例/文档 | PASS | 49 专项单测绿；README clear_cache 引用已修 |
+| T05 | 修复 `_FeatureView` worker 重复全量 mmap（WinError 1455） | pass | T01 | full | true | +~30 | PASS | 注册表去重；spawn 双进程 3000 视图共享 1 映射 |
 
 ## execution_order
 

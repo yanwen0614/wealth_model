@@ -381,5 +381,65 @@ class TestFeatureView(unittest.TestCase):
         self.assertLess(len(blob), self.view.n * self.view.num_features * 4)  # 未复制 float32 数据
 
 
+class TestFeatureViewSharedMmap(unittest.TestCase):
+    """修复 WinError 1455：同路径 memmap 进程内共享，pickle 往返不再重复全量映射。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.arr = np.arange(4000, dtype=np.float32).reshape(400, 10)
+        self.path = Path(self.tmp.name) / "features.npy"
+        np.save(self.path, self.arr)
+        self.mmap = np.load(self.path, mmap_mode="r")
+        self.addCleanup(_close_memmap, self.mmap)
+        self.view = _FeatureView(self.mmap, 0, 400, 10)
+        self.addCleanup(self._close_registry)
+        self._close_registry()
+
+    def _close_registry(self):
+        registry = getattr(feature_cache, "_MMAP_REGISTRY", None)
+        if not registry:
+            return
+        for mem in list(registry.values()):
+            _close_memmap(mem)
+        registry.clear()
+
+    def test_subviews_share_one_mmap_after_pickle(self):
+        a = self.view.subview(0, 150)
+        b = self.view.subview(150, 150)
+        a2 = pickle.loads(pickle.dumps(a))
+        b2 = pickle.loads(pickle.dumps(b))
+        self.assertIs(a2._mmap, b2._mmap)
+        self.assertIsInstance(a2._mmap, np.memmap)
+
+    def test_registry_loads_same_path_once(self):
+        registry = getattr(feature_cache, "_MMAP_REGISTRY", None)
+        if registry is not None:
+            registry.clear()
+        real_load = np.load
+        calls = []
+
+        def counting_load(*args, **kwargs):
+            calls.append(args[0] if args else kwargs.get("file"))
+            return real_load(*args, **kwargs)
+
+        views = [self.view.subview(i, 1) for i in range(6)]
+        with mock.patch.object(feature_cache.np, "load", side_effect=counting_load):
+            loaded = [pickle.loads(pickle.dumps(v)) for v in views]
+        self.assertEqual(len(calls), 1)
+        for obj in loaded:
+            self.assertIs(obj._mmap, loaded[0]._mmap)
+
+    def test_round_trip_values_unchanged(self):
+        view = self.view.subview(1, 200)
+        obj = pickle.loads(pickle.dumps(view))
+        expected = self.arr[1:201]
+        np.testing.assert_array_equal(np.asarray(obj), expected)
+        np.testing.assert_array_equal(np.asarray(obj[:3]), expected[:3])
+        np.testing.assert_array_equal(np.asarray(obj.T), expected.T)
+        self.assertEqual(obj.shape, (200, 10))
+        self.assertEqual(obj.dtype, np.float32)
+
+
 if __name__ == "__main__":
     unittest.main()
