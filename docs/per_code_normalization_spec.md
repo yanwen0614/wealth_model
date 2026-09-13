@@ -68,6 +68,7 @@
 - 持久化：`logs/scaler_per_code.pkl` 仅接受 `v3_per_code` payload，含 canonical JSON SHA-256 `identity_manifest/identity_hash` 与 `schema_manifest`。identity 绑定 resolved parquet path、size/mtime_ns、parquet row/schema digest、fit 日期、特征顺序、normalization/mask/filter/max_codes 和 transform digest。训练仅复用 identity 和 schema 完全一致的缓存，否则重拟合覆盖；旧/非法 payload 不会回退为原始 pickle。验证始终接收内存中的训练 scaler，绝不 fit。
 - **验证日期 context（frozen）**：有 `start_date` 时，每股只取一条此前最后 eligible `is_trading` 行参与 relative 变换；变换后立即移除，不能进入标签、group、window 或 index。rolling validation 另按第 5.1 节最多使用 251 个有效交易日。
 - 模型：默认 `featurenum=69`（51 raw feature + 18 G9 mask），由 `CNNTransformer` 使用（`train.py` 已有）
+- **缓存契约**：`data/feature_cache.py` 的 memmap 缓存只存归一化**之后**的 `features`（float32）与小数组，不改变本 spec 的归一化语义；缓存 key 纳入 scaler identity 与 seq_len/horizon/bins，命中即等价复建，验证集红线不变（仍复用训练 scaler、绝不重 fit）。
 
 ### 5.1 Rolling 实验边界
 

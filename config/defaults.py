@@ -1,7 +1,7 @@
 """训练入口共用的默认配置。"""
 
-from copy import deepcopy
 import sys
+from copy import deepcopy
 
 import numpy as np
 import torch
@@ -30,6 +30,7 @@ _BASE_CONFIG = {
     "HUBER_DELTA": 1.0, "scheduler": "ReduceLROnPlateau",
     "LEARNING_RATE": 1e-4, "WEIGHT_DECAY": 1e-5, "EPOCHS": 50,
     "PATIENCE": 10, "LOG_DIR": "./logs",
+    "CACHE_ENABLED": True, "CACHE_DIR": None, "REBUILD_CACHE": False,
 }
 
 _BASE_CONFIG["CNNTransformerConfig"] = {

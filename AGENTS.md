@@ -15,6 +15,13 @@ uv run --project . python train.py --smoke --num_workers 0
 uv run --project . python -m data.dataset --max_codes 10 --normalize per_code
 uv run --project . python -m data.dataset --max_codes 20
 
+# 数据缓存（train.py 默认开启）：关闭 / 重建新 generation / 指定根
+uv run --project . python train.py --smoke --num_workers 0 --no_cache
+uv run --project . python train.py --smoke --num_workers 0 --rebuild_cache
+uv run --project . python train.py --smoke --num_workers 0 --cache_dir D:/tmp/cnn_cache
+# 缓存单测（feature_cache + dataset 接入 + 配置默认）
+uv run --project . python -m unittest tests.unit.data.test_feature_cache tests.unit.data.test_dataset_cache tests.unit.config.test_config_defaults
+
 # 全量/分段
 uv run --project . python train.py --epochs 50 --batch_size 256 --num_workers 4
 uv run --project . python train.py --train_start 2013-01-01 --train_end 2025-06-30 --val_start 2025-07-01 --val_end 2025-12-31

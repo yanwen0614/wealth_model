@@ -63,6 +63,10 @@ def parse_args():
     p.add_argument("--lambda_reg", type=float, default=BASE_CONFIG['LAMBDA_REG'], help="回归权重基准 λ")
     p.add_argument("--lambda_jitter", type=float, default=BASE_CONFIG['LAMBDA_JITTER'], help="λ 随机波动 ± 范围")
     p.add_argument("--huber_delta", type=float, default=BASE_CONFIG['HUBER_DELTA'])
+    p.add_argument("--cache_dir", type=str, default=BASE_CONFIG['CACHE_DIR'],
+                   help="feature memmap 缓存根目录（默认 None：CNN_DATA_CACHE > 平台默认）")
+    p.add_argument("--no_cache", action="store_true", help="关闭 feature memmap 缓存，回到原内存路径")
+    p.add_argument("--rebuild_cache", action="store_true", help="跳过缓存命中，强制重建并写新 generation")
     return p.parse_args()
 
 
@@ -94,9 +98,13 @@ def run_single_seed(seed: int, cfg: dict, scaler_stats=None):
             batch_size=cfg['BATCH_SIZE'],
             num_workers=cfg['NUM_WORKERS'],
             normalize=cfg['NORMALIZE'],
+            rolling_scope=cfg['ROLLING_SCOPE'],
             scaler_path=cfg['SCALER_PATH'],
             max_codes=cfg['MAX_CODES'],
             max_windows_per_code=cfg['MAX_WINDOWS_PER_CODE'],
+            cache_enabled=cfg['CACHE_ENABLED'],
+            cache_dir=cfg['CACHE_DIR'],
+            rebuild_cache=cfg['REBUILD_CACHE'],
         )
         train_loader, val_loader, _ = ParquetDataset.create_dataloaders(
             parquet_cfg,
@@ -198,6 +206,8 @@ def main():
         'MAX_WINDOWS_PER_CODE': args.max_windows_per_code,
         'LAMBDA_REG': args.lambda_reg, 'LAMBDA_JITTER': args.lambda_jitter,
         'HUBER_DELTA': args.huber_delta, 'PURE_REG': args.pure_reg,
+        'CACHE_ENABLED': not args.no_cache, 'CACHE_DIR': args.cache_dir,
+        'REBUILD_CACHE': args.rebuild_cache,
     }
     cfg.update(overrides)
     cfg['num_classes'] = len(BASE_CONFIG['BINS']) + 1

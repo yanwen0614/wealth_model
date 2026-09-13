@@ -29,3 +29,4 @@ uv run --project . python train.py --smoke --num_workers 0
 - [2026-09-08 14:57] 精简 dependencies 从 30 到 7 个核心包，其余移入 optional-dependencies 分组
 - [2026-09-08 14:57] 默认 parquet 路径按平台切换：win32 用 Z: 路径，Linux 用本地 data/test/train_data/
 - [2026-09-08 16:02] per-code scaler 升级为 v3 identity/schema 校验；缺失值最终映射为 0，验证切分首日保留前一交易日仅作 relative context，未知 code 使用同一变换空间的全局 fallback。
+- [2026-09-12 23:05] E1–E4 对照实验在 RTX3070(win32) 以后台串行链启动：psmux 会话 `cnn_e1e4`，脚本 `%TEMP%\opencode\run_e1e4_chain.ps1`，日志 `%TEMP%\opencode\e1e4_chain.log`。命令 E1 per_code → E2/E3/E4 rolling --rolling_scope e{2,3,4}，统一 seed42/epochs50/batch256/workers0。RTX3070 实测 ~12.8 it/s，E1 单 epoch≈52min（远快于 970M 3.83it/s）。E1 启动时重新拟合 `logs/scaler_per_code.pkl`(F=69)。产物：E1→`logs/run_*/`，E2/E3/E4→`logs/rolling_e{2,3,4}/run_*/`。任务目录 `docs/agent/task/20260912_1943_rolling-e2e3-subset/`。

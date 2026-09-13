@@ -27,6 +27,7 @@ import torch
 
 from config.defaults import make_default_config
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
+from data.feature_cache import resolve_cache_root
 from log_manager import LoggerManager
 from training import Trainer
 from training.factory import build_criterion, build_model, build_optimizer_scheduler
@@ -113,7 +114,7 @@ def build_preprocessing_metadata(
     return metadata
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None):
     p = argparse.ArgumentParser(description="Parquet 直通训练")
     p.add_argument("--parquet", type=str, default=config['PARQUET_PATH'], help="parquet 路径")
     p.add_argument("--train_start", type=str, default=config['TRAIN_START'])
@@ -141,7 +142,20 @@ def parse_args():
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=config["ROLLING_SCOPE"],
                    help="rolling 子集范围 e2/e3/e4（默认 e4=全量；非 rolling 时忽略）")
     p.add_argument("--seed", type=int, default=config["SEED"], help="全局随机种子（默认 42）")
-    return p.parse_args()
+    p.add_argument("--cache_dir", type=str, default=config["CACHE_DIR"],
+                   help="feature memmap 缓存根目录（默认 None：CNN_DATA_CACHE > 平台默认）")
+    p.add_argument("--no_cache", action="store_true", help="关闭 feature memmap 缓存，回到原内存路径")
+    p.add_argument("--rebuild_cache", action="store_true", help="跳过缓存命中，强制重建并写新 generation")
+    return p.parse_args(argv)
+
+
+def build_cache_settings(args) -> dict:
+    """由 CLI 派生 CACHE_* 配置；--no_cache 时回到 cache_enabled=False 原内存路径。"""
+    return {
+        "CACHE_ENABLED": not args.no_cache,
+        "CACHE_DIR": args.cache_dir,
+        "REBUILD_CACHE": args.rebuild_cache,
+    }
 
 
 def main():
@@ -179,6 +193,7 @@ def main():
     config['HUBER_DELTA'] = args.huber_delta
     config['SEED'] = args.seed
     config['ROLLING_SCOPE'] = args.rolling_scope
+    config.update(build_cache_settings(args))
     configure_preprocessing(config, args.normalize, args.rolling_scope)
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
@@ -192,6 +207,10 @@ def main():
         print(f"  {k}: {v}")
     print(f"  BINS: len={len(config['BINS'])} {config['BINS'][:3]}...{config['BINS'][-3:]}")
     print(f"  CNNTransformerConfig: {config['CNNTransformerConfig']}")
+    if config["CACHE_ENABLED"]:
+        print(f"  CACHE: enabled, rebuild={config['REBUILD_CACHE']}, root={resolve_cache_root(config['CACHE_DIR'])}")
+    else:
+        print("  CACHE: disabled (原内存路径)")
     print("=" * 60)
 
     # 日志
@@ -216,6 +235,9 @@ def main():
         scaler_path=config['SCALER_PATH'],
         max_codes=config['MAX_CODES'],
         max_windows_per_code=config['MAX_WINDOWS_PER_CODE'],
+        cache_enabled=config['CACHE_ENABLED'],
+        cache_dir=config['CACHE_DIR'],
+        rebuild_cache=config['REBUILD_CACHE'],
     )
 
     # 若 smoke 模式，使用更小的时间范围以加速

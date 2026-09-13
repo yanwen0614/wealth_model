@@ -51,6 +51,24 @@ validation 可使用 split 前最多 251 个有效交易日 context，但 contex
 - `training/early_stopping.py: np.Inf -> np.inf`（numpy 2.0 移除）
 - `ReduceLROnPlateau(verbose=True)` 移除（torch 2.13 移除参数）
 
+### 2.4 数据缓存（memmap）
+
+- **位置**：`data/feature_cache.py`；缓存只落盘归一化**之后**的 `features`（float32）与小数组（标签/价格/时间），标签与价格保留真实精度。
+- **开关**：`ParquetDataConfig.cache_enabled=False` 保冻结（单测/CI/评估脚本零改动）；`train.py` 训练入口默认开启，可用 `--no_cache` 关闭、`--rebuild_cache` 跳过命中并写新 generation。
+- **缓存根解析优先级**：`--cache_dir` > 环境变量 `CNN_DATA_CACHE` > 平台默认。Linux：`$XDG_CACHE_HOME/cnn`（回退 `~/.cache/cnn`）；Windows：`%LOCALAPPDATA%\cnn\cache`（回退 `~/AppData/Local/cnn/cache`）。全程 `pathlib`，无盘符硬编码。
+- **key 隔离维度**：parquet identity（路径/size/mtime/行数/schema digest）+ `role`（train/val）+ `rolling_scope`（E2/E3/E4）+ scaler identity + `seq_len`/`horizon`/`max_windows_per_code`/`bins`，任一变化即不同 key，避免跨配置串缓存。
+- **原子发布**：先在 `tmp-<pid>-<uuid>` 内顺序写数据 → `meta` → `.ok`，再 flush/close → `os.replace` 发布为新 generation 目录；读侧只认 `.ok`，未写完或异 key 一律 miss。重复写入递增 `-g<gen>`，**绝不覆盖在用目录**。
+- **清理**：运行期不自动删除；清理只经显式模块级函数 `data.feature_cache.clear_cache(root, key)`。目录会随 generation 累积，需人工关注磁盘。
+- **与 scaler 红线的关系**：缓存命中不改变归一化语义，也不削弱 `data/AGENTS.md` 的验证集红线——validation 命中仍须传入训练 scaler 并校验 identity/schema，缺 scaler 或 identity 不符照常报错，绝不重 fit。
+- **验证命令**：
+  ```bash
+  uv run --project . python -m unittest tests.unit.data.test_feature_cache tests.unit.data.test_dataset_cache tests.unit.config.test_config_defaults
+  uv run --project . python -m unittest discover tests/unit
+  uv run --project . python -m data.dataset --max_codes 10 --normalize per_code
+  # 指定 parquet（win32 共享盘示例路径）
+  uv run --project . python -m data.dataset --parquet "Z:/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet" --max_codes 10 --normalize per_code
+  ```
+
 ## 3. 验证结果（冒烟）
 
 ### 3.1 命令
