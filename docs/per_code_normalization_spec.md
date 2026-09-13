@@ -66,7 +66,8 @@
 - Scaler：`data/scaler.py` `PerCodeGroupedScaler`，`fit(df)` 按 code 独立算 `median/IQR/winsor`，`transform_code(code, feat, cols, close)` 按 code 应用
 - 验证集复用：重叠 code 用训练集 per-code 统计，未见 code 使用已保存的全局兜底统计；验证集不得重新 fit
 - 持久化：`logs/scaler_per_code.pkl` 仅接受 `v3_per_code` payload，含 canonical JSON SHA-256 `identity_manifest/identity_hash` 与 `schema_manifest`。identity 绑定 resolved parquet path、size/mtime_ns、parquet row/schema digest、fit 日期、特征顺序、normalization/mask/filter/max_codes 和 transform digest。训练仅复用 identity 和 schema 完全一致的缓存，否则重拟合覆盖；旧/非法 payload 不会回退为原始 pickle。验证始终接收内存中的训练 scaler，绝不 fit。
-- **验证日期 context（frozen）**：有 `start_date` 时，每股只取一条此前最后 eligible `is_trading` 行参与 relative 变换；变换后立即移除，不能进入标签、group、window 或 index。rolling validation 另按第 5.1 节最多使用 251 个有效交易日。
+- **验证日期 context（frozen）**：有 `start_date` 时，每股取此前最多 `max(seq_len-1,1)` 条 eligible `is_trading` 行作 context，先经同一训练 scaler 变换后保留。context **可进入滑动窗口作 warmup 输入**，但**绝不作为标签日、不产生样本标签**（`valid_starts` 按 `is_context[s+seq_len-1]` 过滤）。评估/验证**标签日覆盖 = 区间交易日数 − `(horizon+1)`**。rolling validation 另按第 5.1 节最多使用 251 个有效交易日。
+- **两类 warmup 勿混**：本节 context 指**窗口输入预热**（补足首日窗口所需历史行）；第 4 节 warmup 与 5.1 rolling `min_periods`/frozen fallback 指**归一化统计预热**，二者机制不同。
 - 模型：默认 `featurenum=69`（51 raw feature + 18 G9 mask），由 `CNNTransformer` 使用（`train.py` 已有）
 - **缓存契约**：`data/feature_cache.py` 的 memmap 缓存只存归一化**之后**的 `features`（float32）与小数组，不改变本 spec 的归一化语义；缓存 key 纳入 scaler identity 与 seq_len/horizon/bins，命中即等价复建，验证集红线不变（仍复用训练 scaler、绝不重 fit）。
 
@@ -78,7 +79,7 @@
   做 rolling median/IQR robust 并 clip；其余指定列做 rolling 1%/99% winsor。
 - `close` 仅作 relative/rolling 辅助列，不作为模型输入；`sar`、`trend_*`、`std_*`、`atr` 等暂不 rolling，
   其他特征按 passthrough/G9 mask 规则处理。
-- validation 可使用 split 前最多 251 个有效交易日作为 rolling context；context 不进入 labels、windows 或 index。
+- validation 可使用 split 前最多 251 个有效交易日作为 rolling context（`max(seq_len-1,251)`）；context 先经同一训练 scaler 变换，**可进入窗口作 warmup 输入，但绝不作为标签日、不产生样本标签**（`valid_starts` 过滤 `is_context[s+seq_len-1]`）；标签日覆盖 = 区间交易日数 − `(horizon+1)`。
 - frozen 与 rolling 的 mode、version、schema、state、transform digest 和 checkpoint identity 必须隔离，禁止互用。
 - rolling 目前只在 CNN 内实现实验，不实现 quant exporter；quant 回迁仍是未来阶段。
 

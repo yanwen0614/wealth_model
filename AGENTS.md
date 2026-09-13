@@ -43,6 +43,7 @@ uv run ruff check .   # line-length 120, pyproject.toml
 - 单 parquet `data/test/train_data/train_data_v1_*.parquet` 11.4M行×58列 5166股，10基础+48因子。`is_trading=False` 的行 OHLC/因子=NaN 必须 `dataset.py:160` 过滤。
 - 当前默认特征为 51 个 raw feature，加 18 个 G9 observation mask，输出 `F=69`；`F=45`（39+6 mask）是历史 schema。`close` 仅作辅助列，不进入模型输入。
 - 标签 `dataset.py:309` `future_ret[t]=open[t+1+horizon]/open[t+1]-1`（horizon=5），`np.digitize(BINS)` 52类，`BINS=linspace(-0.25,0.25,51)` `train.py:34`。窗口 `[s,s+60)` 取末日 `y`。
+- 窗口 warmup（评估/验证）：`start_date` 之前最多 `seq_len-1`（rolling 非训练 251）条历史行以 `_transform_context=True` 保留，**可进入窗口作 warmup 输入，但绝不作为标签日**（`valid_starts` 过滤 `is_context[s+seq_len-1]`）；评估区间标签日覆盖 = 交易日数 − `(horizon+1)`（2026-01-01~08-31 由 95 → ≈154）。`data/feature_cache.py` `CACHE_FORMAT_VERSION=v2_context_warmup` 使旧语义缓存失效；训练集 start≈数据起点，窗口不变。勿与归一化统计预热混淆。
 
 ## Normalization — Frozen Default, Rolling Opt-In
 

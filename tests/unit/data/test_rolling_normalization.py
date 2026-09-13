@@ -159,7 +159,7 @@ class TestRollingNormalization(unittest.TestCase):
         self.assertEqual(tuple(ds[0][0].shape), (3, 10))
         self.assertEqual(ds.config.normalize, "rolling")
 
-    def test_rolling_validation_context_is_not_a_sample(self):
+    def test_rolling_validation_context_is_warmup_not_a_label(self):
         frame = _dataset_frame(180)
         with _parquet(frame) as path:
             train = ParquetDataset(ParquetDataConfig(
@@ -172,9 +172,14 @@ class TestRollingNormalization(unittest.TestCase):
                 feature_cols=["open", "high", "low"], start_date="2025-05-01",
                 role="validation", num_workers=0,
             ), scaler_stats=train.scaler_stats)
-        self.assertTrue(all(s >= 0 for _, s in val.index))
-        self.assertEqual(val.groups["000001"]["n"], 180 - 120)
-        self.assertAlmostEqual(val.groups["000001"]["future_ret"][0], 124.0 / 122.0 - 1.0)
+        # context 作为窗口 warmup 输入保留（combined 行数），可出现在窗口内。
+        self.assertEqual(val.groups["000001"]["n"], 180)
+        self.assertLess(val.groups["000001"]["kline_time"][0], np.datetime64("2025-05-01"))
+        # 但 context 恒非标签日：所有标签日 >= start_date，最早标签日 == start_date。
+        label_days = [val.groups["000001"]["kline_time"][s + 9] for _, s in val.index]
+        self.assertTrue(all(day >= np.datetime64("2025-05-01") for day in label_days))
+        self.assertEqual(min(label_days), np.datetime64("2025-05-01"))
+        self.assertTrue(all(s >= 111 for _, s in val.index))
 
     def test_rolling_calls_frozen_only_for_element_fallback(self):
         frame = _dataset_frame(150)

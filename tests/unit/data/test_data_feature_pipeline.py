@@ -77,7 +77,7 @@ class TestFeaturePipeline(unittest.TestCase):
         self.assertEqual(out[0, 2], 0.0)
         self.assertEqual(out[1, 2], 1.0)
 
-    def test_date_bounded_validation_uses_context_without_exposing_it(self):
+    def test_date_bounded_validation_uses_context_as_warmup(self):
         rows = []
         for code in ["A", "B"]:
             for day in range(8):
@@ -93,7 +93,11 @@ class TestFeaturePipeline(unittest.TestCase):
             pq.write_table(pa.Table.from_pandas(pd.DataFrame(rows)), file.name)
             train = ParquetDataset(ParquetDataConfig(parquet_path=file.name, seq_len=2, horizon=1, end_date="2020-01-04"))
             valid = ParquetDataset(ParquetDataConfig(parquet_path=file.name, seq_len=2, horizon=1, start_date="2020-01-05"), train.scaler_stats)
-        self.assertTrue(all(times[0] >= np.datetime64("2020-01-05") for times in (g["kline_time"] for g in valid.groups.values())))
+        # groups 可含 start 之前的 context 行，作为窗口 warmup 输入。
+        self.assertTrue(all(times[0] < np.datetime64("2020-01-05") for times in (g["kline_time"] for g in valid.groups.values())))
+        # 标签日恒为非 context：窗口末日 >= start_date。
+        for code, s in valid.index:
+            self.assertGreaterEqual(valid.groups[code]["kline_time"][s + 1], np.datetime64("2020-01-05"))
         self.assertTrue(np.isfinite(valid.groups["A"]["features"]).all())
 
 

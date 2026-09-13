@@ -207,6 +207,29 @@ class TestComputeCacheKey(unittest.TestCase):
         self.assertNotEqual(compute_bins_digest(bins), compute_bins_digest(bins[:-1]))
 
 
+class TestCacheFormatVersion(_CacheTestCase):
+    """T02: warmup 语义变更必须使携带旧语义的 generation 失效。"""
+
+    def test_current_version_is_v2_context_warmup(self):
+        self.assertEqual(CACHE_FORMAT_VERSION, "v2_context_warmup")
+
+    def test_legacy_version_meta_is_a_miss(self):
+        path = self._save()
+        self.assertIsNotNone(self._load())
+        meta_path = path / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["cache_format_version"] = "v1_memmap_cache"
+        meta_path.write_text(
+            json.dumps(meta, sort_keys=True, separators=(",", ":"), ensure_ascii=True), encoding="utf-8"
+        )
+        self.assertIsNone(self._load())
+
+    def test_warmup_semantics_changes_key(self):
+        base = compute_cache_key(**_key_kwargs())
+        legacy = compute_cache_key(**_key_kwargs(version="v1_memmap_cache"))
+        self.assertNotEqual(base, legacy)
+
+
 class TestFeatureCacheRoundTrip(_CacheTestCase):
     def test_round_trip_features_and_meta(self):
         path = self._save()

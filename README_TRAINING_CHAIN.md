@@ -43,8 +43,9 @@
 
 rolling 是 CNN 内的实验模式，不实现 quant exporter。第一阶段处理 `open/high/low/ma_5/10/20/60/ema_12/26`、
 `macd`、三列 volatility、两列 volume ratio 和 `amihud`；`close` 仅作辅助列，`sar/trend/std/atr` 等暂不 rolling。
-validation 可使用 split 前最多 251 个有效交易日 context，但 context 不进入 labels、windows 或 index；frozen 与 rolling
-的 state/schema/checkpoint identity 隔离。
+validation 可使用 split 前最多 251 个有效交易日 context（frozen 场景上限为 `seq_len-1`）；context 先经同一训练 scaler 变换，
+**可进入滑动窗口作 warmup 输入，但绝不作为标签日、不产生样本标签**，标签日覆盖 = 区间交易日数 − `(horizon+1)`；
+frozen 与 rolling 的 state/schema/checkpoint identity 隔离。
 
 ### 2.3 兼容性修复（torch 2.13 + numpy 2.0 + py 3.12）
 - `data/npz_data_load.py: DataConfig.bins` 改为 `field(default_factory=...)`（修复 mutable default 在 py3.12 的 ValueError）

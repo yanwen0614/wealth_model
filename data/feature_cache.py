@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-CACHE_FORMAT_VERSION = "v1_memmap_cache"
+CACHE_FORMAT_VERSION = "v2_context_warmup"
 
 _FEATURES_NAME = "features.npy"
 _META_NAME = "meta.json"

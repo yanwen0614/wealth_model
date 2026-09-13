@@ -321,7 +321,12 @@ class ParquetDataset(Dataset):
         if cfg.start_date:
             start = pd.to_datetime(cfg.start_date)
             eligible = df[df["kline_time"] >= start]
-            context_limit = 251 if cfg.normalize == "rolling" and cfg.role != "training" else 1
+            # context 保留上限：rolling 非训练沿用 251（归一化统计预热），其余场景至少 seq_len-1
+            # 行以让首个真实交易日凑满窗口；两者取大，保证 warmup 输入充足。
+            if cfg.normalize == "rolling" and cfg.role != "training":
+                context_limit = max(cfg.seq_len - 1, 251)
+            else:
+                context_limit = max(cfg.seq_len - 1, 1)
             context = (
                 df[df["kline_time"] < start].sort_values("kline_time")
                 .groupby("code", sort=False).tail(context_limit)
@@ -473,13 +478,9 @@ class ParquetDataset(Dataset):
             else:
                 feat = self._preprocess_features(feat, feature_cols)
 
-            # Context was used above for prev_close but is never eligible for labels/windows.
-            keep = ~group["_transform_context"].to_numpy()
-            group = group.loc[keep].reset_index(drop=True)
-            feat = feat[keep]
-            close = close[keep]
-            open_arr = open_arr[keep]
-
+            # context 保留为窗口 warmup 输入：group/feat/close/open_arr 保留全部行（context 在先），
+            # 用 is_context 保证标签日恒为非 context 的真实交易日。
+            is_context = group["_transform_context"].to_numpy()
             n = len(group)
             if n < cfg.seq_len + cfg.horizon + 1:
                 skipped_codes += 1
@@ -492,10 +493,12 @@ class ParquetDataset(Dataset):
                 skipped_codes += 1
                 continue
 
-            # 预先过滤标签 NaN 的窗口
+            # 预先过滤 context 标签日与标签 NaN 的窗口
             valid_starts = []
             for s in range(max_s):
                 label_pos = s + cfg.seq_len - 1
+                if is_context[label_pos]:
+                    continue
                 if not np.isnan(future_ret[label_pos]):
                     # 可选：过滤特征窗口内全 NaN 过多的样本（已填充，此处可跳过）
                     valid_starts.append(s)
