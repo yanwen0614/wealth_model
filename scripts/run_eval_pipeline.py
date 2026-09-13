@@ -2,12 +2,14 @@
 
 渐进式接口：先 run 不指定 --checkpoint 查看默认跑什么，再显式传参精确控制。
 
-scaler 解析优先级（T04，与 eval_bins_mapping.load_eval_preprocessing 一致）：
-  ① checkpoint 同目录 config.json 的 preprocessing.state_path/scaler_path/SCALER_PATH
-    （+顶层 SCALER_PATH，以此为准）；② 无元数据时 rolling 默认
-     logs/rolling_e4/scaler_rolling_e4.pkl（旧 logs/rolling/ 路径已废弃）；
-  ③ per_code 沿用既有默认 logs/scaler_per_code.pkl。异 scope
-  （state scope != 请求 scope）直接抛错，不静默复用。
+scaler/mode 解析（与 eval_bins_mapping.load_eval_preprocessing 一致）：
+  mode ∈ {relative, per_code, rolling}；rolling scope ∈ {e0..e5}，默认按 checkpoint
+  preprocessing.scope 解析（缺省回退 e5）。scaler 路径优先级：① CLI --scaler_path；
+  ② checkpoint 同目录 config.json 的 preprocessing.state_path/scaler_path/SCALER_PATH
+  （+顶层 SCALER_PATH，以此为准）；③ 默认（rolling → logs/rolling_e5/scaler_rolling_e5.pkl，
+  relative 无持久 state 按 COLUMN_RULES 重建，per_code → logs/scaler_per_code.pkl）。
+  异 scope/identity 直接抛错，不静默复用；模型维度由 preprocessing.featurenum/
+  feature_cols_out 实测派生（缺失则报错，绝不静默 45）。
 
 五项取数说明（给定 run_dir / preds 缓存即可输出，不重跑训练）：
   1. IC/ICIR：eval_bins_mapping 报告 rank_ic_exp_vs_true + xs_rank_ic_*（日截面 RankIC 均值/中位数/>0占比）。
@@ -15,17 +17,18 @@ scaler 解析优先级（T04，与 eval_bins_mapping.load_eval_preprocessing 一
   3. 换手成本后收益：scripts/run_backtest.py --cost_rate 0.0015（默认双边一次性扣减）→ metrics.json
      各 topn annual/sharpe/mdd + excess_annual（相对全截面等权基准）。
   4. fallback 比例：<run_log_dir>/config.json -> preprocessing.rolling_audit（fallback_ratio/
-     fallback_values/rolling_values；仅 rolling 有，per_code 无此键）。
+     fallback_values/rolling_values；仅 rolling 有，per_code/relative 无此键）。
   5. winsor 统计：同一 rolling_audit（constant_iqr_values/missing_values/neutral_fallback_values）。
 回测口径（引用 backtest/engine.py，不重实现）：T 日决策→T+1 open 买入→T+6 open 卖出
   （horizon=5，open-open 口径，详见 backtest/engine.py 模块 docstring 与 run_backtest.py NOTE）。
 
-E1–E4 评估命令（checkpoint 路径已按 scope 隔离，位置参数直接透传）：
+E0–E5 / relative 评估命令（checkpoint 路径已按 scope 隔离，位置参数直接透传）：
+  bash scripts/run_eval_full.sh logs/rolling_e0/<run>/best_model.pth 2026-01-01 2026-08-31
   bash scripts/run_eval_full.sh logs/rolling_e2/<run>/best_model.pth 2026-01-01 2026-08-31
-  bash scripts/run_eval_full.sh logs/rolling_e3/<run>/best_model.pth 2026-01-01 2026-08-31
-  bash scripts/run_eval_full.sh logs/rolling_e4/<run>/best_model.pth 2026-01-01 2026-08-31
+  bash scripts/run_eval_full.sh logs/rolling_e5/<run>/best_model.pth 2026-01-01 2026-08-31
+  bash scripts/run_eval_full.sh logs/relative/<run>/best_model.pth 2026-01-01 2026-08-31
   rolling_audit 取数：jq .preprocessing.rolling_audit <run_log_dir>/config.json
-  preds 缓存须含 exp_ret/true_ret/dates/codes；缺 codes 用 eval_bins_mapping 重建。
+  preds 缓存须含 exp_ret/true_ret/dates/codes；同名 best_model.pth 须显式 --preds_out 防覆盖。
 
 用法：
   # 默认：最新 checkpoint + 2026 验证 + 全市场
@@ -45,8 +48,9 @@ E1–E4 评估命令（checkpoint 路径已按 scope 隔离，位置参数直接
   uv run --project . python -m scripts.run_eval_pipeline --preds-only
 
 输出（均到 logs/）：
-  scaler_per_code.pkl         (如不存在时由训练集拟合)
-  preds_<checkpoint_stem>_<end>.npz
+  scaler/state                (relative 无；rolling 复用 logs/rolling_e{scope}/scaler_rolling_e{scope}.pkl；
+                               per_code 如不存在时由训练集拟合 logs/scaler_per_code.pkl)
+  preds_<tag>_<end>.npz       (tag 默认 checkpoint 文件名 stem；多臂务必显式 --preds_out)
   ohlc_path_<start>_<end>.npz
 """
 
@@ -65,19 +69,21 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import numpy as np
 import torch
 
-from config import DEFAULT_BINS, DEFAULT_PARQUET
+from config.defaults import DEFAULT_BINS, DEFAULT_PARQUET
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
-from data.scaler import PerCodeGroupedScaler
+from data.scaler import PerCodeGroupedScaler, RelativeScaler
 from data.schema import validate_prediction_cache_keys
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
 from torch.utils.data import DataLoader
 from scripts.build_ohlc_path import build_ohlc_path
+from scripts.eval_bins_mapping import (
+    DEFAULT_ROLLING_SCOPE, ROLLING_SCOPES, resolve_eval_featurenum,
+)
 
 CENTERS52 = np.linspace(-0.255, 0.255, 52)
 
-ROLLING_SCOPES = ("e2", "e3", "e4")
-ROLLING_DEFAULT_SCALER_PATH = "logs/rolling_e4/scaler_rolling_e4.pkl"
+ROLLING_DEFAULT_SCALER_PATH = "logs/rolling_e5/scaler_rolling_e5.pkl"
 PER_CODE_DEFAULT_SCALER_PATH = "logs/scaler_per_code.pkl"
 
 
@@ -85,27 +91,29 @@ def resolve_eval_mode_scope(run_cfg: dict, cli_scope: str | None = None) -> tupl
     """评估 mode/scope：优先 checkpoint preprocessing，CLI --rolling_scope 仅做一致性校验（异 scope 抛错）。"""
     metadata = run_cfg.get("preprocessing") or {}
     mode = metadata.get("mode", "per_code")
-    if mode not in {"per_code", "rolling"}:
+    if mode not in {"relative", "per_code", "rolling"}:
         raise ValueError(f"checkpoint preprocessing mode 不支持: {mode}")
     scope = metadata.get("scope")
-    if mode == "rolling" and scope is None:
-        scope = "e4"
     if cli_scope is not None:
         if cli_scope not in ROLLING_SCOPES:
-            raise ValueError(f"rolling scope 非法: {cli_scope!r}，仅支持 e2/e3/e4")
+            raise ValueError(f"rolling scope 非法: {cli_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
         if mode == "rolling" and scope is not None and cli_scope != scope:
             raise ValueError(f"rolling scope 不匹配：checkpoint={scope!r} vs 请求={cli_scope!r}")
         if mode == "rolling":
             scope = cli_scope
+    if mode == "rolling" and scope is None:
+        scope = DEFAULT_ROLLING_SCOPE
     return mode, scope
 
 
-def resolve_eval_scaler_path(run_cfg: dict, cli_override: str | None = None) -> str:
+def resolve_eval_scaler_path(run_cfg: dict, cli_override: str | None = None) -> str | None:
     """scaler 路径优先级：CLI > preprocessing.state_path/scaler_path/SCALER_PATH > 顶层 SCALER_PATH > 默认。"""
     if cli_override:
         return cli_override
     metadata = run_cfg.get("preprocessing") or {}
     mode = metadata.get("mode", "per_code")
+    if mode == "relative":
+        return None
     return (
         metadata.get("state_path") or metadata.get("scaler_path") or metadata.get("SCALER_PATH")
         or run_cfg.get("SCALER_PATH")
@@ -138,13 +146,21 @@ def build_scaler(
     train_start: str,
     train_end: str,
     max_codes: int | None,
-    scaler_path: str,
+    scaler_path: str | None,
     mode: str = "per_code",
     scope: str | None = None,
-):
+    feature_cols: list[str] | None = None,
+) -> PerCodeGroupedScaler | _RollingDatasetState | RelativeScaler:
+    if mode == "relative":
+        # relative 无持久 state：按 COLUMN_RULES / FEATURE_GROUPS 确定性重建，绝不 fit。
+        if not feature_cols:
+            raise ValueError("relative 评估需要 checkpoint preprocessing.feature_cols")
+        scaler = RelativeScaler(feature_cols=feature_cols, add_mask=True)
+        print(f"[pipeline] relative 无持久 state，按 rules 重建 ({len(scaler.feature_cols_out)} 列)")
+        return scaler
     if mode == "rolling":
         # rolling 不拟合：必须复用训练 state，异 scope 直接拒绝（不静默复用）。
-        if not os.path.exists(scaler_path):
+        if not scaler_path or not os.path.exists(scaler_path):
             raise FileNotFoundError(f"rolling evaluation 必须提供 rolling state: {scaler_path}")
         state = _RollingDatasetState.load(scaler_path)
         if scope is not None and state.normalizer.config.scope != scope:
@@ -153,6 +169,8 @@ def build_scaler(
             )
         print(f"[pipeline] 复用 rolling state({state.normalizer.config.scope}): {scaler_path}")
         return state
+    if not scaler_path:
+        raise ValueError("per_code 评估需要可用的 scaler 路径（复用或拟合）")
     if os.path.exists(scaler_path):
         try:
             cached = PerCodeGroupedScaler.load(scaler_path)
@@ -175,12 +193,16 @@ def build_scaler(
             role="training",
             start_date=train_start,
             end_date=train_end,
+            feature_cols=feature_cols,
         )
     )
+    fitted = ds.scaler_stats
+    if not isinstance(fitted, PerCodeGroupedScaler):
+        raise TypeError(f"per_code 训练集应产出 PerCodeGroupedScaler，实际为 {type(fitted).__name__}")
     os.makedirs(os.path.dirname(os.path.abspath(scaler_path)), exist_ok=True)
-    ds.scaler_stats.save(scaler_path)
+    fitted.save(scaler_path)
     print(f"[pipeline] scaler saved: {scaler_path}")
-    return ds.scaler_stats
+    return fitted
 
 
 def run_inference(
@@ -194,13 +216,14 @@ def run_inference(
     max_codes: int | None,
     max_windows_per_code: int | None,
     out_path: str,
+    featurenum: int | None = None,
     mode: str = "per_code",
     scope: str | None = None,
     feature_cols: list[str] | None = None,
 ):
     mc, run_cfg = load_checkpoint_config(ckpt_path)
     pure_reg = mc.get("pure_reg", False)
-    featurenum = int(mc.get("featurenum", 45))
+    featurenum = resolve_eval_featurenum(run_cfg, featurenum)
     seq_len = int(run_cfg.get("SEQ_LEN", 60))
 
     model_cfg = ModelConfig(
@@ -229,7 +252,7 @@ def run_inference(
             batch_size=batch_size,
             num_workers=0,
             normalize=mode,
-            rolling_scope=(scope or "e4"),
+            rolling_scope=(scope or DEFAULT_ROLLING_SCOPE),
             max_codes=max_codes,
             max_windows_per_code=max_windows_per_code,
             start_date=start,
@@ -243,6 +266,9 @@ def run_inference(
         raise ValueError(
             f"特征数不一致: checkpoint={featurenum} vs 数据集={ds.num_features}"
         )
+    metadata_out = (run_cfg.get("preprocessing") or {}).get("feature_cols_out")
+    if metadata_out is not None and list(metadata_out) != list(ds.feature_cols_out):
+        raise ValueError("checkpoint preprocessing.feature_cols_out 与数据集输出列不匹配")
 
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=False)
 
@@ -318,7 +344,9 @@ def main():
     print("=" * 60)
 
     if not args.ohlc_only:
-        scaler_stats = build_scaler(parquet, train_start, train_end, max_codes, scaler_path, mode, scope)
+        scaler_stats = build_scaler(
+            parquet, train_start, train_end, max_codes, scaler_path, mode, scope, feature_cols
+        )
         run_inference(
             ckpt_path=ckpt_path,
             parquet=parquet,
@@ -330,6 +358,7 @@ def main():
             max_codes=max_codes,
             max_windows_per_code=args.max_windows_per_code,
             out_path=preds_out,
+            featurenum=args.featurenum,
             mode=mode,
             scope=scope,
             feature_cols=feature_cols,
@@ -363,7 +392,9 @@ def parse_args():
     p.add_argument("--num_workers", type=int, default=0)
     p.add_argument("--scaler_path", default=None, help="scaler 路径，默认从 config.json 读")
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=None,
-                   help="仅 rolling：声明期望 scope，与 checkpoint/STATE 不一致直接报错（不静默复用）")
+                   help="仅 rolling：声明期望 scope e0..e5，与 checkpoint/STATE 不一致直接报错（不静默复用）")
+    p.add_argument("--featurenum", type=int, default=None,
+                   help="模型输入维度；缺省从 config.json preprocessing 派生，缺失则报错")
     p.add_argument("--preds_out", default=None, help="推理缓存 npz 保存路径")
     p.add_argument("--ohlc_out", default=None, help="OHLC 路径表 npz 保存路径")
     p.add_argument("--ohlc-only", action="store_true", help="仅生成 OHLC 路径，跳过推理")

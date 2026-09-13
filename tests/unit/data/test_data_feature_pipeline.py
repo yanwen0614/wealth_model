@@ -1,4 +1,5 @@
 """Focused contracts for the approved parquet feature pipeline."""
+import os
 import tempfile
 import unittest
 
@@ -32,27 +33,33 @@ class TestFeaturePipeline(unittest.TestCase):
             scaler.save(file.name)
 
     def test_training_refits_mismatch_but_validation_requires_scaler(self):
-        with tempfile.NamedTemporaryFile(suffix=".parquet") as data_file, tempfile.NamedTemporaryFile() as cache_file:
-            pq.write_table(pa.Table.from_pandas(self._frame()), data_file.name)
+        with tempfile.TemporaryDirectory() as directory:
+            data_file = os.path.join(directory, "mini.parquet")
+            cache_file = os.path.join(directory, "stale_scaler.pkl")
+            pq.write_table(pa.Table.from_pandas(self._frame()), data_file)
             stale = PerCodeGroupedScaler().fit(self._frame(), APPROVED_RAW_FEATURES)
             stale.set_identity({"stale": True})
-            stale.save(cache_file.name)
-            train = ParquetDataset(ParquetDataConfig(parquet_path=data_file.name, seq_len=2, horizon=1, scaler_path=cache_file.name))
+            stale.save(cache_file)
+            train = ParquetDataset(ParquetDataConfig(parquet_path=data_file, seq_len=2, horizon=1, scaler_path=cache_file))
             self.assertIsNotNone(train.scaler_stats)
             assert train.scaler_stats is not None
             self.assertNotEqual(train.scaler_stats.identity_hash, stale.identity_hash)
             with self.assertRaisesRegex(ValueError, "scaler"):
-                ParquetDataset(ParquetDataConfig(parquet_path=data_file.name, seq_len=2, horizon=1, role="validation"))
+                ParquetDataset(ParquetDataConfig(parquet_path=data_file, seq_len=2, horizon=1, role="validation"))
 
-    def test_unseen_code_uses_global_winsor_fallback(self):
+    def test_unseen_code_uses_global_robust_fallback(self):
         frame = pd.DataFrame({"code": ["A"] * 4, "kline_time": pd.date_range("2020-01-01", periods=4),
-                              "close": [10.0] * 4, "volatility_5d": [1.0, 2.0, 3.0, 100.0]})
-        scaler = PerCodeGroupedScaler(add_mask=False).fit(frame, ["volatility_5d"])
-        out = scaler.transform_code("UNSEEN", np.array([[1000.0]]), ["volatility_5d"], np.array([10.0]))
-        self.assertLessEqual(out[0, 0], scaler.global_stats["volatility_5d"]["winsor_upper"])
+                              "close": [100.0] * 4, "open": [100.0, 110.0, 120.0, 130.0]})
+        scaler = PerCodeGroupedScaler(add_mask=False).fit(frame, ["open"])
+        stats = scaler.global_stats["open"]
+        out = scaler.transform_code(
+            "UNSEEN", np.array([[100.0], [150.0]]), ["open"], np.array([100.0, 100.0])
+        )
+        expected = (0.5 - stats["median"]) / (stats["iqr"] / 1.349 + 1e-8)
+        self.assertAlmostEqual(float(out[1, 0]), float(np.clip(expected, -5.0, 5.0)), places=5)
 
-    def test_identity_hash_is_canonical_and_cache_payload_is_v3(self):
-        manifest = {"path": "/data/a.parquet", "features": ["open"], "version": "v3"}
+    def test_identity_hash_is_canonical_and_cache_payload_is_v4(self):
+        manifest = {"path": "/data/a.parquet", "features": ["open"], "version": "v4"}
         self.assertEqual(
             PerCodeGroupedScaler.identity_hash_for(manifest),
             PerCodeGroupedScaler.identity_hash_for(dict(reversed(list(manifest.items())))),
@@ -61,9 +68,10 @@ class TestFeaturePipeline(unittest.TestCase):
                               "close": [10.0, 11.0], "open": [10.0, 11.0]})
         scaler = PerCodeGroupedScaler(add_mask=False).fit(frame, ["open"])
         scaler.set_identity(manifest)
-        with tempfile.NamedTemporaryFile() as file:
-            scaler.save(file.name)
-            loaded = PerCodeGroupedScaler.load(file.name)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "scaler.pkl")
+            scaler.save(path)
+            loaded = PerCodeGroupedScaler.load(path)
         self.assertEqual(loaded.identity_hash, scaler.identity_hash)
 
     def test_missing_is_neutral_and_g9_mask_tracks_original_observation(self):
@@ -89,10 +97,11 @@ class TestFeaturePipeline(unittest.TestCase):
                     "high": price + 1.0, "low": price - 1.0,
                 })
                 rows.append(row)
-        with tempfile.NamedTemporaryFile(suffix=".parquet") as file:
-            pq.write_table(pa.Table.from_pandas(pd.DataFrame(rows)), file.name)
-            train = ParquetDataset(ParquetDataConfig(parquet_path=file.name, seq_len=2, horizon=1, end_date="2020-01-04"))
-            valid = ParquetDataset(ParquetDataConfig(parquet_path=file.name, seq_len=2, horizon=1, start_date="2020-01-05"), train.scaler_stats)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "mini.parquet")
+            pq.write_table(pa.Table.from_pandas(pd.DataFrame(rows)), path)
+            train = ParquetDataset(ParquetDataConfig(parquet_path=path, seq_len=2, horizon=1, end_date="2020-01-04"))
+            valid = ParquetDataset(ParquetDataConfig(parquet_path=path, seq_len=2, horizon=1, start_date="2020-01-05"), train.scaler_stats)
         # groups 可含 start 之前的 context 行，作为窗口 warmup 输入。
         self.assertTrue(all(times[0] < np.datetime64("2020-01-05") for times in (g["kline_time"] for g in valid.groups.values())))
         # 标签日恒为非 context：窗口末日 >= start_date。

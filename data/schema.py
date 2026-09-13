@@ -1,6 +1,13 @@
-"""训练 parquet 的列 schema 与默认特征选择。"""
+"""训练 parquet 的列 schema、特征分组与默认特征选择。"""
 
 import warnings
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 EXPORT_FACTORS = [
     "return_1d", "return_5d", "return_10d", "return_20d",
@@ -22,20 +29,35 @@ BASE_COLUMNS = [
     "TOT_SHARE", "is_trading",
 ]
 
-APPROVED_RAW_FEATURES = [
-    "open", "high", "low", "ma_5", "ma_10", "ma_20", "ma_60", "ema_12", "ema_26", "sar",
-    "trend_duokong", "trend_shortline",
-    "volatility_5d", "volatility_10d", "volatility_20d", "std_5", "std_10", "std_20", "atr",
-    "volume_ratio_5d", "volume_ratio_10d", "amihud",
-    "macd", "dmi", "adx", "boll", "kelch", "trend_duokong_dev",
-    "gross_margin", "net_margin", "roe", "roa", "debt_to_equity",
-    "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio", "margin_balance_chg_5d",
-    "short_balance_ratio", "short_sell_vol_ratio",
-    "margin_balance_ratio_raw", "margin_buy_ratio_raw", "margin_net_buy_ratio_raw",
-    "margin_balance_chg_5d_raw", "short_balance_ratio_raw", "short_sell_vol_ratio_raw",
-    "margin_balance_ratio_ts", "margin_buy_ratio_ts", "margin_net_buy_ratio_ts",
-    "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts",
-]
+# 分组注册表：组名 -> 有序特征列名（顺序即输出列序契约）。
+FEATURE_GROUPS: Mapping[str, tuple[str, ...]] = {
+    "P": (
+        "open", "high", "low", "close", "ma_5", "ma_10", "ma_20", "ma_60",
+        "ema_12", "ema_26", "sar", "trend_duokong", "trend_shortline", "macd",
+        "std_5", "std_10", "std_20", "atr",
+    ),
+    "R": (
+        "dmi", "adx", "boll", "kelch", "trend_duokong_dev",
+        "volatility_5d", "volatility_10d", "volatility_20d",
+        "volume_ratio_5d", "volume_ratio_10d",
+        "gross_margin", "net_margin", "roe", "roa", "debt_to_equity", "amihud",
+    ),
+    "N": (
+        "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio",
+        "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio",
+        "margin_balance_ratio_ts", "margin_buy_ratio_ts", "margin_net_buy_ratio_ts",
+        "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts",
+    ),
+    "G": (
+        "margin_balance_ratio_raw", "margin_buy_ratio_raw", "margin_net_buy_ratio_raw",
+        "margin_balance_chg_5d_raw", "short_balance_ratio_raw", "short_sell_vol_ratio_raw",
+    ),
+}
+
+# 52 列 = P(18) + R(16) + N(12) + G(6)，顺序即 feature 输出顺序。
+APPROVED_RAW_FEATURES: tuple[str, ...] = tuple(
+    column for columns in FEATURE_GROUPS.values() for column in columns
+)
 
 G9_RAW_FEATURES = (
     "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio",
@@ -45,11 +67,14 @@ G9_RAW_FEATURES = (
     "margin_balance_ratio_ts", "margin_buy_ratio_ts", "margin_net_buy_ratio_ts",
     "margin_balance_chg_5d_ts", "short_balance_ratio_ts", "short_sell_vol_ratio_ts",
 )
-G9_MASK_COLUMNS = tuple(f"{column}_mask" for column in G9_RAW_FEATURES)
+G9_OBSERVATION_SOURCE = G9_RAW_FEATURES
+G9_MASK_COLUMNS = ("g9_observed_mask",)
+
+NORMALIZE_MODES = frozenset({"relative", "per_code", "rolling", "none"})
 
 PROHIBITED_COLUMNS = {
     "code", "kline_time", "is_trading", "return_1d", "return_5d", "return_10d", "return_20d",
-    "TOT_SHARE", "volume", "amount", "close", "pe", "pb", "pcf", "ps",
+    "TOT_SHARE", "volume", "amount", "pe", "pb", "pcf", "ps",
     "revenue_growth", "profit_growth", "revenue_growth_qoq", "profit_growth_qoq",
 }
 
@@ -86,3 +111,34 @@ def _default_feature_cols(all_columns: list[str]) -> list[str]:
             stacklevel=2,
         )
     return list(APPROVED_RAW_FEATURES)
+
+
+_COLUMN_TO_GROUP: Mapping[str, str] = {
+    column: group for group, columns in FEATURE_GROUPS.items() for column in columns
+}
+
+
+def column_group(column: str) -> str:
+    """返回列所属组名（"P"/"R"/"N"/"G"），未知列报错而非静默透传。"""
+    try:
+        return _COLUMN_TO_GROUP[column]
+    except KeyError:
+        raise ValueError(f"未知特征列: {column!r}，无法确定其分组") from None
+
+
+def default_feature_cols(normalize: str) -> list[str]:
+    """返回指定归一化模式下的默认特征列（与 FEATURE_GROUPS 顺序一致）。"""
+    if normalize not in NORMALIZE_MODES:
+        raise ValueError(f"未知归一化模式: {normalize!r}，可选 {sorted(NORMALIZE_MODES)}")
+    return list(APPROVED_RAW_FEATURES)
+
+
+def g9_observed_mask(frame: "pd.DataFrame") -> "np.ndarray":
+    """对 G9_OBSERVATION_SOURCE 各列取 finite 后逐行 OR，返回 float32 [N] ∈ {0,1}。"""
+    missing = [column for column in G9_OBSERVATION_SOURCE if column not in frame.columns]
+    if missing:
+        raise ValueError(f"G9 观测列缺失: {missing}")
+    observed = np.zeros(len(frame), dtype=bool)
+    for column in G9_OBSERVATION_SOURCE:
+        observed |= np.isfinite(np.asarray(frame[column], dtype=np.float64))
+    return observed.astype(np.float32)

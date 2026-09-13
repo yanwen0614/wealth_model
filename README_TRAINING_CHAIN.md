@@ -24,7 +24,7 @@
 | 旧链路 | 新链路 |
 |--------|--------|
 | `processed_data_train/*.npz`（需手工多进程 `data_processor.py` 生成）| `data/test/train_data/*.parquet` 单文件直读 |
-| 特征 8 维（历史 NPZ 实验）| parquet 原始集合含 48 因子；当前默认输出 `F=69`（51 raw feature+18 G9 mask），`F=45` 为历史 schema |
+| 特征 8 维（历史 NPZ 实验）| parquet 原始集合含 48 因子；当前默认输出 `F=53`（52 raw feature `P18+R16+N12+G6` + 1 共享 `g9_observed_mask`），`F=69`（51+18 mask）与 `F=45`（39+6 mask）为历史 schema |
 | 历史 close-close 标签 | 当前 open-open：`open[t+1+horizon]/open[t+1]-1`，horizon=5 |
 | `NPZSequentialDataset` 历史缓存块 | `ParquetDataset` 按 code 分组、滑动窗口、per-code 归一化 |
 
@@ -32,20 +32,22 @@
 
 ### 2.2 核心模块
 - **`data/dataset.py`**：
-  - `ParquetDataConfig`：`seq_len=60, horizon=5, bins=51边界/52类, normalize=per_code（frozen）, scaler_path=logs/scaler_per_code.pkl`；rolling 仅显式 `--normalize rolling`
+  - `ParquetDataConfig`：`seq_len=60, horizon=5, bins=51边界/52类, normalize=per_code（默认，frozen 基线）, scaler_path=logs/scaler_per_code.pkl`；另支持 `--normalize relative`（E0，无状态）与 `--normalize rolling`（E2–E5，`--rolling_scope e0..e5`）
   - `ParquetDataset`：读取 parquet → 过滤 `is_trading=False` → 按 code 排序 → 计算 open-open future return → per-code 归一化 → 构建窗口索引
   - `create_dataloaders`：仅训练集 fit scaler 并落盘，验证集复用 `logs/scaler_per_code.pkl`（防泄露），支持时序切分
-  - 默认输出：`x [69,60]`，其中 51 个 raw feature 加 18 个 G9 mask；原始 48 因子集合不等于模型输入维度，`close` 仅作辅助列
+  - 默认输出：`x [53,60]`，其中 52 个 raw feature（`P→R→N→G` 顺序）加 1 个共享 `g9_observed_mask`；原始 48 因子集合不等于模型输入维度，`close` 已解禁进 P 组（relative 分母 `close[t-1]`）
 - **`train.py`**：新训练入口，兼容 `Trainer` / `EMDLoss` / `LoggerManager`
   - 时序切分默认：训练 `2013-01-01~2023-12-31` (865万行) / 验证 `2024-01-01~2025-12-31` (245万行)
-  - 模型默认：`CNNTransformer(featurenum=69, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, layers=4)`
-  - 训练：`AdamW(lr=1e-4, wd=1e-5)` + `EMDLoss(p=2, smooth)` + `ReduceLROnPlateau`
+  - 模型默认：`CNNTransformer(featurenum=53, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, layers=4)`；`featurenum` 以 `ParquetDataset.num_features=len(feature_cols_out)` 实测派生为权威
+  - 训练：`AdamW(lr=3e-4, wd=1e-5)` + `EMDLoss(p=2, smooth)` + `ReduceLROnPlateau`
 
-rolling 是 CNN 内的实验模式，不实现 quant exporter。第一阶段处理 `open/high/low/ma_5/10/20/60/ema_12/26`、
-`macd`、三列 volatility、两列 volume ratio 和 `amihud`；`close` 仅作辅助列，`sar/trend/std/atr` 等暂不 rolling。
-validation 可使用 split 前最多 251 个有效交易日 context（frozen 场景上限为 `seq_len-1`）；context 先经同一训练 scaler 变换，
+rolling 是 CNN 内的实验模式，不实现 quant exporter。`--rolling_scope e0..e5` 由 `data/rolling_scaler.py` `ROLLING_SCOPE_FEATURES`
+派生：`e0=∅`、`e1/e2=P 组 18 列`、`e3=+volatility_5/10/20`、`e4=+volume_ratio_5/10/amihud`、`e5=+G9 *_raw 6`（滚动列数 0/18/18/21/24/30）；
+入 scope 的 P 列 relative→252 滚动 robust，vol/volume/G 列 rolling winsor，非 scope 列按 `COLUMN_RULES`（R asinh / N clip01 / G fixed_clip）。
+`close` 已解禁进 P 组（relative 分母 `close[t-1]`）。
+validation 可使用 split 前最多 251 个有效交易日 context（frozen/relative 场景上限为 `seq_len-1`）；context 先经同一训练 scaler 变换，
 **可进入滑动窗口作 warmup 输入，但绝不作为标签日、不产生样本标签**，标签日覆盖 = 区间交易日数 − `(horizon+1)`；
-frozen 与 rolling 的 state/schema/checkpoint identity 隔离。
+frozen/relative 与 rolling 的 state/schema/checkpoint identity 隔离。
 
 ### 2.3 兼容性修复（torch 2.13 + numpy 2.0 + py 3.12）
 - `data/npz_data_load.py: DataConfig.bins` 改为 `field(default_factory=...)`（修复 mutable default 在 py3.12 的 ValueError）
@@ -57,7 +59,7 @@ frozen 与 rolling 的 state/schema/checkpoint identity 隔离。
 - **位置**：`data/feature_cache.py`；缓存只落盘归一化**之后**的 `features`（float32）与小数组（标签/价格/时间），标签与价格保留真实精度。
 - **开关**：`ParquetDataConfig.cache_enabled=False` 保冻结（单测/CI/评估脚本零改动）；`train.py` 训练入口默认开启，可用 `--no_cache` 关闭、`--rebuild_cache` 跳过命中并写新 generation。
 - **缓存根解析优先级**：`--cache_dir` > 环境变量 `CNN_DATA_CACHE` > 平台默认。Linux：`$XDG_CACHE_HOME/cnn`（回退 `~/.cache/cnn`）；Windows：`%LOCALAPPDATA%\cnn\cache`（回退 `~/AppData/Local/cnn/cache`）。全程 `pathlib`，无盘符硬编码。
-- **key 隔离维度**：parquet identity（路径/size/mtime/行数/schema digest）+ `role`（train/val）+ `rolling_scope`（E2/E3/E4）+ scaler identity + `seq_len`/`horizon`/`max_windows_per_code`/`bins`，任一变化即不同 key，避免跨配置串缓存。
+- **key 隔离维度**：parquet identity（路径/size/mtime/行数/schema digest）+ `role`（train/val）+ `mode`（relative/per_code/rolling）+ `rolling_scope`（e0..e5）+ `feature_cols`/`feature_cols_out` + scaler identity + `seq_len`/`horizon`/`max_windows_per_code`/`bins`，任一变化即不同 key，避免跨配置串缓存。
 - **原子发布**：先在 `tmp-<pid>-<uuid>` 内顺序写数据 → `meta` → `.ok`，再 flush/close → `os.replace` 发布为新 generation 目录；读侧只认 `.ok`，未写完或异 key 一律 miss。重复写入递增 `-g<gen>`，**绝不覆盖在用目录**。
 - **清理**：运行期不自动删除；清理只经显式模块级函数 `data.feature_cache.clear_cache(root, key)`。目录会随 generation 累积，需人工关注磁盘。
 - **与 scaler 红线的关系**：缓存命中不改变归一化语义，也不削弱 `data/AGENTS.md` 的验证集红线——validation 命中仍须传入训练 scaler 并校验 identity/schema，缺 scaler 或 identity 不符照常报错，绝不重 fit。
@@ -81,7 +83,7 @@ uv run --project . python train.py --smoke --num_workers 0
 ### 3.2 日志
 - **日志目录**：`logs/run_20260901_012401/`（含 `config.json`, `training.log`, `best_model.pth 15M`, `training_curve.png`, `confusion_matrix_*`）
 - **数据集**：训练 49491 窗口 / 验证 8408 窗口（20股子集），该记录保留历史实验数字
-- **模型**：该冒烟记录为历史 55 维输入实验；当前默认输入为 `[batch,69,60]` → 52 logits
+- **模型**：该冒烟记录为历史 55 维输入实验；当前默认输入为 `[batch,53,60]` → 52 logits
 - **训练**：194 batch/epoch, ~27s/epoch, `Train Loss 0.0641 Acc 0.0820 Val Loss 0.0600 Acc 0.0985`，`best_model.pth` 已保存并可加载推理
 - **曲线**：`training_curve.png` 已生成
 
@@ -89,9 +91,9 @@ uv run --project . python train.py --smoke --num_workers 0
 ```bash
 uv run --project . python -c "
 import torch; from models.cnn_transformer.config import ModelConfig; from models.cnn_transformer.model import CNNTransformer
-m=CNNTransformer(ModelConfig(featurenum=69, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, cnn_kernel_sizes=[1,3,5,7,10], num_encoder_layers=4, dropout_rate=0.3))
+m=CNNTransformer(ModelConfig(featurenum=53, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, cnn_kernel_sizes=[1,3,5,7,10], num_encoder_layers=4, dropout_rate=0.3))
 m.eval()
-print(m(torch.randn(2,69,60)).shape)  # => torch.Size([2,52])
+print(m(torch.randn(2,53,60)).shape)  # => torch.Size([2,52])
 "
 ```
 
@@ -148,7 +150,7 @@ cnn/
 
 ## 6. 后续建议
 - **全量压测**：明日可跑 `max_codes 500` 进一步验证内存与速度，再切全量
-- **特征选择**：48 是原始因子集合；当前默认输出 `F=69`（51 raw feature+18 G9 mask），`F=45`（39+6 mask）仅用于历史记录，显式特征选择需单独记录维度
+- **特征选择**：48 是原始因子集合；当前默认输出 `F=53`（52 raw feature `P18+R16+N12+G6` + 1 共享 `g9_observed_mask`），`F=69`（51+18 mask）与 `F=45`（39+6 mask）仅用于历史记录，显式特征选择需单独记录维度
 - **标签 horizon**：默认 5 日，可尝试 10/20 日对比
 - **不平衡**：当前 52 类极不均衡（头部类占 <0.1%），可考虑 `class_weights` 或 `HalfClassWeightedCrossEntropy`
 - **scaler 复用**：训练集 fit 后保存 `logs/scaler_per_code.pkl`，验证/推理侧务必复用同一文件

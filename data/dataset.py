@@ -11,16 +11,17 @@
 - 按 code 分组、按 kline_time 排序、过滤 is_trading
 - 计算未来 N 日收益率标签（open-open 口径 open[t+1+horizon]/open[t+1]-1，与回测实盘 T+1 open 买入口径对齐）
 - 依据 BINS 离散化为多分类标签（与 main2.py EMDLoss 配套）
-- 滑动窗口生成 [seq_len, num_features] 样本，默认输出 F=69（51 特征 + 18 G9 mask）
+- 滑动窗口生成 [seq_len, num_features] 样本，默认输出 F=53（52 特征 + 1 shared G9 mask）
 - 构建全局索引，支持 DataLoader 多进程
 
 与旧 NPZ 链路对比：
 - 旧：processed_data_train/*.npz，每样本 train_features [8,60], labels [5,8] -> sum amp -> digitize
-- 新：parquet 直读，无需中间 npz，特征维度 ~50，标签为未来 5日累计收益
+- 新：parquet 直读，无需中间 npz，特征维度 52，标签为未来 5日累计收益
 
-分组归一化（per-code 共识，精简后仅保留 per_code）：
-- 69特征=51+18 mask（G9 两融 18 列各带 1 mask），G1/mcd robust(median/IQR)+clip±5、G3/G4 winsor 1/99、G9 rank透传+mask
-- per-code 按股独立拟合 via PerCodeGroupedScaler，验证集复用训练集 scaler 防泄露
+归一化模式（normalize）：
+- relative：P 组 x/close[t-1]-1 + clip±5，R asinh、N clip01、G fixed_clip，无 fit、无持久 state
+- per_code：P 组按股 fit robust(median/IQR)，其余确定性；训练集拟合，验证集复用防泄露
+- rolling：scope e0..e5 因果滚动；fallback per-code 由训练集 fit 一次，验证/评估复用
 """
 import hashlib
 import json
@@ -44,13 +45,14 @@ from data.feature_cache import (
 )
 from data.labels import _future_ret_open_open
 from data.rolling_scaler import RollingNormalizationConfig, RollingNormalizer
-from data.scaler import SCALER_VERSION, PerCodeGroupedScaler
+from data.scaler import SCALER_VERSION, PerCodeGroupedScaler, RelativeScaler
 from data.schema import BASE_COLUMNS, EXPORT_FACTORS, _default_feature_cols  # noqa: F401
 
 
 @dataclass
 class ParquetDataConfig:
-    parquet_path: str = "data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet"
+    # 默认指向当前 F60 schema（52 raw + 1 shared mask）的单文件 parquet；win32 实际路径由 train.py 按平台覆盖
+    parquet_path: str = "data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
     seq_len: int = 60
     horizon: int = 5  # 未来 N 日收益作为标签
     bins: list[float] = field(default_factory=lambda: (np.linspace(-25, 25, 51) / 100).tolist())
@@ -67,10 +69,10 @@ class ParquetDataConfig:
     start_date: str | None = None  # "2013-01-01"
     end_date: str | None = None
     split_date: str | None = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
-    # 归一化：per_code | none | rolling（rolling 必须显式 opt-in）
+    # 归一化：relative | per_code | none | rolling（per_code 为冻结默认；rolling/relative 显式 opt-in）
     normalize: str = "per_code"
-    # rolling 子集范围：e2 | e3 | e4（默认 e4 = 现有 16 列全量；仅 rolling 分支使用）
-    rolling_scope: str = "e4"
+    # rolling 子集范围：e0..e5（默认 e5 = 含 G9 raw 全量；仅 rolling 分支使用）
+    rolling_scope: str = "e5"
     # 归一化统计文件（训练集拟合后保存，供验证集复用）
     scaler_path: str | None = None
     # NaN 填充策略（仅 none 分支使用，per_code 内置分级填充）
@@ -90,7 +92,7 @@ class ParquetDataConfig:
 class _RollingDatasetState:
     """Training/validation rolling identity; it never fits or calls frozen code."""
 
-    PAYLOAD_VERSION = "v1_rolling_state"
+    PAYLOAD_VERSION = "v2_rolling_state"
 
     def __init__(
         self,
@@ -212,28 +214,39 @@ class ParquetDataset(Dataset):
         self._load_and_prepare(scaler_stats)
 
     @staticmethod
-    def _scaler_identity(cfg: ParquetDataConfig, pf: pq.ParquetFile, feature_cols: list[str]) -> dict:
-        from data.scaler import SCALER_VERSION, PerCodeGroupedScaler
+    def _transform_digest(normalize: str) -> str:
+        """按归一化模式取变换配置摘要：relative 无统计量，per_code/rolling 用 frozen 规则。"""
+        if normalize == "relative":
+            return RelativeScaler.transform_config_digest()
+        return PerCodeGroupedScaler.transform_config_digest()
 
+    @staticmethod
+    def _scaler_identity(cfg: ParquetDataConfig, pf: pq.ParquetFile, feature_cols: list[str]) -> dict:
         path = os.path.realpath(cfg.parquet_path)
         stat = os.stat(path)
         metadata = pf.metadata
         schema = str(pf.schema_arrow)
-        return {
+        identity = {
             "parquet_path": path, "size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
             "row_count": metadata.num_rows, "schema_fingerprint": hashlib.sha256(schema.encode()).hexdigest(),
             "fit_start_date": cfg.start_date, "fit_end_date": cfg.end_date,
             "feature_cols": list(feature_cols), "normalize": cfg.normalize,
             "per_code_add_mask": cfg.per_code_add_mask, "filter_is_trading": cfg.filter_is_trading,
-            "max_codes": cfg.max_codes, "transform_digest": PerCodeGroupedScaler.transform_config_digest(),
+            "max_codes": cfg.max_codes, "transform_digest": ParquetDataset._transform_digest(cfg.normalize),
             "scaler_version": SCALER_VERSION,
         }
+        # rolling_scope 仅 rolling 有意义；写入后由 _rolling_source_identity 剔除，保持 per_code 字节不变。
+        if cfg.normalize == "rolling":
+            identity["rolling_scope"] = cfg.rolling_scope
+        return identity
 
     @staticmethod
     def _rolling_source_identity(expected_identity: dict) -> dict:
-        """rolling 的 source identity：剔除仅影响 frozen 拟合/调试的字段（与 _RollingDatasetState 一致）。"""
+        """rolling 的 source identity：剔除仅影响 frozen 拟合/调试/scope 的字段（与 _RollingDatasetState 一致）。"""
         source_identity = dict(expected_identity)
-        for key in ("fit_start_date", "fit_end_date", "transform_digest", "scaler_version", "max_codes"):
+        for key in (
+            "fit_start_date", "fit_end_date", "transform_digest", "scaler_version", "max_codes", "rolling_scope"
+        ):
             source_identity.pop(key, None)
         return source_identity
 
@@ -257,6 +270,10 @@ class ParquetDataset(Dataset):
             source_identity = ParquetDataset._rolling_source_identity(expected_identity)
             scaler_identity_hash = normalizer.identity(source_identity, feature_cols)
             rolling_scope = cfg.rolling_scope
+        elif cfg.normalize == "relative":
+            # relative 无持久 state：identity 即 COLUMN_RULES/版本/mask 策略摘要。
+            scaler_identity_hash = RelativeScaler.transform_config_digest()
+            rolling_scope = None
         else:
             scaler_identity_hash = None
             rolling_scope = None
@@ -420,8 +437,19 @@ class ParquetDataset(Dataset):
             self.num_features = len(self.feature_cols_out)
             if scaler_stats is None and cfg.scaler_path:
                 self.scaler_stats.save(cfg.scaler_path)
+        elif cfg.normalize == "relative":
+            # relative 无 fit / 无落盘 / 无持久 state：scaler_stats 仅是当期确定性变换器。
+            scaler = RelativeScaler(feature_cols=feature_cols, add_mask=cfg.per_code_add_mask)
+            if scaler_stats is not None:
+                if not isinstance(scaler_stats, RelativeScaler):
+                    raise ValueError("外部 scaler_stats 必须是 RelativeScaler（relative 无持久 state）")
+                if list(scaler_stats.feature_cols_out) != list(scaler.feature_cols_out):
+                    raise ValueError("relative scaler_stats feature schema 不匹配")
+            self.scaler_stats = scaler
+            self.feature_cols_out = scaler.feature_cols_out
+            self.num_features = len(self.feature_cols_out)
         else:
-            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 per_code/none/rolling")
+            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 relative/per_code/none/rolling")
 
         print(f"[ParquetDataset] 输出特征列数: {self.num_features}, 输出特征: {self.feature_cols_out[:8]}...")
 
@@ -452,17 +480,15 @@ class ParquetDataset(Dataset):
             close = group["close"].values.astype(np.float64)
             open_arr = group["open"].values.astype(np.float64)
 
-            # NaN 填充 + 归一化（per_code 按 code 独立）
+            # NaN 填充 + 归一化（per_code / relative 按 code 独立）
             if cfg.normalize == "per_code":
-                # per-code：需传入 close 供 G1/macd relative
+                # per-code：需传入 close 供 P 组 relative
                 if isinstance(self.scaler_stats, PerCodeGroupedScaler):
                     feat = self.scaler_stats.transform_code(code, feat, feature_cols, close)
-                    # 同步更新 feature_cols_out 长度（首次循环后已一致）
-                    if len(self.feature_cols_out) != feat.shape[1]:
-                        # 首次 code 的 F_out 可能与全局不一致，动态修正（理论上一致）
-                        pass
-                    else:
-                        feat = self._preprocess_features(feat, feature_cols)
+            elif cfg.normalize == "relative":
+                if not isinstance(self.scaler_stats, RelativeScaler):
+                    raise ValueError("relative 数据集缺少有效 preprocessing")
+                feat = self.scaler_stats.transform_code(code, feat, feature_cols, close)
             elif cfg.normalize == "rolling":
                 if not isinstance(self.scaler_stats, _RollingDatasetState):
                     raise ValueError("rolling 数据集缺少有效 preprocessing identity")
@@ -661,8 +687,19 @@ class ParquetDataset(Dataset):
                 self.scaler_stats = None
             if self.scaler_stats is None and cfg.role != "training":
                 raise ValueError("validation rolling 数据集必须提供训练 rolling identity")
+        elif cfg.normalize == "relative":
+            # relative 无状态：按 rules 重建当期变换器，绝不 fit。
+            scaler = RelativeScaler(feature_cols=feature_cols, add_mask=cfg.per_code_add_mask)
+            if list(scaler.feature_cols_out) != list(self.feature_cols_out):
+                raise ValueError("relative 缓存 feature_cols_out 与 rules 重建结果不匹配")
+            if scaler_stats is not None:
+                if not isinstance(scaler_stats, RelativeScaler):
+                    raise ValueError("外部 scaler_stats 必须是 RelativeScaler（relative 无持久 state）")
+                if list(scaler_stats.feature_cols_out) != list(scaler.feature_cols_out):
+                    raise ValueError("外部 relative scaler_stats feature schema 不匹配")
+            self.scaler_stats = scaler
         else:
-            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 per_code/none/rolling")
+            raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 relative/per_code/none/rolling")
 
     def _save_cache(self, cache_key: str) -> None:
         cfg = self.config
@@ -817,8 +854,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--parquet", default="data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet")
     parser.add_argument("--max_codes", type=int, default=10)
-    parser.add_argument("--normalize", type=str, default="per_code", choices=["per_code", "none", "rolling"], help="归一化方式")
-    parser.add_argument("--rolling_scope", type=str, default="e4", choices=["e2", "e3", "e4"], help="rolling 子集范围")
+    parser.add_argument(
+        "--normalize", type=str, default="per_code",
+        choices=["relative", "per_code", "none", "rolling"], help="归一化方式",
+    )
+    parser.add_argument(
+        "--rolling_scope", type=str, default="e5",
+        choices=["e0", "e1", "e2", "e3", "e4", "e5"], help="rolling 子集范围",
+    )
     parser.add_argument("--scaler_path", type=str, default=None, help="scaler 持久化路径")
     args = parser.parse_args()
 
@@ -853,16 +896,14 @@ if __name__ == "__main__":
         print(f"batch x mean: {bx.mean().item():.4f}, std: {bx.std().item():.4f}, min: {bx.min().item():.3f}, max: {bx.max().item():.3f}")
         break
 
-    # 测试持久化与复用（仅 per_code；rolling state 有独立 save/validate 语义）
-    if scaler is not None and args.normalize == "per_code":
+    # 测试持久化与复用（仅 per_code；rolling/relative 有独立无状态语义）
+    if isinstance(scaler, PerCodeGroupedScaler) and args.normalize == "per_code":
         import tempfile
 
         tmp = tempfile.mktemp(suffix="_scaler.pkl")
         scaler.save(tmp)
         print(f"[Persistence] 保存成功: {tmp}")
         cfg_val = ParquetDataConfig(**{**cfg.__dict__, "role": "validation", "scaler_path": None})
-        from data.scaler import PerCodeGroupedScaler
-
         loaded = PerCodeGroupedScaler.load(tmp)
         ds_val = ParquetDataset(cfg_val, scaler_stats=loaded)
         print(f"[Reuse] 验证集特征数: {ds_val.num_features}, 样本数: {len(ds_val)}，与训练集一致: {ds_val.num_features == ds.num_features}")

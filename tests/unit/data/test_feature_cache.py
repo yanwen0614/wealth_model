@@ -210,8 +210,8 @@ class TestComputeCacheKey(unittest.TestCase):
 class TestCacheFormatVersion(_CacheTestCase):
     """T02: warmup 语义变更必须使携带旧语义的 generation 失效。"""
 
-    def test_current_version_is_v2_context_warmup(self):
-        self.assertEqual(CACHE_FORMAT_VERSION, "v2_context_warmup")
+    def test_current_version_is_v3_relative_groups(self):
+        self.assertEqual(CACHE_FORMAT_VERSION, "v3_relative_groups")
 
     def test_legacy_version_meta_is_a_miss(self):
         path = self._save()

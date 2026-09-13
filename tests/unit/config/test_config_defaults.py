@@ -24,6 +24,18 @@ class TestConfigDefaults(unittest.TestCase):
         self.assertEqual(config["num_classes"], len(config["BINS"]) + 1)
         self.assertEqual(config["CNNTransformerConfig"]["num_classes"], 52)
 
+    def test_featurenum_placeholder_matches_new_schema(self):
+        config = make_default_config()
+        self.assertEqual(config["CNNTransformerConfig"]["featurenum"], 53)
+
+    def test_default_rolling_scope_is_e5(self):
+        config = make_default_config()
+        self.assertEqual(config["ROLLING_SCOPE"], "e5")
+
+    def test_default_learning_rate_is_3e_4(self):
+        config = make_default_config()
+        self.assertEqual(config["LEARNING_RATE"], 3e-4)
+
 
 class TestConfigCacheDefaults(unittest.TestCase):
     """T03: 训练入口默认开启缓存的配置键与隔离契约。"""

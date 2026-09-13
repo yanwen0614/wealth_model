@@ -26,16 +26,22 @@ T01 schema 分组
 
 | Task | 名称 | 依赖 | 预估行数 | TDD | 状态 |
 |------|------|------|----------|-----|------|
-| T01 | 数据分组重构（schema） | 无 | +200 | 是 | pending |
-| T02 | ColumnRule Registry + RelativeScaler（E0） | T01 | +260 | 是 | pending |
-| T03 | PerCodeGroupedScaler 重构（E1） | T02 | +220 | 是 | pending |
-| T04 | rolling 重构（scope e0..e5 + G9 mask 修复） | T02 | +300 | 是 | pending |
-| T05 | dataset 接入（relative / feature_cols_out / cache key） | T03,T04 | +220 | 是 | pending |
-| T06 | train/CLI + metadata/config 落盘 | T05 | +220 | 是 | pending |
-| T07 | 评估脚本层适配（69→53 / relative / scope） | T05,T06 | +200 | 是 | pending |
-| T08 | 旧契约测试同步与全量单测绿 | T01–T07 | +180 | 否 | pending |
-| T09 | 文档同步 | T01–T08 | +200 | 否 | pending |
-| T10 | 端到端验收（重建缓存 + E0–E5 重训/评估） | T01–T09 | +60 | 否 | pending |
+| T01 | 数据分组重构（schema） | 无 | +200 | 是 | PASS |
+| T02 | ColumnRule Registry + RelativeScaler（E0） | T01 | +260 | 是 | PASS |
+| T03 | PerCodeGroupedScaler 重构（E1） | T02 | +220 | 是 | PASS |
+| T04 | rolling 重构（scope e0..e5 + G9 mask 修复） | T02 | +300 | 是 | PASS |
+| T05 | dataset 接入（relative / feature_cols_out / cache key） | T03,T04 | +220 | 是 | PASS |
+| T06 | train/CLI + metadata/config 落盘 | T05 | +220 | 是 | PASS |
+| T07 | 评估脚本层适配（69→53 / relative / scope） | T05,T06 | +200 | 是 | PASS（1 轮 fix） |
+| T08 | 旧契约测试同步与全量单测绿 | T01–T07 | +180 | 否 | PASS（incremental，272→275 OK） |
+| T09 | 文档同步 | T01–T08 | +200 | 否 | PASS |
+| T10 | 端到端验收（重建缓存 + E0–E5 重训/评估） | T01–T09 | +60 | 否 | in_progress |
+
+## 整体 review 收尾（2026-09-14）
+- 跨任务 review VERDICT=PASS；已修 M1（dataset 默认 parquet→F60）、M4（relative digest 增 mask_columns）、L1（`_relative_transform` inf 分母统一）、LR 默认 1e-4→3e-4。
+- M3 `uv.lock` registry churn 为环境产物，提交前回退。
+- 既有 64 项仓级 ruff 报错均为未触碰文件存量，属 `scope_outside`。
+- E0–E5 训练：`--lr 3e-4 --batch_size 1024 --num_workers 4 --seed 42 --epochs 50 --patience 5`，串行后台（psmux `cnn_e0e5`）。
 
 ## 执行详情
 

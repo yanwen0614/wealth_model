@@ -21,6 +21,7 @@ from collections import Counter
 from contextlib import redirect_stdout
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -28,7 +29,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from data.dataset import ParquetDataConfig, ParquetDataset
-from data.scaler import PerCodeGroupedScaler
+from data.scaler import PerCodeGroupedScaler, RelativeScaler
+from data.schema import APPROVED_RAW_FEATURES
 
 FEATURE_COLS = ["open", "high", "low"]
 
@@ -46,6 +48,25 @@ def _make_frame(rows: int = 45) -> pd.DataFrame:
             "close": open_v + 0.5,
             "is_trading": True,
         })
+    return pd.DataFrame(records)
+
+
+def _make_full_frame(rows: int = 45) -> pd.DataFrame:
+    """含全部 APPROVED_RAW_FEATURES 的 mini frame（G9 源列存在 → shared mask）。"""
+    records = []
+    for t in range(rows):
+        price = 10.0 + t
+        row = {col: price * 0.5 for col in APPROVED_RAW_FEATURES}
+        row.update({
+            "code": "000001",
+            "kline_time": pd.Timestamp("2020-01-01") + pd.Timedelta(days=t),
+            "open": price,
+            "high": price + 1.0,
+            "low": price - 1.0,
+            "close": price + 0.5,
+            "is_trading": True,
+        })
+        records.append(row)
     return pd.DataFrame(records)
 
 
@@ -364,6 +385,102 @@ class TestMaxCodesWindowLimitCacheEquivalence(unittest.TestCase):
             np.testing.assert_array_equal(x_off.numpy(), x_hit.numpy())
             self.assertEqual(int(y_off), int(y_hit))
             self.assertAlmostEqual(float(r_off), float(r_hit), places=7)
+
+
+class TestRelativeMode(_DatasetCacheTestCase):
+    """T05: relative 无状态归一化接入（feature_cols_out / cache key / 不重 fit）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.full_path = os.path.join(cls.tmpdir, "mini_full.parquet")
+        pq.write_table(
+            pa.Table.from_pandas(_make_full_frame(), preserve_index=False), cls.full_path
+        )
+
+    def _full_config(self, **over) -> ParquetDataConfig:
+        base: dict = {
+            "parquet_path": self.full_path,
+            "seq_len": 5,
+            "horizon": 2,
+            "feature_cols": list(APPROVED_RAW_FEATURES),
+            "normalize": "relative",
+            "num_workers": 0,
+        }
+        base.update(over)
+        return ParquetDataConfig(**base)
+
+    def _key(self, **over) -> str:
+        cfg = self._config(**over)
+        feature_cols = list(cfg.feature_cols or [])
+        pf = pq.ParquetFile(self.parquet_path)
+        identity = ParquetDataset._scaler_identity(cfg, pf, feature_cols)
+        return ParquetDataset._cache_key(cfg, np.array(cfg.bins, dtype=np.float64), identity, feature_cols)
+
+    def test_num_features_and_shared_mask(self):
+        ds = ParquetDataset(self._full_config())
+        self.assertEqual(ds.num_features, 53)
+        self.assertEqual(ds.feature_cols_out[-1], "g9_observed_mask")
+        self.assertEqual(tuple(ds[0][0].shape), (53, 5))
+        self.assertIsInstance(ds.scaler_stats, RelativeScaler)
+
+    def test_subset_without_g9_has_no_mask(self):
+        ds = ParquetDataset(self._config(normalize="relative"))
+        self.assertEqual(ds.num_features, len(FEATURE_COLS))
+        self.assertEqual(ds.feature_cols_out, list(FEATURE_COLS))
+
+    def test_single_col_subset_output_one(self):
+        ds = ParquetDataset(self._config(normalize="relative", feature_cols=["open"]))
+        self.assertEqual(ds.num_features, 1)
+        self.assertEqual(ds.feature_cols_out, ["open"])
+
+    def test_cache_key_sensitive_to_relative_mode(self):
+        per_code = self._key(normalize="per_code")
+        relative = self._key(normalize="relative")
+        rolling = self._key(normalize="rolling", rolling_scope="e5")
+        self.assertEqual(len({per_code, relative, rolling}), 3)
+        self.assertEqual(relative, self._key(normalize="relative"))
+
+    def test_relative_never_fits(self):
+        with patch.object(PerCodeGroupedScaler, "fit", autospec=True) as fit:
+            ParquetDataset(self._full_config())
+        fit.assert_not_called()
+
+    def test_relative_validation_without_scaler_ok(self):
+        train = ParquetDataset(self._full_config(role="training", end_date="2020-02-05"))
+        val = ParquetDataset(self._full_config(role="validation", start_date="2020-02-06"))
+        self.assertGreater(len(val), 0)
+        self.assertEqual(val.num_features, train.num_features)
+        self.assertIsInstance(val.scaler_stats, RelativeScaler)
+
+    def test_cache_miss_then_hit_reconstructs_without_refit(self):
+        root = Path(self._cache_dir("relative_cache"))
+        cfg = self._full_config(cache_enabled=True, cache_dir=str(root))
+        first = ParquetDataset(cfg)
+        hit_log = io.StringIO()
+        with patch.object(PerCodeGroupedScaler, "fit", autospec=True) as fit, redirect_stdout(hit_log):
+            second = ParquetDataset(cfg)
+        self.assertIn("缓存命中", hit_log.getvalue())
+        fit.assert_not_called()
+        self.assertEqual(first.num_features, second.num_features)
+        self.assertEqual(list(first.feature_cols_out), list(second.feature_cols_out))
+        self.assertEqual(list(first.index), list(second.index))
+        self.assertIsInstance(second.scaler_stats, RelativeScaler)
+        for code in first.groups:
+            np.testing.assert_array_equal(
+                np.asarray(first.groups[code]["features"]),
+                np.asarray(second.groups[code]["features"]),
+            )
+
+    def test_validation_cache_hit_without_scaler_ok(self):
+        root = Path(self._cache_dir("relative_val_hit"))
+        cfg = self._full_config(role="validation", cache_enabled=True, cache_dir=str(root))
+        ParquetDataset(cfg)
+        hit_log = io.StringIO()
+        with redirect_stdout(hit_log):
+            hit = ParquetDataset(cfg)
+        self.assertIn("缓存命中", hit_log.getvalue())
+        self.assertIsInstance(hit.scaler_stats, RelativeScaler)
 
 
 if __name__ == "__main__":

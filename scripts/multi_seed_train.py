@@ -24,6 +24,27 @@ from visualization import Visualizer
 
 BASE_CONFIG = make_default_config(dual_head=True)
 BASE_CONFIG["LAMBDA_JITTER"] = 0.005
+ROLLING_SCOPES = ("e0", "e1", "e2", "e3", "e4", "e5")
+
+
+def configure_preprocessing(cfg: dict, normalize: str, rolling_scope: str) -> None:
+    """镜像 train.py：按 mode/scope 隔离 SCALER_PATH/LOG_DIR（relative 无持久 state）。"""
+    if normalize not in {"per_code", "rolling", "relative"}:
+        raise ValueError(f"未知 normalize: {normalize}")
+    if normalize == "rolling" and rolling_scope not in ROLLING_SCOPES:
+        raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
+    cfg["NORMALIZE"] = normalize
+    if normalize == "per_code":
+        cfg["SCALER_PATH"] = "logs/scaler_per_code.pkl"
+        cfg["LOG_DIR"] = "./logs"
+    elif normalize == "rolling":
+        cfg["ROLLING_SCOPE"] = rolling_scope
+        cfg["SCALER_PATH"] = f"logs/rolling_{rolling_scope}/scaler_rolling_{rolling_scope}.pkl"
+        cfg["LOG_DIR"] = f"./logs/rolling_{rolling_scope}"
+    else:  # relative：无统计 state，列规则确定性重建
+        cfg["SCALER_PATH"] = None
+        cfg["LOG_DIR"] = "./logs/relative"
+
 
 
 def set_all_seeds(seed: int):
@@ -57,6 +78,10 @@ def parse_args():
     p.add_argument("--max_windows_per_code", type=int, default=None)
     p.add_argument("--no_val", action="store_true", help="不使用验证集")
     p.add_argument("--smoke", action="store_true", help="冒烟模式：max_codes=20, epochs=1")
+    p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=BASE_CONFIG["NORMALIZE"],
+                   help="归一化模式；relative 无持久 state，rolling 按 scope 分目录（默认 per_code）")
+    p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=BASE_CONFIG["ROLLING_SCOPE"],
+                   help="rolling 子集范围 e0..e5（默认 e5；非 rolling 时忽略）")
     p.add_argument("--dual_head", action="store_true", default=True, help=argparse.SUPPRESS)
     p.add_argument("--no_dual_head", action="store_true", help="关闭双头回归，退化为纯 EMD")
     p.add_argument("--pure_reg", action="store_true", help="纯回归消融")
@@ -210,6 +235,10 @@ def main():
         'REBUILD_CACHE': args.rebuild_cache,
     }
     cfg.update(overrides)
+    configure_preprocessing(cfg, args.normalize, args.rolling_scope)
+    print(f">>> 归一化: {args.normalize}" + (
+        f"/{args.rolling_scope}" if args.normalize == "rolling" else ""
+    ) + f" (LOG_DIR={cfg['LOG_DIR']})")
     cfg['num_classes'] = len(BASE_CONFIG['BINS']) + 1
     cfg["CNNTransformerConfig"]['num_classes'] = cfg['num_classes']
     cfg["CNNTransformerConfig"]['seq_len'] = cfg['SEQ_LEN']

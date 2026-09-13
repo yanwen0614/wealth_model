@@ -25,21 +25,22 @@ class TestDataSchemaLabels(unittest.TestCase):
         self.assertIs(dataset._default_feature_cols, _default_feature_cols)
         self.assertIs(dataset._future_ret_open_open, _future_ret_open_open)
 
-    def test_default_feature_columns_feed_69_dimensional_output(self):
-        columns = BASE_COLUMNS + APPROVED_RAW_FEATURES
+    def test_default_feature_columns_feed_53_dimensional_output(self):
+        columns = list(BASE_COLUMNS) + list(APPROVED_RAW_FEATURES)
         selected = _default_feature_cols(columns)
-        self.assertEqual(len(selected), 51)
-        self.assertEqual(len(G9_MASK_COLUMNS), 18)
-        self.assertEqual(len(selected) + len(G9_MASK_COLUMNS), 69)
-        self.assertNotIn("close", selected)
+        self.assertEqual(len(selected), 52)
+        self.assertEqual(len(G9_MASK_COLUMNS), 1)
+        self.assertEqual(len(selected) + len(G9_MASK_COLUMNS), 53)
+        self.assertIn("close", selected)
         self.assertNotIn("return_1d", selected)
-        self.assertEqual(selected, APPROVED_RAW_FEATURES)
-        self.assertTrue(PROHIBITED_COLUMNS.issuperset({"code", "kline_time", "is_trading", "close"}))
+        self.assertEqual(selected, list(APPROVED_RAW_FEATURES))
+        self.assertTrue(PROHIBITED_COLUMNS.issuperset({"code", "kline_time", "is_trading"}))
+        self.assertNotIn("close", PROHIBITED_COLUMNS)
 
     def test_unknown_columns_warn_and_are_excluded(self):
         with self.assertWarnsRegex(UserWarning, "mystery_feature"):
-            selected = _default_feature_cols(BASE_COLUMNS + APPROVED_RAW_FEATURES + ["mystery_feature"])
-        self.assertEqual(selected, APPROVED_RAW_FEATURES)
+            selected = _default_feature_cols(list(BASE_COLUMNS) + list(APPROVED_RAW_FEATURES) + ["mystery_feature"])
+        self.assertEqual(selected, list(APPROVED_RAW_FEATURES))
 
     def test_missing_approved_column_is_an_error(self):
         with self.assertRaisesRegex(ValueError, "open"):

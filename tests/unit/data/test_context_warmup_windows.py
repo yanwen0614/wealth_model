@@ -5,7 +5,7 @@ T01/T03 覆盖：
 (b) 遍历 index，标签日恒为非 context 行；
 (c) 窗口末日 == 标签日，窗口内无未来泄露；
 (d) 无 start_date 与 start_date==首日 逐元素一致（训练口径回归）；
-(e) per_code / rolling 均通过，num_features=69、(69,60)，rolling 训练 state 只 fit 一次。
+(e) per_code / rolling / relative 均通过，num_features=53、(53,60)，rolling 训练 state 只 fit 一次。
 """
 import os
 import shutil
@@ -105,11 +105,11 @@ class TestContextWarmupWindows(unittest.TestCase):
             np.testing.assert_array_equal(
                 plain.groups[code]["future_ret"], bounded.groups[code]["future_ret"]
             )
-        self.assertEqual(plain.num_features, 69)
-        self.assertEqual(tuple(plain[0][0].shape), (69, 60))
+        self.assertEqual(plain.num_features, 53)
+        self.assertEqual(tuple(plain[0][0].shape), (53, 60))
 
-    def test_per_code_and_rolling_first_day_label(self):
-        for normalize in ("per_code", "rolling"):
+    def test_per_code_rolling_relative_first_day_label(self):
+        for normalize in ("per_code", "rolling", "relative"):
             with self.subTest(normalize=normalize):
                 frame = _context_frame(59, 160)
                 with _parquet(frame) as path:
@@ -118,8 +118,9 @@ class TestContextWarmupWindows(unittest.TestCase):
                             path, seq_len=60, horizon=5, normalize=normalize, start_date="2025-01-01"
                         )
                     )
-                self.assertEqual(ds.num_features, 69)
-                self.assertEqual(tuple(ds[0][0].shape), (69, 60))
+                self.assertEqual(ds.num_features, 53)
+                self.assertEqual(ds.feature_cols_out[-1], "g9_observed_mask")
+                self.assertEqual(tuple(ds[0][0].shape), (53, 60))
                 label_dates = {
                     pd.Timestamp(ds.groups["000001"]["kline_time"][s + 59]) for _, s in ds.index
                 }

@@ -9,43 +9,31 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from data.schema import G9_RAW_FEATURES
+from data.scaler import IQR_TO_SIGMA, ColumnRule, column_rule
+from data.schema import FEATURE_GROUPS, G9_MASK_COLUMNS, G9_OBSERVATION_SOURCE
 
 ROLLING_MODE = "rolling"
-ROLLING_VERSION = "v1_rolling_252"
-ROLLING_TRANSFORM_VERSION = "rolling_transform_v1"
+ROLLING_VERSION = "v2_rolling_scope_e0_e5"
+ROLLING_TRANSFORM_VERSION = "rolling_transform_v2"
 ROLLING_HELPER_COLUMNS = ("close",)
+EPS = 1e-8
 
-ROLLING_PRICE_FEATURES = (
-    "open",
-    "high",
-    "low",
-    "ma_5",
-    "ma_10",
-    "ma_20",
-    "ma_60",
-    "ema_12",
-    "ema_26",
-)
-ROLLING_VOLATILITY_FEATURES = (
-    "volatility_5d",
-    "volatility_10d",
-    "volatility_20d",
-)
-ROLLING_VOLUME_FEATURES = (
-    "volume_ratio_5d",
-    "volume_ratio_10d",
-    "amihud",
-)
-ROLLING_WINSOR_FEATURES = ("macd",) + ROLLING_VOLATILITY_FEATURES + ROLLING_VOLUME_FEATURES
+# scope 预设由 FEATURE_GROUPS 派生，避免重复列清单；顺序即输出列序契约。
+ROLLING_PRICE_FEATURES = tuple(FEATURE_GROUPS["P"])
+ROLLING_VOLATILITY_FEATURES = ("volatility_5d", "volatility_10d", "volatility_20d")
+ROLLING_VOLUME_FEATURES = ("volume_ratio_5d", "volume_ratio_10d", "amihud")
+ROLLING_WINSOR_FEATURES = ROLLING_VOLATILITY_FEATURES + ROLLING_VOLUME_FEATURES
 ROLLING_FEATURES = ROLLING_PRICE_FEATURES + ROLLING_WINSOR_FEATURES
-
 ROLLING_SCOPE_FEATURES: dict[str, tuple[str, ...]] = {
-    "e2": ROLLING_PRICE_FEATURES + ("macd",),
-    "e3": ROLLING_PRICE_FEATURES + ("macd",) + ROLLING_VOLATILITY_FEATURES,
+    "e0": (),
+    "e1": ROLLING_PRICE_FEATURES,
+    "e2": ROLLING_PRICE_FEATURES,
+    "e3": ROLLING_PRICE_FEATURES + ROLLING_VOLATILITY_FEATURES,
     "e4": ROLLING_FEATURES,
+    "e5": ROLLING_FEATURES + tuple(FEATURE_GROUPS["G"]),
 }
 ROLLING_SCOPES = tuple(ROLLING_SCOPE_FEATURES)
+_G9_OBSERVATION_SOURCE_SET = frozenset(G9_OBSERVATION_SOURCE)
 
 
 @dataclass(frozen=True)
@@ -59,7 +47,7 @@ class RollingNormalizationConfig:
     upper_percentile: float = 99.0
     robust_clip: float = 5.0
     add_g9_masks: bool = True
-    scope: str = "e4"
+    scope: str = "e5"
 
     def __post_init__(self) -> None:
         if self.window < 1 or not 1 <= self.min_periods <= self.window:
@@ -69,7 +57,7 @@ class RollingNormalizationConfig:
         if not 0 <= self.lower_percentile < self.upper_percentile <= 100:
             raise ValueError("rolling percentile 配置无效")
         if self.scope not in ROLLING_SCOPE_FEATURES:
-            raise ValueError(f"rolling scope 非法: {self.scope!r}，仅支持 e2/e3/e4")
+            raise ValueError(f"rolling scope 非法: {self.scope!r}，仅支持 {ROLLING_SCOPES}")
 
 
 @dataclass
@@ -105,29 +93,37 @@ class RollingNormalizer:
         return ROLLING_SCOPE_FEATURES[self.config.scope]
 
     def transform_config_digest(self) -> str:
-        # scope 经“解析后的子集列组”进入 digest：e4 解析结果与旧常量逐字一致，
-        # payload 字节级不变（E4 回归零风险）；e2/e3 子集更小故 digest 互异。
+        # scope 名与其解析出的列子集共同进入 digest：e1/e2 列集相同但语义不同
+        # （静态 vs 动态），故 scope 名必须参与哈希使异 scope digest 互异；
         # config 明细剔除 scope 后参与哈希，避免默认值漂移。
         config_dict = asdict(self.config)
         config_dict.pop("scope", None)
-        scope_subset = set(self.scope_features())
+        scope_features = self.scope_features()
+        scope_subset = set(scope_features)
         payload = {
             "mode": ROLLING_MODE,
             "version": ROLLING_TRANSFORM_VERSION,
+            "scope": self.config.scope,
             "config": config_dict,
             "price_strategy": "relative_then_rolling_median_iqr_clip",
             "winsor_strategy": "rolling_percentile_clip",
+            "scope_features": list(scope_features),
             "rolling_price_features": [c for c in ROLLING_PRICE_FEATURES if c in scope_subset],
             "rolling_winsor_features": [c for c in ROLLING_WINSOR_FEATURES if c in scope_subset],
-            "g9_strategy": "finite_fill_zero_clip_0_1_plus_observed_mask",
-            "other_strategy": "finite_or_zero_passthrough_without_frozen_transform",
+            "other_strategy": "column_rules_asinh_clip01_fixed_clip_fill_zero",
+            "mask_columns": list(G9_MASK_COLUMNS),
+            "mask_strategy": "shared_or_gn_observation_source_finite",
         }
         return self._canonical_hash(payload)
 
+    def _mask_columns_for(self, feature_cols: list[str]) -> list[str]:
+        if self.config.add_g9_masks and any(c in _G9_OBSERVATION_SOURCE_SET for c in feature_cols):
+            return list(G9_MASK_COLUMNS)
+        return []
+
     def output_feature_cols(self, feature_cols: list[str]) -> list[str]:
         self._validate_feature_cols(feature_cols)
-        masks = [f"{column}_mask" for column in feature_cols if column in G9_RAW_FEATURES]
-        return list(feature_cols) + (masks if self.config.add_g9_masks else [])
+        return list(feature_cols) + self._mask_columns_for(feature_cols)
 
     def schema_manifest(self, feature_cols: list[str]) -> dict[str, Any]:
         return {
@@ -157,8 +153,6 @@ class RollingNormalizer:
 
     @staticmethod
     def _validate_feature_cols(feature_cols: list[str]) -> None:
-        if "close" in feature_cols:
-            raise ValueError("close 只能作为 rolling helper，不能进入 output feature columns")
         if len(feature_cols) != len(set(feature_cols)):
             raise ValueError("rolling feature_cols 不能重复")
 
@@ -199,6 +193,46 @@ class RollingNormalizer:
             where=valid_denominator,
         ) - 1.0
 
+    @staticmethod
+    def _apply_column_rule(
+        values: np.ndarray, missing: np.ndarray, rule: ColumnRule, close: np.ndarray | None
+    ) -> np.ndarray:
+        """非 scope 列按 COLUMN_RULES 变换（P relative / R asinh / N clip01 / G fixed_clip）。"""
+        if rule.transform == "relative":
+            if close is None:
+                raise ValueError("非 scope 的 P 组列需要 close 上下文")
+            transformed = RollingNormalizer._relative(values, close)
+            transformed = np.where(np.isfinite(transformed), transformed, 0.0)
+            transformed = np.where(missing, 0.0, transformed)
+            if rule.clip is not None:
+                transformed = np.clip(transformed, rule.clip[0], rule.clip[1])
+            return transformed
+        if rule.transform == "asinh":
+            transformed = np.arcsinh(values * rule.scale)
+        elif rule.transform in ("clip01", "fixed_clip", "passthrough"):
+            transformed = values
+        else:
+            raise ValueError(f"未知 transform: {rule.transform!r}")
+        if rule.clip is not None:
+            transformed = np.clip(transformed, rule.clip[0], rule.clip[1])
+        transformed = np.where(missing, 0.0, transformed)
+        return np.where(np.isfinite(transformed), transformed, 0.0)
+
+    def _transform_scoped_column(
+        self,
+        column: str,
+        raw: np.ndarray,
+        helper: np.ndarray,
+        fallback_col: np.ndarray | None,
+        fallback_mask_col: np.ndarray,
+        audit: RollingAudit,
+    ) -> np.ndarray:
+        """入 scope 列：P 走 relative→rolling robust；VOL/VOLUME/G 走 rolling winsor。"""
+        rule = column_rule(column)
+        robust = rule.robust and rule.transform == "relative"
+        prepared = self._relative(raw, helper) if robust else raw.copy()
+        return self._rolling_column(prepared, robust, fallback_col, fallback_mask_col, audit)
+
     def transform_code(
         self,
         features: np.ndarray,
@@ -212,39 +246,37 @@ class RollingNormalizer:
         )
         row_count = values.shape[0]
         output_columns: list[np.ndarray] = []
-        masks: list[np.ndarray] = []
         output_count = len(self.output_feature_cols(feature_cols))
         fallback_mask = np.zeros((row_count, output_count), dtype=bool)
         audit = RollingAudit(total_rows=row_count)
         rolling_cols = set(self.scope_features())
+        observed = np.zeros(row_count, dtype=bool)
+        has_g9_source = any(c in _G9_OBSERVATION_SOURCE_SET for c in feature_cols)
 
         for column_index, column in enumerate(feature_cols):
             raw = values[:, column_index]
-            audit.missing_values += int((~np.isfinite(raw)).sum())
+            finite = np.isfinite(raw)
+            audit.missing_values += int((~finite).sum())
+            if column in _G9_OBSERVATION_SOURCE_SET:
+                observed |= finite
             if column in rolling_cols:
-                prepared = self._relative(raw, helper) if (
-                    column in ROLLING_PRICE_FEATURES or column == "macd"
-                ) else raw.copy()
-                transformed = self._rolling_column(
-                    prepared,
-                    column in ROLLING_PRICE_FEATURES,
+                transformed = self._transform_scoped_column(
+                    column,
+                    raw,
+                    helper,
                     None if fallback is None else fallback[:, column_index],
                     fallback_mask[:, column_index],
                     audit,
                 )
-                output_columns.append(transformed)
-                continue
-
-            audit.passthrough_values += row_count
-            finite = np.isfinite(raw)
-            if column in G9_RAW_FEATURES:
-                output_columns.append(np.clip(np.where(finite, raw, 0.0), 0.0, 1.0))
-                if self.config.add_g9_masks:
-                    masks.append(finite.astype(np.float64))
             else:
-                output_columns.append(np.where(finite, raw, 0.0))
+                audit.passthrough_values += row_count
+                transformed = self._apply_column_rule(raw, ~finite, column_rule(column), helper)
+            output_columns.append(transformed)
 
-        output = np.stack(output_columns + masks, axis=1)
+        output = np.stack(output_columns, axis=1)
+        if self.config.add_g9_masks and has_g9_source:
+            shared_mask = observed.astype(np.float32).reshape(-1, 1)
+            output = np.concatenate([output, shared_mask], axis=1)
         output = np.where(np.isfinite(output), output, 0.0).astype(np.float32)
         return RollingTransformResult(output, fallback_mask, audit)
 
@@ -297,7 +329,7 @@ class RollingNormalizer:
                 iqr = q75 - q25
                 constant = rolling_rows & (iqr <= epsilon)
                 audit.constant_iqr_values += int(constant.sum())
-                scale = np.where(iqr <= epsilon, 1.0, iqr / 1.349)
+                scale = np.where(iqr <= epsilon, 1.0, iqr / IQR_TO_SIGMA)
                 transformed = np.clip(
                     (values - median) / scale, -config.robust_clip, config.robust_clip
                 )
