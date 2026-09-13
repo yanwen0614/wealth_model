@@ -17,6 +17,7 @@ from data.rolling_scaler import (
     ROLLING_SCOPE_FEATURES,
     ROLLING_VERSION,
     ROLLING_VOLATILITY_FEATURES,
+    RollingAudit,
     RollingNormalizationConfig,
     RollingNormalizer,
 )
@@ -402,6 +403,139 @@ class TestDatasetScope(unittest.TestCase):
                 rolling_scope="e2", feature_cols=["open", "high", "low"], num_workers=0,
             ))
         self.assertEqual(ds.config.normalize, "per_code")
+
+
+def _reference_rolling_column(
+    config: RollingNormalizationConfig,
+    values: np.ndarray,
+    robust: bool,
+    fallback: np.ndarray | None,
+    fallback_mask: np.ndarray,
+    audit: RollingAudit,
+) -> np.ndarray:
+    """逐行参考实现：向量化前 `_rolling_column` 的原始逻辑（保持逐字语义）。"""
+    output = np.zeros(values.shape, dtype=np.float64)
+    for current in range(len(values)):
+        start = max(0, current - config.window + 1)
+        window = values[start : current + 1]
+        valid = window[np.isfinite(window)]
+        if valid.size < config.min_periods:
+            fallback_mask[current] = True
+            audit.fallback_values += 1
+            if fallback is not None and np.isfinite(fallback[current]):
+                output[current] = fallback[current]
+            else:
+                audit.neutral_fallback_values += 1
+            continue
+        if not np.isfinite(values[current]):
+            continue
+        if robust:
+            median = float(np.median(valid))
+            q25, q75 = np.percentile(valid, [25, 75])
+            iqr = float(q75 - q25)
+            if iqr <= np.finfo(np.float64).eps:
+                scale = 1.0
+                audit.constant_iqr_values += 1
+            else:
+                scale = iqr / 1.349
+            output[current] = np.clip(
+                (values[current] - median) / scale,
+                -config.robust_clip,
+                config.robust_clip,
+            )
+        else:
+            lower, upper = np.percentile(
+                valid, [config.lower_percentile, config.upper_percentile]
+            )
+            output[current] = np.clip(values[current], lower, upper)
+        audit.rolling_values += 1
+    return output
+
+
+class TestRollingColumnVectorizedEquivalence(unittest.TestCase):
+    """向量化 `_rolling_column` 必须与逐行参考实现数值等价。"""
+
+    WINDOW = 20
+    MIN_PERIODS = 5
+
+    def _compare(self, values, robust, fallback):
+        config = RollingNormalizationConfig(window=self.WINDOW, min_periods=self.MIN_PERIODS)
+        normalizer = RollingNormalizer(config)
+        size = len(values)
+        mask_vec = np.zeros(size, dtype=bool)
+        mask_ref = np.zeros(size, dtype=bool)
+        audit_vec = RollingAudit()
+        audit_ref = RollingAudit()
+        out_vec = normalizer._rolling_column(
+            values.copy(), robust, fallback, mask_vec, audit_vec
+        )
+        out_ref = _reference_rolling_column(
+            config, values.copy(), robust, fallback, mask_ref, audit_ref
+        )
+        self.assertEqual(out_vec.dtype, np.float64)
+        np.testing.assert_array_equal(mask_vec, mask_ref)
+        self.assertEqual(audit_vec, audit_ref)
+        np.testing.assert_allclose(out_vec, out_ref, rtol=0, atol=1e-12)
+        return float(np.max(np.abs(out_vec - out_ref))) if size else 0.0
+
+    def _random_values(self, seed):
+        rng = np.random.default_rng(seed)
+        size = 137
+        values = rng.standard_normal(size) * 10.0 + 5.0
+        values[rng.random(size) < 0.15] = np.nan
+        values[rng.random(size) < 0.05] = np.inf
+        values[40:70] = 3.0  # 常数段：iqr=0 触发 constant_iqr_values
+        values[100] = np.nan
+        values[101] = 7.0
+        return values
+
+    def test_robust_matches_reference_with_nan_and_constant_segments(self):
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                values = self._random_values(seed)
+                max_diff = self._compare(values, robust=True, fallback=None)
+                self.assertLessEqual(max_diff, 1e-12)
+
+    def test_winsor_matches_reference(self):
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                values = self._random_values(seed)
+                max_diff = self._compare(values, robust=False, fallback=None)
+                self.assertLessEqual(max_diff, 1e-12)
+
+    def test_supplied_fallback_including_non_finite_entries(self):
+        values = self._random_values(0)
+        fallback = np.full(values.shape, -7.0)
+        fallback[0:3] = np.nan
+        fallback[10] = np.inf
+        for robust in (True, False):
+            with self.subTest(robust=robust):
+                self._compare(values, robust=robust, fallback=fallback)
+
+    def test_boundary_lengths_and_nan_current_row(self):
+        for size in (self.MIN_PERIODS - 1, self.MIN_PERIODS, self.MIN_PERIODS + 1, 60):
+            with self.subTest(size=size):
+                values = np.arange(1.0, size + 1)
+                if size > 2:
+                    values[-1] = np.nan
+                for robust in (True, False):
+                    self._compare(values, robust=robust, fallback=None)
+
+    def test_empty_and_all_nan(self):
+        for values in (np.array([], dtype=np.float64), np.full(9, np.nan)):
+            for robust in (True, False):
+                with self.subTest(size=len(values), robust=robust):
+                    self._compare(values, robust=robust, fallback=None)
+
+    def test_rolling_column_is_vectorized(self):
+        normalizer = RollingNormalizer(
+            RollingNormalizationConfig(window=self.WINDOW, min_periods=self.MIN_PERIODS)
+        )
+        values = np.arange(1.0, 61.0)
+        with patch("numpy.median") as median_call, patch("numpy.percentile") as percentile_call:
+            normalizer._rolling_column(values, False, None, np.zeros(60, dtype=bool), RollingAudit())
+        median_call.assert_not_called()
+        percentile_call.assert_not_called()
 
 
 def _dataset_frame(rows: int) -> pd.DataFrame:

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from data.schema import G9_RAW_FEATURES
 
@@ -255,39 +256,55 @@ class RollingNormalizer:
         fallback_mask: np.ndarray,
         audit: RollingAudit,
     ) -> np.ndarray:
+        # 向量化：pandas.rolling 复现逐行窗口语义（NaN/inf 均按缺失处理）。
+        # pandas 分位数与 numpy 存在 ULP 级实现差异（见等价测试），
+        # 因此输出以 rtol=0/atol=1e-12 判定等价，fallback_mask/audit 计数逐位一致。
         output = np.zeros(values.shape, dtype=np.float64)
-        for current in range(len(values)):
-            start = max(0, current - self.config.window + 1)
-            window = values[start : current + 1]
-            valid = window[np.isfinite(window)]
-            if valid.size < self.config.min_periods:
-                fallback_mask[current] = True
-                audit.fallback_values += 1
-                if fallback is not None and np.isfinite(fallback[current]):
-                    output[current] = fallback[current]
-                else:
-                    audit.neutral_fallback_values += 1
-                continue
-            if not np.isfinite(values[current]):
-                continue
+        row_count = len(values)
+        if row_count == 0:
+            return output
+
+        config = self.config
+        finite_current = np.isfinite(values)
+        series = pd.Series(np.where(finite_current, values, np.nan))
+        rolling = series.rolling(window=config.window, min_periods=config.min_periods)
+        counts = rolling.count().to_numpy()
+        counts = np.where(np.isnan(counts), 0.0, counts)
+        fallback_rows = counts < config.min_periods
+        rolling_rows = (~fallback_rows) & finite_current
+
+        if fallback_rows.any():
+            fallback_mask[fallback_rows] = True
+            audit.fallback_values += int(fallback_rows.sum())
+            if fallback is None:
+                audit.neutral_fallback_values += int(fallback_rows.sum())
+            else:
+                fallback_finite = np.isfinite(fallback)
+                supplied = fallback_rows & fallback_finite
+                output[supplied] = fallback[supplied]
+                neutral = fallback_rows & ~fallback_finite
+                audit.neutral_fallback_values += int(neutral.sum())
+
+        if not rolling_rows.any():
+            return output
+
+        epsilon = np.finfo(np.float64).eps
+        with np.errstate(invalid="ignore", divide="ignore"):
             if robust:
-                median = float(np.median(valid))
-                q25, q75 = np.percentile(valid, [25, 75])
-                iqr = float(q75 - q25)
-                if iqr <= np.finfo(np.float64).eps:
-                    scale = 1.0
-                    audit.constant_iqr_values += 1
-                else:
-                    scale = iqr / 1.349
-                output[current] = np.clip(
-                    (values[current] - median) / scale,
-                    -self.config.robust_clip,
-                    self.config.robust_clip,
+                median = rolling.median().to_numpy()
+                q25 = rolling.quantile(0.25).to_numpy()
+                q75 = rolling.quantile(0.75).to_numpy()
+                iqr = q75 - q25
+                constant = rolling_rows & (iqr <= epsilon)
+                audit.constant_iqr_values += int(constant.sum())
+                scale = np.where(iqr <= epsilon, 1.0, iqr / 1.349)
+                transformed = np.clip(
+                    (values - median) / scale, -config.robust_clip, config.robust_clip
                 )
             else:
-                lower, upper = np.percentile(
-                    valid, [self.config.lower_percentile, self.config.upper_percentile]
-                )
-                output[current] = np.clip(values[current], lower, upper)
-            audit.rolling_values += 1
+                lower = rolling.quantile(config.lower_percentile / 100.0).to_numpy()
+                upper = rolling.quantile(config.upper_percentile / 100.0).to_numpy()
+                transformed = np.clip(values, lower, upper)
+        output[rolling_rows] = transformed[rolling_rows]
+        audit.rolling_values += int(rolling_rows.sum())
         return output
