@@ -11,7 +11,7 @@ preds npz 需含 exp_ret/true_ret/dates/codes（codes 由新版 eval_bins_mappin
   uv run --project . python -m scripts.run_backtest --mode target \
     --preds logs/preds_dual_ep7.npz --full_ohlc logs/ohlc_full_val.npz \
     --target_size 100 --sell_buffer 500 --min_edge 0.01 --edge_tail_pct 0.3 \
-    --exit-on-nonpositive --exit_threshold 0.0
+    --exit-on-nonpositive --exit_threshold 0.0 --strong_buy_threshold 0.02
 
 费用为逐笔 A 股模型：买/卖佣金 max(成交额×费率, 最低佣金) + 卖出印花税；--capital 折算最低佣金。
 旧 --cost_rate 仅兼容保留，显式传入时告警并忽略。
@@ -56,7 +56,8 @@ NOTE = ("卖出未做跌停检查（简化口径）；策略为 open-open 口径
         "逐笔 A 股费用模型：买卖佣金 max(成交额×费率, 最低佣金) + 卖出印花税")
 NOTE_TARGET = ("卖出未做跌停检查（简化口径）；目标持仓模式：买入带 rank<=target_size，"
                "卖出带 rank>target_size+sell_buffer（或 exit_on_nonpositive 时 exp_ret<=exit_threshold），"
-               "min_edge 过滤命中空槽留现金，float 股数等权，逐笔 A 股费用模型")
+               "min_edge 过滤命中空槽留现金；strong_buy_threshold>0 时买入带内 exp_ret<阈值亦跳过留现金不补位"
+               "（0.0 为关闭哨兵）；float 股数等权，逐笔 A 股费用模型")
 
 
 def load_preds(path: str) -> dict:
@@ -134,6 +135,7 @@ def run_target_mode(args, out_dir: str) -> None:
                "target_size": args.target_size, "sell_buffer": args.sell_buffer,
                "exit_on_nonpositive": args.exit_on_nonpositive, "exit_threshold": args.exit_threshold,
                "min_edge": args.min_edge, "edge_tail_pct": args.edge_tail_pct,
+               "strong_buy_threshold": args.strong_buy_threshold,
                "models": {}}
     bench = None
     bm = None
@@ -154,27 +156,32 @@ def run_target_mode(args, out_dir: str) -> None:
                                   min_edge=args.min_edge, edge_tail_pct=args.edge_tail_pct,
                                   exit_on_nonpositive=args.exit_on_nonpositive,
                                   exit_threshold=args.exit_threshold,
+                                  strong_buy_threshold=args.strong_buy_threshold,
                                   capital=args.capital, buy_rate=args.buy_rate,
                                   sell_rate=args.sell_rate, stamp_rate=args.stamp_rate,
                                   min_commission=args.min_commission)
         m = nav_metrics(res.nav)
         n_limit = sum(int(v.get("limit_up", 0)) for v in res.skipped.values())
         n_edge = sum(int(v.get("min_edge", 0)) for v in res.skipped.values())
+        n_strong = sum(int(v.get("strong_buy", 0)) for v in res.skipped.values())
         excess = None if bm is None else m["annual"] - bm["annual"]
         target_metrics = {**m, "final_nav": float(res.nav[-1]),
                           "avg_cash_ratio": float(res.avg_cash_ratio),
                           "n_closed_trades": len(res.holdings),
                           "n_skipped_limit_up": n_limit,
-                          "n_skipped_min_edge": n_edge}
+                          "n_skipped_min_edge": n_edge,
+                          "n_skipped_strong_buy": n_strong}
         if excess is not None:
             target_metrics["excess_annual"] = excess
         metrics["models"][name] = {"target": target_metrics}
         excess_desc = "n/a" if excess is None else f"{excess:+.4f}"
         print(f"[bt] === {name} === target(size={args.target_size}, buffer={args.sell_buffer}, "
-              f"min_edge={args.min_edge}, tail={args.edge_tail_pct}): annual={m['annual']:.4f} "
+              f"min_edge={args.min_edge}, tail={args.edge_tail_pct}, "
+              f"strong_buy={args.strong_buy_threshold}): annual={m['annual']:.4f} "
               f"sharpe={m['sharpe']:.3f} mdd={m['mdd']:.4f} win={m['win_rate']:.4f} "
               f"超额={excess_desc} 平均现金仓位={res.avg_cash_ratio:.2%} "
-              f"平仓笔数={len(res.holdings)} 涨停跳过={n_limit} min_edge跳过={n_edge}")
+              f"平仓笔数={len(res.holdings)} 涨停跳过={n_limit} min_edge跳过={n_edge} "
+              f"强买跳过={n_strong}")
         save_holdings_csv(res.holdings, os.path.join(out_dir, f"holdings_{name}_target.csv"))
         plt.plot(res.nav, label=f"{name} target{args.target_size}")
     if bench is not None:
@@ -185,6 +192,7 @@ def run_target_mode(args, out_dir: str) -> None:
     exit_desc = (f"exit<= {args.exit_threshold}" if args.exit_on_nonpositive
                  else f"buffer={args.sell_buffer}")
     plt.title(f"目标持仓回测 (size={args.target_size}, {exit_desc}, min_edge={args.min_edge}, "
+              f"strong_buy={args.strong_buy_threshold}, "
               f"本金={args.capital:.0f}, 佣金{args.buy_rate:.4%}+印花税{args.stamp_rate:.4%})")
     plt.grid(True, alpha=0.3)
     plt.legend()
@@ -296,6 +304,9 @@ def parse_args():
     p.add_argument("--exit_threshold", type=float, default=0.0, help="target 模式：exit_on_nonpositive 的预测阈值")
     p.add_argument("--min_edge", type=float, default=0.01, help="target 模式：费用感知过滤的预测分数阈值")
     p.add_argument("--edge_tail_pct", type=float, default=0.3, help="target 模式：min_edge 过滤只作用于买入带后 edge_tail_pct 名")
+    p.add_argument("--strong_buy_threshold", type=float, default=0.0,
+                   help="target 模式：绝对预测收益强买门槛，买入带内 exp_ret>=阈值 才买（空槽留现金不补位）；"
+                        "默认 0.0=关闭，负数由引擎 raise")
     p.add_argument("--full_ohlc", default=None, help="target 模式必填：全期日频矩阵 npz（codes/dates/open_m/close_m）")
     p.add_argument("--out_dir", default=None, help="默认 logs/backtest_<时间戳>")
     args = p.parse_args()

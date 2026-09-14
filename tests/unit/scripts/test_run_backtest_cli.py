@@ -1,17 +1,22 @@
 """T05: run_backtest CLI 参数默认值与 --cost_rate deprecation 单测."""
 import contextlib
 import io
+import json
+import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
 import numpy as np
 
+from backtest.engine import BacktestResult
 from scripts.run_backtest import (
     default_index_dir,
     index_covers_trade_days,
     load_index_close,
     parse_args,
+    run_target_mode,
 )
 
 
@@ -75,6 +80,85 @@ class TestIndexBenchmarkHelpers(unittest.TestCase):
         idates = np.array(["2013-01-04", "2013-01-07"], dtype="datetime64[D]")
         self.assertFalse(index_covers_trade_days(idates, np.array(["2026-01-05"], dtype="datetime64[D]")))
         self.assertTrue(index_covers_trade_days(idates, np.array(["2013-01-04"], dtype="datetime64[D]")))
+
+
+class TestStrongBuyThresholdCLI(unittest.TestCase):
+    """T02: --strong_buy_threshold CLI 参数（target 模式强买门槛）."""
+
+    def _parse(self, argv):
+        with mock.patch.object(sys, "argv", ["run_backtest", *argv]):
+            return parse_args()
+
+    def test_default_zero(self):
+        a = self._parse(["--preds", "x.npz", "--mode", "target"])
+        self.assertEqual(a.strong_buy_threshold, 0.0)
+
+    def test_override(self):
+        a = self._parse(["--preds", "x.npz", "--mode", "target",
+                         "--strong_buy_threshold", "0.02"])
+        self.assertEqual(a.strong_buy_threshold, 0.02)
+
+
+class TestTargetMetricsStrongBuy(unittest.TestCase):
+    """T02: target metrics 新增 strong_buy 键，旧键只增不删；打印/图题同步."""
+
+    def _run(self, extra_argv, tmp):
+        with mock.patch.object(sys, "argv",
+                               ["run_backtest", "--preds", "x.npz", "--mode", "target", *extra_argv]):
+            args = parse_args()
+        args.full_ohlc = "fake.npz"
+        days = np.array(["2026-01-05", "2026-01-06"], dtype="datetime64[D]")
+        full = {"codes": np.array(["000001"]), "dates": days}
+        preds = {"exp_ret": np.array([0.10]), "true_ret": np.array([0.10]),
+                 "dates": days, "codes": np.array(["000001"])}
+        skipped = {np.datetime64("2026-01-05"): {"strong_buy": 3, "limit_up": 1}}
+        res = BacktestResult(nav=np.array([1.0, 1.02, 1.05]), holdings=np.array([]),
+                             skipped=skipped, avg_cash_ratio=0.3)
+        fake_plt = mock.MagicMock()
+        mock_run = mock.Mock(return_value=res)
+        buf = io.StringIO()
+        with mock.patch.multiple("scripts.run_backtest",
+                                 load_full_ohlc=mock.Mock(return_value=full),
+                                 load_index_close=mock.Mock(
+                                     return_value=(days, np.array([3000.0, 3010.0]))),
+                                 index_covers_trade_days=mock.Mock(return_value=False),
+                                 load_preds=mock.Mock(return_value=preds),
+                                 run_backtest_target=mock_run,
+                                 save_holdings_csv=mock.Mock(),
+                                 plt=fake_plt), contextlib.redirect_stdout(buf):
+            run_target_mode(args, tmp)
+        with open(os.path.join(tmp, "metrics.json"), encoding="utf-8") as f:
+            return json.load(f), fake_plt, buf.getvalue(), mock_run
+
+    def test_new_keys_present_and_legacy_keys_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            metrics, fake_plt, out, mock_run = self._run(["--strong_buy_threshold", "0.02"], tmp)
+        # CLI 参数必须透传到引擎（防止改用常量而漏检）
+        self.assertEqual(mock_run.call_args.kwargs["strong_buy_threshold"], 0.02)
+        self.assertEqual(metrics["strong_buy_threshold"], 0.02)
+        # 旧 target 配置键必须保留（只增不删）
+        self.assertEqual(metrics["min_edge"], 0.01)
+        self.assertEqual(metrics["edge_tail_pct"], 0.3)
+        self.assertEqual(metrics["target_size"], 100)
+        self.assertEqual(metrics["sell_buffer"], 500)
+        self.assertFalse(metrics["exit_on_nonpositive"])
+        self.assertEqual(metrics["exit_threshold"], 0.0)
+        self.assertIn("n_skipped_min_edge", metrics["models"]["x"]["target"])
+        tm = metrics["models"]["x"]["target"]
+        self.assertEqual(tm["n_skipped_strong_buy"], 3)
+        self.assertEqual(tm["n_skipped_limit_up"], 1)
+        self.assertEqual(tm["n_skipped_min_edge"], 0)
+        # 打印行与图题补 strong_buy 阈值/跳过计数
+        self.assertIn("strong_buy=0.02", out)
+        self.assertIn("强买跳过=3", out)
+        self.assertIn("strong_buy=0.02", str(fake_plt.title.call_args))
+
+    def test_default_threshold_zero_in_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            metrics, _, _, mock_run = self._run([], tmp)
+        self.assertEqual(mock_run.call_args.kwargs["strong_buy_threshold"], 0.0)
+        self.assertEqual(metrics["strong_buy_threshold"], 0.0)
+        self.assertEqual(metrics["models"]["x"]["target"]["n_skipped_strong_buy"], 3)
 
 
 if __name__ == "__main__":

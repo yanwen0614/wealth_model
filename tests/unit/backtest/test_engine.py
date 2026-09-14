@@ -513,6 +513,62 @@ class TestTargetFeeAndExit(unittest.TestCase):
             run_backtest_target(exp_ret, codes, dates, ohlc, target_size=1, stamp_rate=-0.001)
 
 
+class TestStrongBuyGate(unittest.TestCase):
+    def test_negative_threshold_raises(self):
+        exp_ret, codes, dates, ohlc = _target_fixture([("000001", 0.30)], 3)
+        with self.assertRaises(ValueError):
+            run_backtest_target(exp_ret, codes, dates, ohlc, target_size=1,
+                                strong_buy_threshold=-0.01)
+
+    def test_threshold_skips_and_holds_cash(self):
+        # 3 候选 exp=[0.30, 0.03, 0.001]，仅 exp>=0.05 才买；min_edge=0.0 隔离使门槛唯一生效
+        specs = [("000001", 0.30), ("000002", 0.03), ("000003", 0.001)]
+        exp_ret, codes, dates, ohlc = _target_fixture(specs, 4)
+        res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=3, sell_buffer=10,
+                                  min_edge=0.0, strong_buy_threshold=0.05)
+        # 仅 rank1 买入 → 2/3 现金 + 1/3 买入（单槽预算 nav/3，不补位）
+        self.assertAlmostEqual(float(res.nav[1]), 2.0 / 3.0 + (1.0 / 3.0) / 1.00025, places=12)
+        self.assertAlmostEqual(float(res.nav[2]), 2.0 / 3.0 + (1.0 / 3.0) / 1.00025, places=12)
+        self.assertEqual(len(res.holdings), 1)
+        self.assertEqual(res.holdings["code"][0], "000001")
+        self.assertEqual(res.skipped[_days(4)[1]], {"strong_buy": 2})
+        self.assertEqual(res.skipped[_days(4)[2]], {"strong_buy": 2})
+        self.assertEqual(len(res.skipped), 2)
+
+    def test_zero_threshold_equivalent_to_default(self):
+        # threshold=0.0 是关闭哨兵，结果须与不传该参数逐位一致
+        specs = [("000001", [0.30, 0.20, 0.20, 0.20, 0.20]),
+                 ("000002", [0.20, 0.30, 0.30, 0.30, 0.30]),
+                 ("000003", [0.10, 0.20, 0.30, 0.30, 0.30])]
+        exp_ret, codes, dates, ohlc = _target_fixture(specs, 5)
+        base = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=1, sell_buffer=1)
+        zero = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=1, sell_buffer=1,
+                                   strong_buy_threshold=0.0)
+        np.testing.assert_array_equal(base.nav, zero.nav)
+        self.assertEqual(base.skipped, zero.skipped)
+        np.testing.assert_array_equal(base.holdings, zero.holdings)
+        self.assertEqual(base.avg_cash_ratio, zero.avg_cash_ratio)
+
+    def test_min_edge_wins_when_both_hit(self):
+        # rank2 落 tail 区且 exp<min_edge、也 <strong_buy；顺序 min_edge 先 → 计 min_edge
+        specs = [("000001", 0.30), ("000002", 0.001)]
+        exp_ret, codes, dates, ohlc = _target_fixture(specs, 4)
+        res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=2, sell_buffer=10,
+                                  min_edge=0.05, edge_tail_pct=0.5, strong_buy_threshold=0.05)
+        self.assertEqual(res.skipped[_days(4)[1]], {"min_edge": 1})
+        self.assertNotIn("strong_buy", res.skipped[_days(4)[1]])
+
+    def test_strong_buy_and_limit_up_counted_independently(self):
+        # rank1 过门槛后涨停（计 limit_up）；rank2 exp<阈值（计 strong_buy）
+        specs = [("000001", 0.30), ("000002", 0.03)]
+        exp_ret, codes, dates, ohlc = _target_fixture(specs, 4, opens=[[11.0] * 4, [10.0] * 4],
+                                                      closes=[[10.0] * 4, [10.0] * 4])
+        res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=2, sell_buffer=10,
+                                  min_edge=0.0, strong_buy_threshold=0.05)
+        self.assertEqual(res.skipped[_days(4)[1]], {"limit_up": 1, "strong_buy": 1})
+        self.assertEqual(len(res.holdings), 0)
+
+
 class TestAvgCashRatio(unittest.TestCase):
     def test_rolling_avg_cash_ratio_zero(self):
         rets = [(f"00000{i}", 0.10) for i in range(1, 6)]

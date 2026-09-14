@@ -293,6 +293,7 @@ def _close_holding(holdings: list, pos: dict, s: str, d, px: float, *, capital: 
 def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_size: int = 100,
                         sell_buffer: int = 500, min_edge: float = 0.01, edge_tail_pct: float = 0.3,
                         exit_on_nonpositive: bool = False, exit_threshold: float = 0.0,
+                        strong_buy_threshold: float = 0.0,
                         capital: float = DEFAULT_CAPITAL, buy_rate: float = BUY_COMMISSION_RATE,
                         sell_rate: float = SELL_COMMISSION_RATE, stamp_rate: float = STAMP_DUTY_RATE,
                         min_commission: float = MIN_COMMISSION) -> BacktestResult:
@@ -301,6 +302,8 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
     T 日截面决策、T+1 open 执行：买入带 rank<=target_size；退出默认 rank>target_size+sell_buffer，
     或 exit_on_nonpositive 时改为 exp_ret<=exit_threshold（忽略 rank buffer，缺预测不卖）。
     min_edge 过滤（后 edge_tail_pct 名且 exp_ret<min_edge）命中的候选跳过、空槽留现金。
+    strong_buy_threshold>0 时，买入带内 exp_ret<strong_buy_threshold 的候选跳过该槽、留现金、不补位
+    （0.0 为关闭哨兵；门槛作用于买入带全部候选，执行顺序 min_edge → strong_buy → 涨停检查）。
     股数为 float（非整手），每笔预算 = (nav/target_size)×capital 元；逐笔 A 股费用模型。
     nav = cash + Σ 股数×当日 open / capital；数据尾部最后交易日强制按 open 平仓（计费用）。
     avg_cash_ratio = 逐日 cash/nav[i]（nav[i]>0）的均值，用于观测平均闲置现金仓位。
@@ -316,6 +319,8 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
         raise ValueError(f"sell_buffer 必须 >= 0, got {sell_buffer}")
     if min_edge < 0:
         raise ValueError(f"min_edge 必须 >= 0, got {min_edge}")
+    if strong_buy_threshold < 0:
+        raise ValueError(f"strong_buy_threshold 必须 >= 0, got {strong_buy_threshold}")
     if not 0.0 <= edge_tail_pct <= 1.0:
         raise ValueError(f"edge_tail_pct 应在 [0, 1], got {edge_tail_pct}")
     _validate_fee_inputs(capital, buy_rate, sell_rate, stamp_rate, min_commission)
@@ -360,7 +365,7 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
             nav_pre = cash + sum(p["shares"] * p["price"] for p in pos.values()) / capital
             if i < n_days - 1 and nav_pre > 0:
                 slots = target_size - len(pos)
-                skips = {"limit_up": 0, "min_edge": 0}
+                skips = {"limit_up": 0, "min_edge": 0, "strong_buy": 0}
                 for k in range(min(target_size, len(order_list))):
                     if slots <= 0:
                         break
@@ -369,6 +374,9 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
                         continue
                     if rank_map[s] / target_size > 1.0 - edge_tail_pct and exp_map[s] < min_edge:
                         skips["min_edge"] += 1
+                        continue
+                    if strong_buy_threshold > 0.0 and exp_map[s] < strong_buy_threshold:
+                        skips["strong_buy"] += 1
                         continue
                     row = row_of.get(s)
                     if row is None:
@@ -395,7 +403,7 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
                     pos[s] = {"shares": shares, "price": px, "entry_date": d, "entry_px": px,
                               "weight": 1.0 / target_size}
                     slots -= 1
-                if skips["limit_up"] or skips["min_edge"]:
+                if skips["limit_up"] or skips["min_edge"] or skips["strong_buy"]:
                     skipped[d] = {k: v for k, v in skips.items() if v}
         if i == n_days - 1 and pos:
             for s in list(pos):

@@ -115,6 +115,7 @@
 - 回测：T 日决策，T+1 open 买入，T+6 open 卖出。
 - 回测费用（rolling/target 统一）：买佣 `max(买额×0.00025,5)`；卖佣 `max(卖额×0.00025,5)` + 印花税 `卖额×0.00025`；`--capital` 默认 100 万；旧 `--cost_rate` 已废弃。
 - 回测基准：大盘指数 close-to-close（`--benchmark_index` 默认 `000300.SH`）；`--topn` 默认 `5 10 20`；target 默认 `sell_buffer=500` / 可选 `--exit-on-nonpositive`；输出 `avg_cash_ratio`。
+- target 强买门槛：`--strong_buy_threshold F`（target 模式）为**绝对预测收益强买门槛**，仅当买入带（`rank <= target_size`）候选 `exp_ret >= F` 才买入；不满足者跳过该槽、**留现金、不补位**。默认 `0.0` = 关闭该规则（行为与不启用前逐位一致），负值由引擎 `raise ValueError`。与 `min_edge` 正交，执行顺序 `min_edge → strong_buy → 涨停检查`。
 - 旧 close-close 标签和缓存仅作历史记录，不能与当前 open-open 数据、checkpoint 或回测结果混用。
 
 ---
@@ -125,3 +126,26 @@
 - [x] redesign：实现 P/R/N/G 分组 + `ColumnRule` + 三策略（relative/per_code/rolling），`schema`/`scaler`/`rolling_scaler`/`dataset`/`train` 已落地
 - [x] 小样本验证：`--max_codes 10 --normalize per_code` 检查默认 `x [53,60]` 无 NaN/inf
 - [ ] 全量冒烟：按 5.1 的 E0–E5 矩阵重训/评估（`--max_codes` 全量）
+
+---
+
+## 7. E0–E5 回测综合结论（2026-09-15，seed 42 / 2026-01-01~08-31 / 基准沪深300）
+
+> 依据：Val Loss/Acc、截面 RankIC（`scripts/eval_bins_mapping.py`）、rolling 与 target 回测（新费用模型 + 指数基准）、`--strong_buy_threshold` 扫描（0/2%/3%/5% × b500/exitnp × size 5/10/50）。任务留档：`docs/agent/task/20260913_2331_rolling-normalization-redesign/`、`docs/agent/task/20260914_2303_backtest-fee-target-exit/`、`docs/agent/task/20260915_0005_add-strong-buy-gate/`。
+
+| 臂 | RankIC | rolling 超额(top10) | target exitnp 超额 **均值**(s5/10/20/50) | 评价 |
+|---|---|---|---|---|
+| **E0 relative** | 0.0248 | -39.6 | **+23.5**（+25.6/+32.5/+22.0/+14.0） | **综合最好**：唯一 exitnp 四档全正；无状态/无拟合风险 |
+| E1 per_code | 0.0302 | -19.3 | +17.3（-7.4/+28.4/+16.8/+31.5） | 次选；**仅大组合 size≥50 更优**，s5 方差极大 |
+| E2 rolling e2 | 0.0415 | -21.1 | -11.0 | 不稳定 |
+| E3 rolling e3 | **0.0441** | **-13.8** | -13.7 | **信号质量最好**，但 IC 未转化为可交易超额 |
+| E4 rolling e4 | 0.0339 | **-7.1** | -11.8 | 不稳定 |
+| E5 rolling e5 | 0.0399 | -24.1 | -24.1 | 多引入 G9 raw 无增益 |
+
+**结论**：
+1. **推荐主配置 E0（`--normalize relative`）**——最稳健、零拟合/落盘负担；搭配 target + `--exit-on-nonpositive` + size≥20。
+2. **E1（`--normalize per_code`）** 仅在大组合（size≥50）时更优，可作候选。
+3. **E3 只在原始排序信号（IC）上最好**，若后续做集成/加约束可优先；不作为可直接交易的配置。
+4. **E2/E4/E5 不推荐**：E5 额外特征无增益，E2/E4 方向不一致。
+5. `--strong_buy_threshold` 是「空仓/风险预算」开关（阈值↑ → 现金比与跳过数单调↑），**非选股 α**：2% 近乎无效（模型头部预测已 >2%），5% 时现金比 45–67%、样本骤减、方差极大。
+6. **保留**：单 seed、单区间（154 日）、t 值弱；exitnp 含择时成分，需多 seed + 换手/行业暴露归因后才能定论。
