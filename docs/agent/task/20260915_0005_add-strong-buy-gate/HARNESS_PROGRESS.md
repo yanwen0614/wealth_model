@@ -159,3 +159,10 @@ benchmark 沪深300 annual **-3.09%**。固定参数 `--sell_buffer 500 --min_ed
 5. **高阈值 = 高现金 = 从「选股」转向「择时空仓」**：5% 档样本量骤减（部分组合 closed trades <500）→ 方差极大，不能作为稳健 alpha 证据。
 6. **相对最稳的是 s50**：`exitnp` 下 0.0–0.05 多数臂正超额；`b500` 下 E1 在 3% 最好（+18.7% 超额）。
 7. **总体判定**：强买门槛是有效的「风险预算/空仓」开关，但**未见一致正超额**；收益差异主要由「进入现金的比例」驱动，需结合换手/行业暴露归因才能判定价值。
+
+## 提交
+
+- 规划三件套：`fd955ea`
+- 代码 + 文档 + T05 结果：`cb6abc1`（`feat: add-strong-buy-gate target 强买门槛 --strong_buy_threshold`）
+- 综合结论另落 `docs/per_code_normalization_spec.md` §7 与 `.opencode/memory/MEMORY.md`。
+- 排除项：`uv.lock`（环境重锁）与 `.opencode/memory/*`（记忆文件）未纳入本次提交。
