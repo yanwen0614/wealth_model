@@ -35,7 +35,24 @@ T01 schema 分组
 | T07 | 评估脚本层适配（69→53 / relative / scope） | T05,T06 | +200 | 是 | PASS（1 轮 fix） |
 | T08 | 旧契约测试同步与全量单测绿 | T01–T07 | +180 | 否 | PASS（incremental，272→275 OK） |
 | T09 | 文档同步 | T01–T08 | +200 | 否 | PASS |
-| T10 | 端到端验收（重建缓存 + E0–E5 重训/评估） | T01–T09 | +60 | 否 | in_progress |
+| T10 | 端到端验收（重建缓存 + E0–E5 重训/评估） | T01–T09 | +60 | 否 | PASS |
+
+## T10 端到端结果（2026-09-14）
+- 训练：`--lr 3e-4 --batch_size 1024 --num_workers 4 --seed 42 --epochs 50 --patience 5`，串行后台（psmux `cnn_e0e5` + 控制器 `cnn_ctrl`）。
+- 六臂均 epoch3 达最优、epoch8 早停。
+- 评估区间 2026-01-01~08-31（154 交易日，794,501 样本）；基准（全截面等权）annual -12.66%、sharpe -1.266。
+
+| 臂 | mode/scope | Best Val Loss/Acc | run 目录 | 截面 RankIC | top5 annual(超额) | top50 annual(超额) | top100 annual(超额) |
+|---|---|---|---|---|---|---|---|
+| E0 | relative | 0.0562 / 0.1043 | `logs/relative/run_20260914_024253` | 0.0248 | -47.33% (-34.67%) | -14.17% (-1.51%) | -12.88% (-0.22%) |
+| E1 | per_code | 0.0562 / 0.1005 | `logs/run_20260914_045053` | 0.0302 | -48.40% (-35.74%) | -8.80% (+3.85%) | -3.13% (+9.53%) |
+| E2 | rolling e2 | 0.0562 / 0.1033 | `logs/rolling_e2/run_20260914_064942` | 0.0415 | -27.35% (-14.69%) | -9.44% (+3.21%) | -4.15% (+8.50%) |
+| E3 | rolling e3 | 0.0564 / 0.1016 | `logs/rolling_e3/run_20260914_093155` | **0.0441** | -33.34% (-20.69%) | **-2.70% (+9.95%)** | **+3.95% (+16.61%)** |
+| E4 | rolling e4 | 0.0561 / 0.1013 | `logs/rolling_e4/run_20260914_115221` | 0.0339 | -34.10% (-21.44%) | -8.97% (+3.68%) | -3.82% (+8.83%) |
+| E5 | rolling e5 | 0.0561 / 0.1029 | `logs/rolling_e5/run_20260914_141450` | 0.0399 | -34.38% (-21.73%) | -19.79% (-7.14%) | -10.80% (+1.86%) |
+
+- **结论**：六臂截面 RankIC 全为正；E3（rolling P+volatility）最优（IC 0.0441、top50 +9.95%、top100 +16.61%）；E1/E2/E4 在 top50/top100 有正超额；top5 因小盘/换手噪声全部跑输基准；E5 加入 G9 raw 滚动后未增益（top100 仅 +1.86%）。
+- 产物：`logs/preds_*_2026-08-31.npz`、`logs/backtest_*_2026-01-01_2026-08-31/`、`logs/topn_curve_*_*.png`、`logs/ohlc_path_2026-01-01_2026-08-31.npz`。
 
 ## 整体 review 收尾（2026-09-14）
 - 跨任务 review VERDICT=PASS；已修 M1（dataset 默认 parquet→F60）、M4（relative digest 增 mask_columns）、L1（`_relative_transform` inf 分母统一）、LR 默认 1e-4→3e-4。
