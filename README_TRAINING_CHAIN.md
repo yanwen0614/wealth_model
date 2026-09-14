@@ -103,6 +103,9 @@ print(m(torch.randn(2,53,60)).shape)  # => torch.Size([2,52])
 - 标签收益为 `open[t+1+horizon]/open[t+1]-1`，默认 `horizon=5`，即 T+1 open 到 T+6 open。
 - `BINS` 有 51 个边界，`np.digitize` 产生 `C=52` 类。
 - 回测使用 T 日预测排序，T+1 open 买入，T+6 open 卖出；标签收益和持仓收益必须保持同一 open-open 口径。
+- **回测费用模型**（rolling 与 target 统一，`backtest/engine.py`）：买入佣金 `max(买额×0.00025, 5 元)`；卖出佣金 `max(卖额×0.00025, 5 元)` + 印花税 `卖额×0.00025`；单笔净收益 `(卖额−卖佣−印花税−买额−买佣)/(买额+买佣)`。`--capital`（默认 100 万）用于折算最低 5 元佣金。旧 `--cost_rate` 已废弃（显式传入仅告警并忽略）。
+- **回测基准**：大盘指数 close-to-close（`--benchmark_index` 默认 `000300.SH` 沪深300，`--index_dir` 默认 `Z:/test/kline_index/day`）；超额 = 策略 annual − 指数 annual。旧「全截面等权」基准已弃用（`benchmark_nav` 仅测试保留）。
+- **评估范围**：`--topn` 默认 `5 10 20`；target 模式默认 `sell_buffer=500`，可选 `--exit-on-nonpositive`（预测 exp_ret ≤ 0 即卖）。`metrics.json`/打印输出 `avg_cash_ratio`（rolling 恒 0；target 实测）。
 - 训练 scaler fit 后保存为 `logs/scaler_per_code.pkl`，验证集复用该文件，禁止在验证集重新 fit。
 
 ## 4. 如何运行全量训练

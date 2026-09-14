@@ -113,6 +113,8 @@
 - 窗口长度 `T=60`，默认 horizon=5。
 - 标签收益：`open[t+1+horizon]/open[t+1]-1`，51 个 BINS 边界对应 `C=52` 类。
 - 回测：T 日决策，T+1 open 买入，T+6 open 卖出。
+- 回测费用（rolling/target 统一）：买佣 `max(买额×0.00025,5)`；卖佣 `max(卖额×0.00025,5)` + 印花税 `卖额×0.00025`；`--capital` 默认 100 万；旧 `--cost_rate` 已废弃。
+- 回测基准：大盘指数 close-to-close（`--benchmark_index` 默认 `000300.SH`）；`--topn` 默认 `5 10 20`；target 默认 `sell_buffer=500` / 可选 `--exit-on-nonpositive`；输出 `avg_cash_ratio`。
 - 旧 close-close 标签和缓存仅作历史记录，不能与当前 open-open 数据、checkpoint 或回测结果混用。
 
 ---
