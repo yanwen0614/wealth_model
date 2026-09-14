@@ -164,8 +164,23 @@ uv run --project . python scripts/run_backtest.py \
 |------|------|
 | `--preds` | 一个或多个 preds npz |
 | `--ohlc` | `build_ohlc_path.py` 产出的 ohlc 路径表 |
-| `--mode` | `topn`（默认）或 `target`（目标持仓数） |
+| `--mode` | `rolling`（默认 TopN 固定持有）或 `target`（目标持仓数） |
 | `--target_size N` | target 模式下的目标持仓数 |
-| `--sell_buffer N` | target 模式的缓冲池大小 |
+| `--sell_buffer N` | target 模式的缓冲池大小（默认 500） |
+| `--exit-on-nonpositive` | target 模式：持仓预测 `<= exit_threshold` 即卖出（忽略缓冲池） |
+| `--exit_threshold F` | `--exit-on-nonpositive` 的预测阈值（默认 0.0） |
+| `--capital F` | 组合本金（元），用于最低佣金折算（默认 1,000,000） |
+| `--buy_rate F` / `--sell_rate F` | 买/卖佣金费率（默认 0.00025） |
+| `--stamp_rate F` | 卖出印花税费率（默认 0.00025，单边） |
+| `--min_commission F` | 单笔最低佣金（元，默认 5.0） |
+| `--topn N...` | rolling 模式各档位持仓数（默认 `5 10 20`） |
+| `--index_dir DIR` | 大盘指数日线 parquet 目录（默认 win32 `Z:/test/kline_index/day`） |
+| `--benchmark_index CODE` | 基准指数代码（默认 `000300.SH` 沪深300） |
+| `--cost_rate F` | **已废弃**：显式传入仅告警并忽略 |
 
-输出：`metrics.json`（各模型各档位指标）、持仓 CSV、净值 PNG。
+费用为逐笔 A 股模型：买入佣金 `max(成交额×buy_rate, min_commission)`；卖出费用
+`max(成交额×sell_rate, min_commission) + 成交额×stamp_rate`。
+
+基准为大盘指数 close-to-close 涨跌幅（不收费率），超额 = 策略 annual − 指数 annual；
+指数文件缺失显式报错，区间无数据则告警并跳过基准。输出：`metrics.json`（含 benchmark、
+各模型各档位指标与 `avg_cash_ratio`）、持仓 CSV、净值 PNG。

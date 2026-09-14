@@ -14,8 +14,9 @@ scaler/mode 解析（与 eval_bins_mapping.load_eval_preprocessing 一致）：
 五项取数说明（给定 run_dir / preds 缓存即可输出，不重跑训练）：
   1. IC/ICIR：eval_bins_mapping 报告 rank_ic_exp_vs_true + xs_rank_ic_*（日截面 RankIC 均值/中位数/>0占比）。
   2. top-bottom：top10_bottom10_spread + xs_spread_*（Top10%-Bot10% 多空 spread）。
-  3. 换手成本后收益：scripts/run_backtest.py --cost_rate 0.0015（默认双边一次性扣减）→ metrics.json
-     各 topn annual/sharpe/mdd + excess_annual（相对全截面等权基准）。
+  3. 换手成本后收益：scripts/run_backtest.py（逐笔 A 股费用模型：买卖佣金万2.5 最低5元 +
+     卖出印花税万2.5，--capital 折算最低佣金）→ metrics.json 各 topn annual/sharpe/mdd +
+     excess_annual（相对大盘指数 close-to-close 基准，默认 000300.SH）。
   4. fallback 比例：<run_log_dir>/config.json -> preprocessing.rolling_audit（fallback_ratio/
      fallback_values/rolling_values；仅 rolling 有，per_code/relative 无此键）。
   5. winsor 统计：同一 rolling_audit（constant_iqr_values/missing_values/neutral_fallback_values）。
@@ -376,7 +377,7 @@ def main():
 def parse_args():
     p = argparse.ArgumentParser(
         description="全流程评估：scaler → 推理缓存 → OHLC 路径表。"
-        "五项取数：IC/ICIR、top-bottom spread、换手成本后收益（run_backtest --cost_rate）、"
+        "五项取数：IC/ICIR、top-bottom spread、换手成本后收益（run_backtest 逐笔费用模型）、"
         "fallback 比例与 winsor 统计（config.json preprocessing.rolling_audit）；"
         "回测口径 T决策→T+1 open买→T+6 open卖见 backtest/engine.py。",
     )

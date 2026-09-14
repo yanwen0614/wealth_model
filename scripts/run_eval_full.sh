@@ -19,7 +19,7 @@ set -euo pipefail
 # 五项取数（见 run_eval_pipeline.py 模块 docstring）：
 #   IC/ICIR → eval 报告 rank_ic_exp_vs_true + xs_rank_ic_*；
 #   top-bottom → top10_bottom10_spread + xs_spread_*；
-#   换手成本后收益 → Step 2 metrics.json（--cost_rate 0.0015，双边一次性扣减）；
+#   换手成本后收益 → Step 2 metrics.json（逐笔 A 股费用模型：佣金万2.5 最低5元 + 卖出印花税万2.5）；
 #   fallback 比例 → jq .preprocessing.rolling_audit.<run>/config.json（fallback_ratio，仅 rolling）；
 #   winsor 统计 → 同一 rolling_audit（constant_iqr_values/missing_values）。
 # 回测口径（引用 backtest/engine.py，不重实现）：T 日决策→T+1 open 买→T+6 open 卖（horizon=5）。
@@ -70,8 +70,7 @@ echo "[Step 2] TopN rolling 回测"
 uv run --project . python -m scripts.run_backtest \
   --preds "$PREDS" \
   --ohlc "$OHLC" \
-  --topn 5 10 20 50 100 \
-  --cost_rate 0.0015 \
+  --topn 5 10 20 \
   --horizon 5 \
   --out_dir "logs/backtest_${RUN_TAG}_${START}_${END}"
 
