@@ -21,3 +21,4 @@
 [2026-09-14 23:49] 回测口径三项修订：benchmark_index_nav 大盘指数基准、avg_cash_ratio 平均现金仓位、--topn 默认 [5,10,20]（TDD 57 tests OK）
 [2026-09-14 23:58] 文档+记忆同步：回测口径升级（A股费用模型/指数基准/小TopN/avg_cash_ratio），commit 4073bad
 [2026-09-15 00:59] add-strong-buy-gate 完成（强买门槛）+ E0-E5 综合结论：E0 relative 最稳
+[2026-09-16 01:46] E0 (relative) 设为 baseline：config.defaults NORMALIZE=relative, SCALER_PATH=None; dataset.py 默认 normalize=relative
