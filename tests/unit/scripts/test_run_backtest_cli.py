@@ -100,7 +100,7 @@ class TestStrongBuyThresholdCLI(unittest.TestCase):
 
 
 class TestTargetMetricsStrongBuy(unittest.TestCase):
-    """T02: target metrics 新增 strong_buy 键，旧键只增不删；打印/图题同步."""
+    """T02: target metrics 新增 strong_buy 键；打印/图题同步."""
 
     def _run(self, extra_argv, tmp):
         with mock.patch.object(sys, "argv",
@@ -136,18 +136,14 @@ class TestTargetMetricsStrongBuy(unittest.TestCase):
         # CLI 参数必须透传到引擎（防止改用常量而漏检）
         self.assertEqual(mock_run.call_args.kwargs["strong_buy_threshold"], 0.02)
         self.assertEqual(metrics["strong_buy_threshold"], 0.02)
-        # 旧 target 配置键必须保留（只增不删）
-        self.assertEqual(metrics["min_edge"], 0.01)
-        self.assertEqual(metrics["edge_tail_pct"], 0.3)
+        # target 配置键保留
         self.assertEqual(metrics["target_size"], 100)
         self.assertEqual(metrics["sell_buffer"], 500)
         self.assertFalse(metrics["exit_on_nonpositive"])
         self.assertEqual(metrics["exit_threshold"], 0.0)
-        self.assertIn("n_skipped_min_edge", metrics["models"]["x"]["target"])
         tm = metrics["models"]["x"]["target"]
         self.assertEqual(tm["n_skipped_strong_buy"], 3)
         self.assertEqual(tm["n_skipped_limit_up"], 1)
-        self.assertEqual(tm["n_skipped_min_edge"], 0)
         # 打印行与图题补 strong_buy 阈值/跳过计数
         self.assertIn("strong_buy=0.02", out)
         self.assertIn("强买跳过=3", out)

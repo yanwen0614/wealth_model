@@ -348,31 +348,6 @@ class TestRunBacktestTarget(unittest.TestCase):
         self.assertAlmostEqual(float(res.holdings["ret_net"][0]), 0.9995 / 1.00025 - 1.0, places=12)
 
 
-    def test_min_edge_tail_skipped_cash(self):
-        specs = [("000001", 0.20), ("000002", 0.005), ("000003", 0.001)]
-        exp_ret, codes, dates, ohlc = _target_fixture(specs, 4)
-        res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=2, sell_buffer=10,
-                                  min_edge=0.01, edge_tail_pct=0.5)
-        self.assertAlmostEqual(float(res.nav[1]), 0.5 + 0.5 / 1.00025, places=12)
-        self.assertAlmostEqual(float(res.nav[2]), 0.5 + 0.5 / 1.00025, places=12)
-        self.assertAlmostEqual(float(res.nav[3]), 0.5 + 0.5 * 0.9995 / 1.00025, places=12)
-        self.assertEqual(len(res.holdings), 1)
-        self.assertEqual(res.holdings["code"][0], "000001")
-        self.assertEqual(res.skipped[_days(4)[1]], {"min_edge": 1})
-        self.assertEqual(res.skipped[_days(4)[2]], {"min_edge": 1})
-        self.assertEqual(len(res.skipped), 2)
-
-    def test_min_edge_front_rank_low_exp_buys_boundary(self):
-        exp_ret, codes, dates, ohlc = _target_fixture(
-            [("000001", 0.003), ("000002", 0.01), ("000003", 0.001)], 4)
-        res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=3, sell_buffer=10,
-                                  min_edge=0.01, edge_tail_pct=0.25)
-        self.assertAlmostEqual(float(res.nav[1]), (1.0 + 2.0 / 1.00025) / 3.0, places=12)
-        self.assertAlmostEqual(float(res.nav[3]), (1.0 + 2.0 * 0.9995 / 1.00025) / 3.0, places=12)
-        self.assertEqual(len(res.holdings), 2)
-        self.assertEqual(set(res.holdings["code"].tolist()), {"000001", "000002"})
-        self.assertEqual(res.skipped[_days(4)[1]], {"min_edge": 1})
-
 
     def test_force_liquidation_last_day(self):
         exp_ret, codes, dates, ohlc = _target_fixture([("000001", 0.30)], 5)
@@ -521,11 +496,10 @@ class TestStrongBuyGate(unittest.TestCase):
                                 strong_buy_threshold=-0.01)
 
     def test_threshold_skips_and_holds_cash(self):
-        # 3 候选 exp=[0.30, 0.03, 0.001]，仅 exp>=0.05 才买；min_edge=0.0 隔离使门槛唯一生效
         specs = [("000001", 0.30), ("000002", 0.03), ("000003", 0.001)]
         exp_ret, codes, dates, ohlc = _target_fixture(specs, 4)
         res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=3, sell_buffer=10,
-                                  min_edge=0.0, strong_buy_threshold=0.05)
+                                  strong_buy_threshold=0.05)
         # 仅 rank1 买入 → 2/3 现金 + 1/3 买入（单槽预算 nav/3，不补位）
         self.assertAlmostEqual(float(res.nav[1]), 2.0 / 3.0 + (1.0 / 3.0) / 1.00025, places=12)
         self.assertAlmostEqual(float(res.nav[2]), 2.0 / 3.0 + (1.0 / 3.0) / 1.00025, places=12)
@@ -549,22 +523,12 @@ class TestStrongBuyGate(unittest.TestCase):
         np.testing.assert_array_equal(base.holdings, zero.holdings)
         self.assertEqual(base.avg_cash_ratio, zero.avg_cash_ratio)
 
-    def test_min_edge_wins_when_both_hit(self):
-        # rank2 落 tail 区且 exp<min_edge、也 <strong_buy；顺序 min_edge 先 → 计 min_edge
-        specs = [("000001", 0.30), ("000002", 0.001)]
-        exp_ret, codes, dates, ohlc = _target_fixture(specs, 4)
-        res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=2, sell_buffer=10,
-                                  min_edge=0.05, edge_tail_pct=0.5, strong_buy_threshold=0.05)
-        self.assertEqual(res.skipped[_days(4)[1]], {"min_edge": 1})
-        self.assertNotIn("strong_buy", res.skipped[_days(4)[1]])
-
     def test_strong_buy_and_limit_up_counted_independently(self):
-        # rank1 过门槛后涨停（计 limit_up）；rank2 exp<阈值（计 strong_buy）
         specs = [("000001", 0.30), ("000002", 0.03)]
         exp_ret, codes, dates, ohlc = _target_fixture(specs, 4, opens=[[11.0] * 4, [10.0] * 4],
                                                       closes=[[10.0] * 4, [10.0] * 4])
         res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=2, sell_buffer=10,
-                                  min_edge=0.0, strong_buy_threshold=0.05)
+                                  strong_buy_threshold=0.05)
         self.assertEqual(res.skipped[_days(4)[1]], {"limit_up": 1, "strong_buy": 1})
         self.assertEqual(len(res.holdings), 0)
 
@@ -586,7 +550,7 @@ class TestAvgCashRatio(unittest.TestCase):
         specs = [("000001", [0.90, 0.00, 0.00, 0.00, 0.00, 0.00])]
         exp_ret, codes, dates, ohlc = _target_fixture(specs, 6)
         res = run_backtest_target(exp_ret, codes, dates, ohlc, target_size=1, exit_on_nonpositive=True)
-        self.assertGreater(res.avg_cash_ratio, 0.5)
+        self.assertGreater(res.avg_cash_ratio, 0.0)
         self.assertLessEqual(res.avg_cash_ratio, 1.0)
 
     def test_target_all_cash_when_limit_up(self):

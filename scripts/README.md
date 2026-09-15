@@ -169,7 +169,7 @@ uv run --project . python scripts/run_backtest.py \
 | `--sell_buffer N` | target 模式的缓冲池大小（默认 500） |
 | `--exit-on-nonpositive` | target 模式：持仓预测 `<= exit_threshold` 即卖出（忽略缓冲池） |
 | `--exit_threshold F` | `--exit-on-nonpositive` 的预测阈值（默认 0.0） |
-| `--strong_buy_threshold F` | target 模式：绝对预测收益强买门槛，买入带内候选 `exp_ret >= F` 才买入，不满足者跳过留现金不补位（默认 0.0 = 关闭；负值报错；先 `min_edge` 后 `strong_buy`） |
+| `--strong_buy_threshold F` | target 模式：绝对预测收益强买门槛，买入带内候选 `exp_ret >= F` 才买入，不满足者跳过留现金不补位（默认 0.0 = 关闭；负值报错；先 `strong_buy` 后涨停检查） |
 | `--capital F` | 组合本金（元），用于最低佣金折算（默认 1,000,000） |
 | `--buy_rate F` / `--sell_rate F` | 买/卖佣金费率（默认 0.00025） |
 | `--stamp_rate F` | 卖出印花税费率（默认 0.00025，单边） |
