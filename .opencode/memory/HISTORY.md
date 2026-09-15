@@ -16,3 +16,8 @@
 [2026-09-14 02:01] T07 评估脚本层适配完成（relative / scope e0..e5 / featurenum 实测派生），test_eval_preprocessing 28 项全绿
 [2026-09-14 02:41] 整体 review 修复：dataset 默认 parquet 改 F60、relative digest 纳入 mask、_relative_transform inf 边界、默认 LR 3e-4
 [2026-09-14 21:54] redesign T01-T09 + 整体 review 完成并提交 178f24e；E0/E1/E2 训练与评估完成（E2 RankIC 0.0415 最优），E3-E5 后台训练中
+[2026-09-14 21:56] E0-E5 redesign 六臂训练+评估完成：E3 最优（RankIC 0.0441, top100 +16.61%）；提交 475391c
+[2026-09-14 22:46] 完成三种评估口径（rolling/target/逐日TopN）对账，确认无bug，根因为涨停不可买样本+尾部未到期样本污染直接法
+[2026-09-14 23:49] 回测口径三项修订：benchmark_index_nav 大盘指数基准、avg_cash_ratio 平均现金仓位、--topn 默认 [5,10,20]（TDD 57 tests OK）
+[2026-09-14 23:58] 文档+记忆同步：回测口径升级（A股费用模型/指数基准/小TopN/avg_cash_ratio），commit 4073bad
+[2026-09-15 00:59] add-strong-buy-gate 完成（强买门槛）+ E0-E5 综合结论：E0 relative 最稳
