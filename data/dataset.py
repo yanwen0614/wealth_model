@@ -70,7 +70,7 @@ class ParquetDataConfig:
     end_date: str | None = None
     split_date: str | None = None  # 用于外部 train/val 划分，本 Dataset 内部可基于 start/end 过滤
     # 归一化：relative | per_code | none | rolling（per_code 为冻结默认；rolling/relative 显式 opt-in）
-    normalize: str = "per_code"
+    normalize: str = "relative"
     # rolling 子集范围：e0..e5（默认 e5 = 含 G9 raw 全量；仅 rolling 分支使用）
     rolling_scope: str = "e5"
     # 归一化统计文件（训练集拟合后保存，供验证集复用）
@@ -855,7 +855,7 @@ if __name__ == "__main__":
     parser.add_argument("--parquet", default="data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet")
     parser.add_argument("--max_codes", type=int, default=10)
     parser.add_argument(
-        "--normalize", type=str, default="per_code",
+        "--normalize", type=str, default="relative",
         choices=["relative", "per_code", "none", "rolling"], help="归一化方式",
     )
     parser.add_argument(

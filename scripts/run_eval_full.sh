@@ -11,7 +11,7 @@ set -euo pipefail
 #   per_code → logs/run_xxx；rolling → logs/rolling_e{0..5}/run_xxx；relative → logs/relative/run_xxx。
 #
 # 多臂评估命令（同名 best_model.pth 会互相覆盖 preds，故按目录派生唯一 --preds_out）：
-#   bash scripts/run_eval_full.sh logs/rolling_e0/<run>/best_model.pth 2026-01-01 2026-08-31
+#   bash scripts/run_eval_full.sh logs/relative/<run>/best_model.pth 2026-01-01 2026-08-31
 #   bash scripts/run_eval_full.sh logs/rolling_e2/<run>/best_model.pth 2026-01-01 2026-08-31
 #   bash scripts/run_eval_full.sh logs/rolling_e5/<run>/best_model.pth 2026-01-01 2026-08-31
 #   bash scripts/run_eval_full.sh logs/relative/<run>/best_model.pth 2026-01-01 2026-08-31

@@ -21,7 +21,7 @@ _BASE_CONFIG = {
     "TRAIN_START": "2013-01-01", "TRAIN_END": "2025-06-30",
     "VAL_START": "2025-07-01", "VAL_END": "2025-12-31",
     "TEST_START": "2026-01-01", "TEST_END": None,
-    "NORMALIZE": "per_code", "SCALER_PATH": "logs/scaler_per_code.pkl",
+    "NORMALIZE": "relative", "SCALER_PATH": None,
     "ROLLING_SCOPE": "e5", "SEED": 42,
     "MAX_CODES": None, "MAX_WINDOWS_PER_CODE": None,
     "model": "CNNTransformer", "criterion": "EMDLoss",
