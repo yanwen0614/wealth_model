@@ -2,24 +2,25 @@
 
 > 生成时间：2026-09-05 15:30
 > 需求：训练标签 close-close → open-open（与回测实盘口径对齐），三 loss 全串行重训（patience 10→2）
+> 2026-09-12 状态同步：本任务未执行即被后续工作取代 —— train.py 现状已是 open-open 标签口径（future_ret=open[t+6]/open[t+1]-1）且含 --patience；全表 pending → superseded，不再恢复。
 > 环境：非 git 仓库（git 环节跳过）；GPU RTX 3070 8GB；RAM 15.9GB（强制 num_workers=0 + 串行）
 
 ## 任务列表
 
 | Task | 名称 | 状态 | Quality Gate | 备注 |
 |------|------|------|--------------|------|
-| T01 | 单测先行（TDD RED） | pending | - | 5 组用例，旧实现下须全 FAIL |
-| T02 | dataset.py 标签 open-open（TDD GREEN） | pending | 待审 | 纯函数抽取 + max_s 收 1 + 注释同步 |
-| T03 | train.py --patience CLI | pending | 待审 | +3 行，skip TDD（纯配置转发） |
-| T04 | 链路一致性验证 + 旧缓存归档 | pending | -（运行任务） | dataset 探查 sanity + preds npz 归档 |
-| T05 | 三连串行训练（pure_reg→base→dual） | pending | -（运行任务） | 不进 quality gate，监控 patience=2 生效 |
+| T01 | 单测先行（TDD RED） | superseded | - | 5 组用例，旧实现下须全 FAIL |
+| T02 | dataset.py 标签 open-open（TDD GREEN） | superseded | 待审 | 纯函数抽取 + max_s 收 1 + 注释同步 |
+| T03 | train.py --patience CLI | superseded | 待审 | +3 行，skip TDD（纯配置转发） |
+| T04 | 链路一致性验证 + 旧缓存归档 | superseded | -（运行任务） | dataset 探查 sanity + preds npz 归档 |
+| T05 | 三连串行训练（pure_reg→base→dual） | superseded | -（运行任务） | 不进 quality gate，监控 patience=2 生效 |
 
 执行顺序：T01 → T02 →（T02/T03 完成后）T04 → T05；T03 可与 T01/T02 并行。
 
 ## 执行详情
 
 ### T01: 单测先行（TDD RED）
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：无
 - **文件**：
   - `tests/unit/data/test_dataset_label_openopen.py` (create)
@@ -30,7 +31,7 @@
 - **修复轮次**：0/2
 
 ### T02: dataset.py 标签 open-open（TDD GREEN）
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：T01
 - **文件**：
   - `data/dataset.py` (modify)
@@ -43,7 +44,7 @@
 - **修复轮次**：0/2
 
 ### T03: train.py --patience CLI
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：无（可并行）
 - **文件**：
   - `train.py` (modify)
@@ -54,7 +55,7 @@
 - **修复轮次**：0/2
 
 ### T04: 链路一致性验证 + 旧缓存归档（运行任务）
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：T02, T03
 - **文件**：无代码；`logs/preds_base_ep4.npz`、`logs/preds_dual_ep7.npz` → mv 至 `logs/archive_closeclose/`
 - **预估行数**：0
@@ -64,7 +65,7 @@
 - **修复轮次**：0/2
 
 ### T05: 三连串行训练（运行任务，不进 quality gate）
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：T04
 - **文件**：`logs/run_*/` ×3（运行产出）
 - **预估行数**：0

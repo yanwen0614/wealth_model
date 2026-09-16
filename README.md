@@ -5,7 +5,8 @@
 当前默认契约：
 
 - 读取 parquet，并过滤 `is_trading=False` 的合成行。
-- per-code 归一化后默认模型输入为 `F=45`：39 个有效特征加 6 个 G9 缺失 mask。
+- 默认 frozen per-code 归一化后的模型输入为 `F=69`：51 个 raw feature 加 18 个 G9 observation mask；`F=45`（39+6 mask）是历史 schema。
+- rolling 归一化是实验性 opt-in，使用 `--normalize rolling`；默认 per-code 逻辑和旧训练命令不变。rolling 第一阶段仅处理价格相对值、`macd`、三列 volatility、两列 volume ratio 和 `amihud`，`close` 仅作辅助，不作为输入。
 - `48` 仅表示原始因子集合；`55` 是原始基础列与因子的历史组合，不是当前默认模型输入。
 - 序列长度 `T=60`，预测 horizon=5；标签收益为 `open[t+1+horizon]/open[t+1]-1`。
 - `BINS` 含 51 个边界，对应 `C=52` 个类别。

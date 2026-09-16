@@ -34,18 +34,18 @@ uv run ruff check .   # line-length 120, pyproject.toml
 ## Data Contract
 
 - 单 parquet `data/test/train_data/train_data_v1_*.parquet` 11.4M行×58列 5166股，10基础+48因子。`is_trading=False` 的行 OHLC/因子=NaN 必须 `dataset.py:160` 过滤。
-- 默认特征 `dataset.py:91` 自动剔除：`return_1d/5d/10d/20d`(G2)、`TOT_SHARE`、`volume/amount`、`close`、`pe/pb/pcf/ps`(G6)、`revenue_growth*4`(G7) → 45维（39+6 mask）。
+- 当前默认特征为 51 个 raw feature，加 18 个 G9 observation mask，输出 `F=69`；`F=45`（39+6 mask）是历史 schema。`close` 仅作辅助列，不进入模型输入。
 - 标签 `dataset.py:309` `future_ret[t]=open[t+1+horizon]/open[t+1]-1`（horizon=5），`np.digitize(BINS)` 52类，`BINS=linspace(-0.25,0.25,51)` `train.py:34`。窗口 `[s,s+60)` 取末日 `y`。
 
-## Normalization — Per-Code Only
+## Normalization — Frozen Default, Rolling Opt-In
 
-- `ParquetDataConfig.normalize` 仅 `per_code|none` `dataset.py:75`（`grouped/minmax_window/zscore` 已删除）。
+- `ParquetDataConfig.normalize` 默认 `per_code`（frozen），旧训练命令和逻辑不变；rolling 只能显式 opt-in 为 `--normalize rolling`，`none` 仍可用于明确实验。
 - `PerCodeGroupedScaler` `data/scaler.py` 按 code 独立算：G1/`macd` 用 `feature/prev_close-1` + robust `(x-median)/ (IQR/1.349)` + `clip±5`；G3/G4 `winsor 1/99`+clip；G8 透传；G9 截面 rank后 `fill0+mask+clip[0,1]` 不做 per-code。
 - `fit` 仅训练集，`save/load` `logs/scaler_per_code.pkl`；验证集 `dataset.py:525` 传入 `scaler_stats` 复用，未见 code 回退全局统计。切勿在验证集重 `fit`。
 
 ## Model & Training
 
-- `ModelConfig` `models/cnn_transformer/config.py:1` 默认 `featurenum=10,seq=20` 仅占位，`train.py:58` 覆盖为 `featurenum=45,seq=60,num_classes=52,d_model=256,nhead=8,layers=4,kernels[1,3,5,7,10]`，并 `206` 按实际特征数自动校正。
+- `ModelConfig` `models/cnn_transformer/config.py:1` 默认值仅占位，训练配置按实际特征数覆盖为 `featurenum=69,seq=60,num_classes=52,d_model=256,nhead=8,layers=4,kernels[1,3,5,7,10]`。
 - `Trainer` `training/trainer.py:284` 依赖 `config["run_log_dir"]`（由 `LoggerManager` 创建），早停 `early_stopping.py` 要求预先 `os.makedirs`。
 - `.python-version:1` 锁定 3.12；`training/early_stopping.py:27` 用 `np.inf`（`np.Inf` 在 numpy2 已移除）；`ReduceLROnPlateau` 无 `verbose` 参数。
 

@@ -21,13 +21,14 @@ import glob
 import json
 import os
 import random
+from dataclasses import dataclass
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
 from config import DEFAULT_BINS
-from data.dataset import ParquetDataConfig, ParquetDataset
+from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
 from data.schema import validate_prediction_cache_arrays
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
@@ -38,6 +39,19 @@ DEFAULT_BINS11_PCT = [-15, -10, -6, -3, -1, 1, 3, 6, 10, 15]  # 百分制，内�
 DEFAULT_BINS13_PCT = [-15, -10, -7, -4, -2, -0.5, 0.5, 2, 4, 7, 10, 15]  # 百分制，内部/100
 DEFAULT_BINS52 = DEFAULT_BINS
 NUM_CLASSES52 = 52
+# T04: eval scaler 回退默认（T03 Quality Gate MEDIUM 移交：旧 logs/rolling/ 路径已废弃）。
+ROLLING_DEFAULT_SCALER_PATH = "logs/rolling_e4/scaler_rolling_e4.pkl"
+PER_CODE_DEFAULT_SCALER_PATH = "logs/scaler_per_code.pkl"
+
+
+@dataclass(frozen=True)
+class EvalPreprocessing:
+    mode: str
+    scaler_stats: object | None
+    feature_cols: list[str] | None
+    schema_identity: str | None
+    run_config: dict
+    scaler_path: str | None
 
 
 def set_seed(seed: int = 42) -> None:
@@ -57,18 +71,118 @@ def resolve_checkpoint(path: str | None) -> str:
     return cands[-1]
 
 
+def _load_run_config(ckpt_path: str) -> dict:
+    cfg_path = os.path.join(os.path.dirname(ckpt_path), "config.json")
+    if not os.path.exists(cfg_path):
+        return {}
+    with open(cfg_path, encoding="utf-8") as file:
+        return json.load(file)
+
+
+def load_eval_preprocessing(
+    ckpt_path: str, scaler_override: str | None = None, scope_override: str | None = None
+) -> EvalPreprocessing:
+    """Load the checkpoint's preprocessing contract before constructing evaluation data.
+
+    scaler 解析优先级（T04）：① checkpoint 同目录 config.json 的
+    preprocessing.state_path/scaler_path/SCALER_PATH（+顶层 SCALER_PATH，以此为准）；
+    ② 无元数据时 rolling 默认 ``logs/rolling_e4/scaler_rolling_e4.pkl``（旧
+    logs/rolling/ 路径已废弃）；③ per_code 沿用既有默认。异 scope
+    （state scope != 请求 scope）直接抛错，不静默复用。
+    """
+    run_cfg = _load_run_config(ckpt_path)
+    metadata = run_cfg.get("preprocessing") or {}
+    mode = metadata.get("mode", "per_code")
+    if mode not in {"per_code", "rolling"}:
+        raise ValueError(f"checkpoint preprocessing mode 不支持: {mode}")
+    feature_cols = metadata.get("feature_cols")
+    if feature_cols is not None:
+        feature_cols = list(feature_cols)
+    configured_path = (
+        metadata.get("state_path") or metadata.get("scaler_path") or metadata.get("SCALER_PATH")
+        or run_cfg.get("SCALER_PATH")
+        or (ROLLING_DEFAULT_SCALER_PATH if mode == "rolling" else PER_CODE_DEFAULT_SCALER_PATH)
+    )
+    scaler_path = scaler_override or configured_path
+    if scaler_path and not os.path.isabs(scaler_path):
+        candidates = [scaler_path, os.path.join(os.path.dirname(ckpt_path), scaler_path)]
+        scaler_path = next((path for path in candidates if os.path.exists(path)), candidates[0])
+    if scope_override is not None and scope_override not in {"e2", "e3", "e4"}:
+        raise ValueError(f"rolling scope 非法: {scope_override!r}，仅支持 e2/e3/e4")
+    if mode == "rolling":
+        if not scaler_path or not os.path.exists(scaler_path):
+            raise FileNotFoundError(f"rolling evaluation 必须提供 rolling state: {scaler_path}")
+        state = _RollingDatasetState.load(scaler_path)
+        requested_scope = scope_override or metadata.get("scope")
+        if requested_scope is not None and state.normalizer.config.scope != requested_scope:
+            raise ValueError(
+                f"rolling scope 不匹配：state={state.normalizer.config.scope!r} vs 请求={requested_scope!r}"
+            )
+        if metadata.get("schema_identity") and metadata["schema_identity"] != state.identity_hash:
+            raise ValueError("rolling schema identity 不匹配")
+        if feature_cols is not None and feature_cols != state.feature_cols:
+            raise ValueError("rolling feature schema 不匹配")
+        return EvalPreprocessing("rolling", state, feature_cols, state.identity_hash, run_cfg, scaler_path)
+    from data.scaler import PerCodeGroupedScaler
+
+    if isinstance(scaler_path, str) and os.path.exists(scaler_path):
+        scaler = PerCodeGroupedScaler.load(scaler_path)
+        if not isinstance(scaler, PerCodeGroupedScaler):
+            raise ValueError("per_code checkpoint 禁止加载 rolling state")
+        if metadata.get("schema_identity") and metadata["schema_identity"] != scaler.identity_hash:
+            raise ValueError("per_code schema identity 不匹配")
+        if feature_cols is not None:
+            scaler.validate_requested_schema(feature_cols)
+        return EvalPreprocessing("per_code", scaler, feature_cols, scaler.identity_hash, run_cfg, scaler_path)
+    return EvalPreprocessing("per_code", None, feature_cols, metadata.get("schema_identity"), run_cfg, scaler_path)
+
+
 def load_run_model_cfg(ckpt_path: str) -> dict:
     """优先读 checkpoint 同目录 config.json 的 CNNTransformerConfig；附 pure_reg 模式标志（旧 ckpt 缺键默认 False）。"""
-    cfg_path = os.path.join(os.path.dirname(ckpt_path), "config.json")
-    if os.path.exists(cfg_path):
-        with open(cfg_path) as f:
-            run_cfg = json.load(f)
+    run_cfg = _load_run_config(ckpt_path)
+    if run_cfg:
         mc = run_cfg.get("CNNTransformerConfig") or {}
         if mc.get("num_classes", 52) != NUM_CLASSES52:
             raise ValueError(f"checkpoint 非 52 类模型：{mc.get('num_classes')}（本脚本只评估 52 类零重训映射）")
         mc["pure_reg"] = bool(run_cfg.get("PURE_REG", False))
         return mc
     return {"pure_reg": False}
+
+
+def validate_preprocessing_dimensions(
+    preprocessing: EvalPreprocessing,
+    model_config: dict,
+    seq_len: int,
+    cli_feature_cols: list[str] | None,
+) -> None:
+    """Reject metadata, CLI, state, and model dimension mismatches."""
+    metadata = preprocessing.run_config.get("preprocessing") or {}
+    for key, expected in (("featurenum", model_config.get("featurenum")), ("num_classes", NUM_CLASSES52)):
+        if metadata.get(key) is not None and expected is not None and int(metadata[key]) != int(expected):
+            raise ValueError(f"preprocessing {key} 不匹配：metadata={metadata[key]} vs expected={expected}")
+    if metadata.get("seq_len") is not None and int(metadata["seq_len"]) != seq_len:
+        raise ValueError(f"preprocessing seq_len 不匹配：metadata={metadata['seq_len']} vs CLI={seq_len}")
+    if cli_feature_cols and preprocessing.feature_cols and cli_feature_cols != preprocessing.feature_cols:
+        raise ValueError("checkpoint feature_cols 与 CLI feature_cols 顺序不匹配")
+    if preprocessing.feature_cols and model_config.get("featurenum"):
+        if preprocessing.mode == "rolling":
+            state = preprocessing.scaler_stats
+            if not isinstance(state, _RollingDatasetState):
+                raise ValueError("rolling preprocessing state 类型不匹配")
+            expected_output = len(state.normalizer.output_feature_cols(preprocessing.feature_cols))
+        else:
+            from data.scaler import PerCodeGroupedScaler
+
+            scaler = preprocessing.scaler_stats
+            if not isinstance(scaler, PerCodeGroupedScaler):
+                raise ValueError("per_code preprocessing state 类型不匹配")
+            expected_output = len(scaler.feature_cols_out)
+        if int(model_config["featurenum"]) != expected_output:
+            raise ValueError("checkpoint preprocessing feature schema 与模型 featurenum 不匹配")
+    if model_config.get("seq_len", seq_len) != seq_len:
+        raise ValueError(f"seq_len 不匹配：checkpoint={model_config['seq_len']} vs CLI={seq_len}")
+    if model_config.get("num_classes", NUM_CLASSES52) != NUM_CLASSES52:
+        raise ValueError("num_classes 不匹配")
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -81,7 +195,17 @@ def spearman(x: np.ndarray, y: np.ndarray) -> float:
     return float((xr * yr).sum() / denom) if denom > 0 else 0.0
 
 
-def build_val_loader(args) -> tuple[DataLoader, ParquetDataset]:
+def _resolve_eval_rolling_scope(preprocessing: EvalPreprocessing) -> str:
+    """评估 rolling_scope：优先 checkpoint preprocessing.scope，其次 state 自带 scope，默认 e4。"""
+    metadata = preprocessing.run_config.get("preprocessing") or {}
+    if metadata.get("scope"):
+        return str(metadata["scope"])
+    normalizer = getattr(preprocessing.scaler_stats, "normalizer", None)
+    scope = getattr(getattr(normalizer, "config", None), "scope", None)
+    return str(scope) if scope else "e4"
+
+
+def build_val_loader(args, preprocessing: EvalPreprocessing) -> tuple[DataLoader, ParquetDataset]:
     cfg = ParquetDataConfig(
         parquet_path=args.parquet,
         seq_len=args.seq_len,
@@ -89,26 +213,25 @@ def build_val_loader(args) -> tuple[DataLoader, ParquetDataset]:
         bins=list(DEFAULT_BINS52),
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        normalize="per_code",
+        normalize=preprocessing.mode,
+        rolling_scope=(_resolve_eval_rolling_scope(preprocessing) if preprocessing.mode == "rolling" else "e4"),
         max_codes=(args.max_codes if args.max_codes > 0 else None),
         max_windows_per_code=args.max_windows_per_code,
         start_date=args.val_start,
         end_date=args.val_end,
-        feature_cols=args.feature_cols,
+        feature_cols=preprocessing.feature_cols or args.feature_cols,
+        role="evaluation",
     )
-    scaler_stats = None
-    if args.scaler_path and os.path.exists(args.scaler_path):
-        from data.scaler import PerCodeGroupedScaler
-
-        scaler_stats = PerCodeGroupedScaler.load(args.scaler_path)
-        print(f"[eval] 复用训练 scaler: {args.scaler_path}")
-    elif not args.allow_fit_scaler:
+    scaler_stats = preprocessing.scaler_stats
+    if scaler_stats is not None:
+        print(f"[eval] 复用训练 {preprocessing.mode} state: {getattr(preprocessing, 'scaler_path', None)}")
+    elif preprocessing.mode == "rolling" or not args.allow_fit_scaler:
         raise FileNotFoundError(
-            f"正式评估必须复用训练 scaler，但文件不存在: {args.scaler_path}；"
+            f"正式评估必须复用训练 scaler，但文件不存在: {preprocessing.scaler_path}；"
             "调试时显式传入 --allow_fit_scaler"
         )
     else:
-        print("[eval] 调试模式：scaler 不存在，验证集将自行拟合")
+        raise ValueError("--allow_fit_scaler 仅允许显式 per_code 调试，但 evaluation Dataset 禁止临时 fit")
     ds = ParquetDataset(cfg, scaler_stats=scaler_stats)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=False)
@@ -120,9 +243,16 @@ def evaluate(args) -> dict:
     set_seed(args.seed)
     ckpt_path = resolve_checkpoint(args.checkpoint)
     print(f"[eval] checkpoint: {ckpt_path}")
+    preprocessing = load_eval_preprocessing(ckpt_path, args.scaler_path, getattr(args, "rolling_scope", None))
     mc = load_run_model_cfg(ckpt_path)
+    validate_preprocessing_dimensions(preprocessing, mc, args.seq_len, args.feature_cols)
     pure_reg = bool(mc.get("pure_reg", False))
     featurenum = int(mc.get("featurenum", 45))
+    loader, ds = build_val_loader(args, preprocessing)
+    if preprocessing.feature_cols and ds.feature_cols != preprocessing.feature_cols:
+        raise ValueError("evaluation feature schema 不匹配")
+    if featurenum != ds.num_features:
+        raise ValueError(f"特征数不一致：checkpoint={featurenum} vs 验证集={ds.num_features}")
     model_cfg = ModelConfig(
         featurenum=featurenum, seq_len=args.seq_len, num_classes=NUM_CLASSES52,
         cnn_out_channels=int(mc.get("cnn_out_channels", 128)),
@@ -135,10 +265,6 @@ def evaluate(args) -> dict:
     model = CNNTransformer(model_cfg).to(device)
     model.load_state_dict(torch.load(ckpt_path, map_location=device), strict=True)
     model.eval()
-
-    loader, ds = build_val_loader(args)
-    if featurenum != ds.num_features:
-        raise ValueError(f"特征数不一致：checkpoint={featurenum} vs 验证集={ds.num_features}")
 
     bins11 = np.array(args.bins11_pct if args.bins11_pct else DEFAULT_BINS11_PCT,
                       dtype=np.float64) / 100.0  # 化为小数单位
@@ -350,9 +476,11 @@ def parse_args():
     p.add_argument("--preds_cache", default=None, help="逐样本预测缓存 npz 路径 (exp_ret/true_ret/dates/codes，codes 为逐样本股票代码)")
     p.add_argument("--max_codes", type=int, default=20)
     p.add_argument("--max_windows_per_code", type=int, default=None)
-    p.add_argument("--scaler_path", default="logs/scaler_per_code.pkl")
+    p.add_argument("--scaler_path", default=None, help="覆盖 checkpoint metadata 中的 scaler/state 路径")
+    p.add_argument("--rolling_scope", choices=["e2", "e3", "e4"], default=None,
+                   help="仅 rolling：声明期望 scope，与 state/metadata 不一致直接报错（不静默复用）")
     p.add_argument("--allow_fit_scaler", action="store_true",
-                   help="仅调试：允许 scaler 缺失时在验证集自行拟合")
+                   help="保留旧 CLI 兼容；正式 evaluation 始终禁止临时 fit scaler")
     p.add_argument("--bins11_pct", type=float, nargs="+", default=None, help="T02 冻结 bins（百分制），默认 [-15..15]")
     p.add_argument("--bins13_pct", type=float, nargs="+", default=None, help="13 映射 bins（百分制），默认 [-15..15]")
     p.add_argument("--seed", type=int, default=42)

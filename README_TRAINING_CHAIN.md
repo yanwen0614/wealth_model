@@ -24,7 +24,7 @@
 | 旧链路 | 新链路 |
 |--------|--------|
 | `processed_data_train/*.npz`（需手工多进程 `data_processor.py` 生成）| `data/test/train_data/*.parquet` 单文件直读 |
-| 特征 8 维（历史 NPZ 实验）| parquet 原始集合含 48 因子；当前 per-code 默认输出 `F=45`（39 有效特征+6 G9 mask）|
+| 特征 8 维（历史 NPZ 实验）| parquet 原始集合含 48 因子；当前默认输出 `F=69`（51 raw feature+18 G9 mask），`F=45` 为历史 schema |
 | 历史 close-close 标签 | 当前 open-open：`open[t+1+horizon]/open[t+1]-1`，horizon=5 |
 | `NPZSequentialDataset` 历史缓存块 | `ParquetDataset` 按 code 分组、滑动窗口、per-code 归一化 |
 
@@ -32,14 +32,19 @@
 
 ### 2.2 核心模块
 - **`data/dataset.py`**：
-  - `ParquetDataConfig`：`seq_len=60, horizon=5, bins=51边界/52类, normalize=per_code, scaler_path=logs/scaler_per_code.pkl`
+  - `ParquetDataConfig`：`seq_len=60, horizon=5, bins=51边界/52类, normalize=per_code（frozen）, scaler_path=logs/scaler_per_code.pkl`；rolling 仅显式 `--normalize rolling`
   - `ParquetDataset`：读取 parquet → 过滤 `is_trading=False` → 按 code 排序 → 计算 open-open future return → per-code 归一化 → 构建窗口索引
   - `create_dataloaders`：仅训练集 fit scaler 并落盘，验证集复用 `logs/scaler_per_code.pkl`（防泄露），支持时序切分
-  - 默认输出：`x [45,60]`，其中 39 个有效特征加 6 个 G9 mask；原始 48 因子集合不等于模型输入维度
+  - 默认输出：`x [69,60]`，其中 51 个 raw feature 加 18 个 G9 mask；原始 48 因子集合不等于模型输入维度，`close` 仅作辅助列
 - **`train.py`**：新训练入口，兼容 `Trainer` / `EMDLoss` / `LoggerManager`
   - 时序切分默认：训练 `2013-01-01~2023-12-31` (865万行) / 验证 `2024-01-01~2025-12-31` (245万行)
-  - 模型默认：`CNNTransformer(featurenum=45, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, layers=4)`
+  - 模型默认：`CNNTransformer(featurenum=69, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, layers=4)`
   - 训练：`AdamW(lr=1e-4, wd=1e-5)` + `EMDLoss(p=2, smooth)` + `ReduceLROnPlateau`
+
+rolling 是 CNN 内的实验模式，不实现 quant exporter。第一阶段处理 `open/high/low/ma_5/10/20/60/ema_12/26`、
+`macd`、三列 volatility、两列 volume ratio 和 `amihud`；`close` 仅作辅助列，`sar/trend/std/atr` 等暂不 rolling。
+validation 可使用 split 前最多 251 个有效交易日 context，但 context 不进入 labels、windows 或 index；frozen 与 rolling
+的 state/schema/checkpoint identity 隔离。
 
 ### 2.3 兼容性修复（torch 2.13 + numpy 2.0 + py 3.12）
 - `data/npz_data_load.py: DataConfig.bins` 改为 `field(default_factory=...)`（修复 mutable default 在 py3.12 的 ValueError）
@@ -57,7 +62,7 @@ uv run --project . python train.py --smoke --num_workers 0
 ### 3.2 日志
 - **日志目录**：`logs/run_20260901_012401/`（含 `config.json`, `training.log`, `best_model.pth 15M`, `training_curve.png`, `confusion_matrix_*`）
 - **数据集**：训练 49491 窗口 / 验证 8408 窗口（20股子集），该记录保留历史实验数字
-- **模型**：该冒烟记录为历史 55 维输入实验；当前默认输入为 `[batch,45,60]` → 52 logits
+- **模型**：该冒烟记录为历史 55 维输入实验；当前默认输入为 `[batch,69,60]` → 52 logits
 - **训练**：194 batch/epoch, ~27s/epoch, `Train Loss 0.0641 Acc 0.0820 Val Loss 0.0600 Acc 0.0985`，`best_model.pth` 已保存并可加载推理
 - **曲线**：`training_curve.png` 已生成
 
@@ -65,9 +70,9 @@ uv run --project . python train.py --smoke --num_workers 0
 ```bash
 uv run --project . python -c "
 import torch; from models.cnn_transformer.config import ModelConfig; from models.cnn_transformer.model import CNNTransformer
-m=CNNTransformer(ModelConfig(featurenum=45, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, cnn_kernel_sizes=[1,3,5,7,10], num_encoder_layers=4, dropout_rate=0.3))
+m=CNNTransformer(ModelConfig(featurenum=69, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, cnn_kernel_sizes=[1,3,5,7,10], num_encoder_layers=4, dropout_rate=0.3))
 m.eval()
-print(m(torch.randn(2,45,60)).shape)  # => torch.Size([2,52])
+print(m(torch.randn(2,69,60)).shape)  # => torch.Size([2,52])
 "
 ```
 
@@ -124,7 +129,7 @@ cnn/
 
 ## 6. 后续建议
 - **全量压测**：明日可跑 `max_codes 500` 进一步验证内存与速度，再切全量
-- **特征选择**：48 是原始因子集合；当前默认 per-code 输出 F=45（39 有效特征+6 G9 mask），显式特征选择需单独记录维度
+- **特征选择**：48 是原始因子集合；当前默认输出 `F=69`（51 raw feature+18 G9 mask），`F=45`（39+6 mask）仅用于历史记录，显式特征选择需单独记录维度
 - **标签 horizon**：默认 5 日，可尝试 10/20 日对比
 - **不平衡**：当前 52 类极不均衡（头部类占 <0.1%），可考虑 `class_weights` 或 `HalfClassWeightedCrossEntropy`
 - **scaler 复用**：训练集 fit 后保存 `logs/scaler_per_code.pkl`，验证/推理侧务必复用同一文件

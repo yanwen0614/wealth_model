@@ -2,7 +2,7 @@
 
 > 创建日期：2026-09-08
 > 级别：P1
-> 状态：待决策
+> 状态：CNN 内实验进行中；quant 回迁待后续阶段
 > 来源：与其他建模链路对照 rolling normalization 时发现
 > 关联：`docs/per_code_normalization_spec.md`
 
@@ -25,23 +25,21 @@
 | expanding | 上市不足 252 天时使用 expanding |
 | 最小历史 | 至少 120 个有效历史观测 |
 | 前视边界 | 统计右端为当前信号日 `t`，不使用 `t+1` 及之后数据 |
-| G1 | `close/open/high/low` 等价格特征先 relative，再 rolling median/IQR robust，clip `[-5,5]` |
+| G1 | `open/high/low` 等模型价格特征先 relative，再 rolling median/IQR robust，clip `[-5,5]` |
 | G3/G4/macd | rolling 1%/99% winsor，不做 robust z-score |
 | G5 其他/G8 | 透传，缺失填 0 |
 | G9 | 缺失填 0、clip `[0,1]`、增加 observation mask |
 
-`close` 必须纳入 G1：先计算 `close[t] / close[t-1] - 1`，再进行 rolling median/IQR robust 和 `[-5,5]` 裁剪；
-原始 `close` 仍用于标签和回测，不直接作为模型输入。
+`close` 仅作为 relative/rolling 的辅助列，不能进入模型输入或输出 schema；原始 `close` 仍用于标签和回测。
 
-此前模型侧约定为 39 个输入特征加 6 个 G9 mask（45 维）。若将 `close` 作为新增模型特征，实验 schema 应明确记录为
-40 个处理后特征加 6 个 mask（46 维），不能复用 45 维 checkpoint 或旧 feature schema。
+当前默认 schema 为 51 个 raw feature + 18 个 G9 observation mask = `F=69`；`F=45`（39+6）是历史 schema，不能复用旧 checkpoint。
 
 ## 三、建议处理范围
 
 第一阶段只对以下特征做 rolling：
 
 ```text
-G1: close, open, high, low, ma_5, ma_10, ma_20, ma_60, ema_12, ema_26
+G1: open, high, low, ma_5, ma_10, ma_20, ma_60, ema_12, ema_26
 G5: macd
 G3: volatility_5d, volatility_10d, volatility_20d
 G4: volume_ratio_5d, volume_ratio_10d, amihud
@@ -67,8 +65,8 @@ rolling 统计不足时，不因一个特征无效而默认丢弃整行：
 4. G9 始终保留原值和缺失 mask。
 5. 额外记录 rolling fallback 比例、各组有效率和最终窗口数量。
 
-rolling 计算前应过滤 `is_trading=False` 并按有效交易日排序。验证集和测试集可以使用 split 前历史 context，
-但窗口末日和未来标签必须遵守当前 split 边界。
+rolling 计算前应过滤 `is_trading=False` 并按有效交易日排序。验证集和测试集可以使用 split 前最多 251 个有效交易日的历史 context，
+但 context 不进入 labels、windows 或 index；窗口末日和未来标签必须遵守当前 split 边界。
 
 ## 五、实验阶段
 
@@ -89,6 +87,7 @@ rolling 计算前应过滤 `is_trading=False` 并按有效交易日排序。验�
 - 收盘后生成信号、次日开盘交易的时序一致性。
 
 只有 rolling 版本在验证集和测试集均改善或至少不恶化，且样本损失与计算成本可接受，才进入完整导出 pipeline。
+frozen 与 rolling 的 state、schema、transform digest 和 checkpoint identity 必须隔离，禁止互用。
 
 ## 六、回迁 quant 导出链路的目标设计
 
@@ -130,4 +129,4 @@ manifest 至少记录输入快照、git hash、输入/输出列顺序、`window=
 
 ## 阶段边界
 
-> 当前只做 CNN 模型训练验证，不立即修改 quant 完整导出 pipeline。实验结论通过后，再单独创建或恢复 quant 侧实现任务。
+> 当前只做 CNN 模型训练验证，不立即修改 quant exporter 或完整导出 pipeline。实验结论通过后，quant 回迁仍需单独创建或恢复后续任务。

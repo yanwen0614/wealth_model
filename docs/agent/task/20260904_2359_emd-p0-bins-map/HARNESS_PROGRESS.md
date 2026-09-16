@@ -2,19 +2,20 @@
 
 > 生成时间：2026-09-04 23:59
 > 需求：P0修criterion/emd_loss.py bug（register_buffer+删to+注释）+ Step0全量bins分位重算 + Step1 52→11映射评估
+> 2026-09-12 状态同步：本任务未执行即被后续工作取代 —— scripts/eval_bins_mapping.py（52→11 映射评估）已在库内实现；全表 pending → superseded，不再恢复。
 
 ## 任务列表
 
 | Task | 名称 | 状态 | Quality Gate | 备注 |
 |------|------|------|--------------|------|
-| T01 | EMDLoss P0 修复 | pending | - | register_buffer+删to |
-| T02 | Step0 全量 bins 分位重算 | pending | - | 新脚本+外部bins注入 |
-| T03 | Step1 52→11 映射评估 | pending | - | 依赖 T01,T02 |
+| T01 | EMDLoss P0 修复 | superseded | - | register_buffer+删to |
+| T02 | Step0 全量 bins 分位重算 | superseded | - | 新脚本+外部bins注入 |
+| T03 | Step1 52→11 映射评估 | superseded | - | 依赖 T01,T02 |
 
 ## 执行详情
 
 ### T01: EMDLoss P0 修复
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：无
 - **文件**：
   - `criterion/emd_loss.py` (modify)
@@ -24,7 +25,7 @@
 - **修复轮次**：0/2
 
 ### T02: Step0 全量 bins 分位重算
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：无
 - **文件**：
   - `scripts/recompute_bins.py` (create)
@@ -35,7 +36,7 @@
 - **修复轮次**：0/2
 
 ### T03: Step1 52→11 映射评估
-- **状态**：pending
+- **状态**：superseded
 - **依赖**：T01, T02
 - **文件**：
   - `scripts/eval_bins_mapping.py` (create)
