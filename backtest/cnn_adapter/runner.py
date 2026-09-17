@@ -30,6 +30,7 @@ from backtest.cnn_adapter.common import SHANGHAI_TZ, npz_fingerprint
 from backtest.cnn_adapter.market import CnnMarketDataProvider
 from backtest.cnn_adapter.order_strategy import CnnOrderStrategy
 from backtest.cnn_adapter.predictions import PREDICTED_HORIZON, CnnPredictionAdapter
+from backtest.cnn_adapter.target_strategy import CnnTargetOrderStrategy
 
 __all__ = ["CnnBacktestOutcome", "run_cnn_backtest", "write_cnn_result"]
 
@@ -80,11 +81,22 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                      eval_script_version: str = "unknown", epoch=None, ohlc_path=None,
                      st_codes=None, run_id: str | None = None,
                      methodology: MetricMethodology | None = None,
-                     verify_account_metrics: bool = True) -> CnnBacktestOutcome:
+                     verify_account_metrics: bool = True, mode: str = "rolling",
+                     commission_rate_buy: float | None = None,
+                     commission_rate_sell: float | None = None,
+                     min_commission: float | None = None,
+                     stamp_tax_rate: float | None = None, target_size: int = 100,
+                     sell_buffer: int = 500, exit_on_nonpositive: bool = False,
+                     exit_threshold: float = 0.0,
+                     strong_buy_threshold: float = 0.0) -> CnnBacktestOutcome:
     """cnn 订单路径端到端：组装 adapter/策略 → core 引擎 → 整段核验 → 打包结果.
 
     ``dates`` 默认为缓存全部归属日；显式传入时必须为缓存子集（误传日期 fail-fast，
     不依赖 B03 空元组告警）；``run_id`` 格式待 B05 对齐，缺省派生自模型标识。
+
+    ``mode`` 选策略：``rolling``（top_n 等权）为旧行为；``target`` 走滞后带目标持仓
+    （``top_n`` 被忽略，持仓规模取 ``target_size``；rolling 下 target 五参被忽略）。
+    费用四参默认 ``None`` 即 core ``CostConfig`` 默认（旧行为零变化）；显式值逐项覆盖。
     """
     if not isinstance(initial_capital, (int, float)) or not initial_capital > 0.0:
         raise ValueError(f"initial_capital must be positive, got {initial_capital!r}")
@@ -100,7 +112,29 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
         if day not in available:
             raise ValueError(f"dates {day!r} 不在预测缓存覆盖内，拒绝误传日期（fail-fast）")
     provider = CnnMarketDataProvider(parquet_path, ohlc_path=ohlc_path, st_codes=st_codes)
-    strategy = CnnOrderStrategy(adapter, top_n=top_n)
+    if mode not in ("rolling", "target"):
+        raise ValueError(f"mode must be 'rolling' or 'target', got {mode!r}")
+    # 费用只覆盖显式值（None 即 core 默认，不依赖 core 默认值语义）；负阈值由策略 raise。
+    cost_kwargs: dict = {}
+    if commission_rate_buy is not None:
+        cost_kwargs["commission_rate_buy"] = commission_rate_buy
+    if commission_rate_sell is not None:
+        cost_kwargs["commission_rate_sell"] = commission_rate_sell
+    if min_commission is not None:
+        cost_kwargs["min_commission"] = min_commission
+    if stamp_tax_rate is not None:
+        cost_kwargs["stamp_tax_rate"] = stamp_tax_rate
+    cost_config = CostConfig(**cost_kwargs)
+    if mode == "target":
+        strategy = CnnTargetOrderStrategy(adapter, target_size=target_size,
+                                          sell_buffer=sell_buffer,
+                                          exit_on_nonpositive=exit_on_nonpositive,
+                                          exit_threshold=exit_threshold,
+                                          strong_buy_threshold=strong_buy_threshold)
+        portfolio_top_n = target_size
+    else:
+        strategy = CnnOrderStrategy(adapter, top_n=top_n)
+        portfolio_top_n = top_n
     resolved_methodology = methodology if methodology is not None else MetricMethodology()
     if not isinstance(resolved_methodology, MetricMethodology):
         raise ValueError(  # noqa: TRY004
@@ -111,8 +145,8 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
         raise ValueError(f"run_id must be a non-empty string, got {run_id!r}")
     result = run_account_backtest_from_orders(
         dates=ordered_dates, strategy=strategy, market=provider,
-        execution_config=ExecutionConfig(), portfolio_config=PortfolioConfig(top_n=top_n),
-        cost_config=CostConfig(), methodology=resolved_methodology, run_id=resolved_run_id,
+        execution_config=ExecutionConfig(), portfolio_config=PortfolioConfig(top_n=portfolio_top_n),
+        cost_config=cost_config, methodology=resolved_methodology, run_id=resolved_run_id,
         model_id=model_name, initial_capital=float(initial_capital),
         signal_time_of_day=time(15, 0),
     )
@@ -129,11 +163,19 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                 "checkpoint": checkpoint, "epoch": epoch, "bins_version": bins_version,
                                 "eval_script_version": eval_script_version,
                                 "start": ordered_dates[0].isoformat(),
-                                "end": ordered_dates[-1].isoformat(), "count": len(ordered_dates)})
+                                "end": ordered_dates[-1].isoformat(), "count": len(ordered_dates),
+                                "mode": mode, "commission_rate_buy": commission_rate_buy,
+                                "commission_rate_sell": commission_rate_sell,
+                                "min_commission": min_commission,
+                                "stamp_tax_rate": stamp_tax_rate, "target_size": target_size,
+                                "sell_buffer": sell_buffer,
+                                "exit_on_nonpositive": exit_on_nonpositive,
+                                "exit_threshold": exit_threshold,
+                                "strong_buy_threshold": strong_buy_threshold})
     provenance = {key: value for key, value in adapter.provenance.items() if value.strip()}
     provenance.update({"run_id": resolved_run_id, "order_entry": ORDER_ENTRY, "top_n": str(top_n),
                        "initial_capital": str(float(initial_capital)), "config_hash": config_hash,
-                       "data_fingerprint": data_fingerprint})
+                       "data_fingerprint": data_fingerprint, "mode": mode})
     merged = {**dict(result.provenance), **provenance}
     manifest = RunManifest(schema_version=SCHEMA_VERSION, engine_version=backtest_core.__version__,
                            policy_version="v1", run_id=resolved_run_id, model_id=model_name,

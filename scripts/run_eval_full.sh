@@ -22,7 +22,7 @@ set -euo pipefail
 #   换手成本后收益 → Step 2 metrics.json（逐笔 A 股费用模型：佣金万2.5 最低5元 + 卖出印花税万2.5）；
 #   fallback 比例 → jq .preprocessing.rolling_audit.<run>/config.json（fallback_ratio，仅 rolling）；
 #   winsor 统计 → 同一 rolling_audit（constant_iqr_values/missing_values）。
-# 回测口径（引用 backtest/engine.py，不重实现）：T 日决策→T+1 open 买→T+6 open 卖（horizon=5）。
+# 回测口径（cnn_adapter 口径）：T 日决策→T+1 open 买→持有 horizon，parquet 真实 OHLC。
 
 CKPT="${1:-}"
 START="${2:-2026-01-01}"
@@ -66,25 +66,17 @@ uv run --project . python -m scripts.run_eval_pipeline \
   --batch_size 512 \
   --num_workers 0
 
-# Step 2: TopN rolling 回测
+# Step 2: TopN rolling 回测（adapter 路径：parquet 真实 OHLC；$OHLC 仅 Step 1 产物保留，不传入回测）
 echo ""
 echo "[Step 2] TopN rolling 回测"
 uv run --project . python -m scripts.run_backtest \
   --preds "$PREDS" \
-  --ohlc "$OHLC" \
+  --parquet "$PARQUET" \
   --topn 5 10 20 \
   --horizon 5 \
   --out_dir "logs/backtest_${RUN_TAG}_${START}_${END}"
 
-# 旧 rolling 口径（legacy opt-in，另需 CNN_ALLOW_LEGACY=1；保留备查，默认不跑）：
-# uv run --project . python -m scripts.run_backtest \
-#   --preds "$PREDS" \
-#   --ohlc "$OHLC" \
-#   --legacy \
-#   --topn 5 10 20 50 100 \
-#   --cost_rate 0.0015 \
-#   --horizon 5 \
-#   --out_dir "logs/backtest_${CKPT_BASENAME}_${START}_${END}"
+# 旧 --ohlc 口径已废弃（T02 起 CLI 仅告警忽略，engine 口径已删除）：回测统一走 adapter + --parquet 真实 OHLC，不再传 --ohlc。
 
 # Step 3: TopN 收益折线
 echo ""
