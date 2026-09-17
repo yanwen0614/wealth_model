@@ -25,6 +25,27 @@ from visualization import Visualizer
 
 BASE_CONFIG = make_default_config(dual_head=True)
 BASE_CONFIG["LAMBDA_JITTER"] = 0.005
+ROLLING_SCOPES = ("e0", "e1", "e2", "e3", "e4", "e5")
+
+
+def configure_preprocessing(cfg: dict, normalize: str, rolling_scope: str) -> None:
+    """镜像 train.py：按 mode/scope 隔离 SCALER_PATH/LOG_DIR（relative 无持久 state）。"""
+    if normalize not in {"per_code", "rolling", "relative"}:
+        raise ValueError(f"未知 normalize: {normalize}")
+    if normalize == "rolling" and rolling_scope not in ROLLING_SCOPES:
+        raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
+    cfg["NORMALIZE"] = normalize
+    if normalize == "per_code":
+        cfg["SCALER_PATH"] = "logs/scaler_per_code.pkl"
+        cfg["LOG_DIR"] = "./logs"
+    elif normalize == "rolling":
+        cfg["ROLLING_SCOPE"] = rolling_scope
+        cfg["SCALER_PATH"] = f"logs/rolling_{rolling_scope}/scaler_rolling_{rolling_scope}.pkl"
+        cfg["LOG_DIR"] = f"./logs/rolling_{rolling_scope}"
+    else:  # relative：无统计 state，列规则确定性重建
+        cfg["SCALER_PATH"] = None
+        cfg["LOG_DIR"] = "./logs/relative"
+
 
 
 def set_all_seeds(seed: int):
@@ -58,12 +79,20 @@ def parse_args():
     p.add_argument("--max_windows_per_code", type=int, default=None)
     p.add_argument("--no_val", action="store_true", help="不使用验证集")
     p.add_argument("--smoke", action="store_true", help="冒烟模式：max_codes=20, epochs=1")
+    p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=BASE_CONFIG["NORMALIZE"],
+                   help="归一化模式；relative 无持久 state，rolling 按 scope 分目录（默认 per_code）")
+    p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=BASE_CONFIG["ROLLING_SCOPE"],
+                   help="rolling 子集范围 e0..e5（默认 e5；非 rolling 时忽略）")
     p.add_argument("--dual_head", action="store_true", default=True, help=argparse.SUPPRESS)
     p.add_argument("--no_dual_head", action="store_true", help="关闭双头回归，退化为纯 EMD")
     p.add_argument("--pure_reg", action="store_true", help="纯回归消融")
     p.add_argument("--lambda_reg", type=float, default=BASE_CONFIG['LAMBDA_REG'], help="回归权重基准 λ")
     p.add_argument("--lambda_jitter", type=float, default=BASE_CONFIG['LAMBDA_JITTER'], help="λ 随机波动 ± 范围")
     p.add_argument("--huber_delta", type=float, default=BASE_CONFIG['HUBER_DELTA'])
+    p.add_argument("--cache_dir", type=str, default=BASE_CONFIG['CACHE_DIR'],
+                   help="feature memmap 缓存根目录（默认 None：CNN_DATA_CACHE > 平台默认）")
+    p.add_argument("--no_cache", action="store_true", help="关闭 feature memmap 缓存，回到原内存路径")
+    p.add_argument("--rebuild_cache", action="store_true", help="跳过缓存命中，强制重建并写新 generation")
     return p.parse_args()
 
 
@@ -95,9 +124,13 @@ def run_single_seed(seed: int, cfg: dict, scaler_stats=None):
             batch_size=cfg['BATCH_SIZE'],
             num_workers=cfg['NUM_WORKERS'],
             normalize=cfg['NORMALIZE'],
+            rolling_scope=cfg['ROLLING_SCOPE'],
             scaler_path=cfg['SCALER_PATH'],
             max_codes=cfg['MAX_CODES'],
             max_windows_per_code=cfg['MAX_WINDOWS_PER_CODE'],
+            cache_enabled=cfg['CACHE_ENABLED'],
+            cache_dir=cfg['CACHE_DIR'],
+            rebuild_cache=cfg['REBUILD_CACHE'],
         )
         train_loader, val_loader, _ = ParquetDataset.create_dataloaders(
             parquet_cfg,
@@ -199,8 +232,14 @@ def main():
         'MAX_WINDOWS_PER_CODE': args.max_windows_per_code,
         'LAMBDA_REG': args.lambda_reg, 'LAMBDA_JITTER': args.lambda_jitter,
         'HUBER_DELTA': args.huber_delta, 'PURE_REG': args.pure_reg,
+        'CACHE_ENABLED': not args.no_cache, 'CACHE_DIR': args.cache_dir,
+        'REBUILD_CACHE': args.rebuild_cache,
     }
     cfg.update(overrides)
+    configure_preprocessing(cfg, args.normalize, args.rolling_scope)
+    print(f">>> 归一化: {args.normalize}" + (
+        f"/{args.rolling_scope}" if args.normalize == "rolling" else ""
+    ) + f" (LOG_DIR={cfg['LOG_DIR']})")
     cfg['num_classes'] = len(BASE_CONFIG['BINS']) + 1
     cfg["CNNTransformerConfig"]['num_classes'] = cfg['num_classes']
     cfg["CNNTransformerConfig"]['seq_len'] = cfg['SEQ_LEN']

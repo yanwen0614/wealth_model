@@ -1,9 +1,9 @@
 """Parquet 直通训练入口：quant 最新因子数据 -> CNNTransformer -> EMDLoss
 
 链路（per-code 共识）：
-  data/test/train_data/train_data_v1_*.parquet (51 raw特征+18 G9 mask=F=69, 11M行, G6/G7已剔除)
+  data/test/train_data/train_data_v1_*.parquet (52 raw特征+1 shared G9 mask=F=53, 11M行, G6/G7已剔除)
     -> ParquetDataset (is_trading过滤, future_ret=open[t+6]/open[t+1]-1 52类, per-code分组归一化)
-    -> CNNTransformer (featurenum=69, seq_len=60)
+    -> CNNTransformer (featurenum=53, seq_len=60)
     -> EMDLoss (有序分类)
     -> Trainer (早停 + 调度)
 
@@ -11,7 +11,7 @@
   uv run --project . python train.py --max_codes 20 --epochs 2 --batch_size 256
   uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31
 
-历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=69 和 future 5d open-open 标签。
+历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=53 和 future 5d open-open 标签。
 F=45 仅代表旧特征/历史 checkpoint，不属于当前默认训练契约。
 旧模型 checkpoint 不属于当前加载契约，历史结果仅供参考且不可与当前口径混用。
 """
@@ -27,6 +27,7 @@ import torch
 
 from config.defaults import make_default_config
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
+from data.feature_cache import resolve_cache_root
 from log_manager import LoggerManager
 from training import Trainer
 from training.factory import build_criterion, build_model, build_optimizer_scheduler
@@ -35,7 +36,7 @@ from visualization import Visualizer
 config = make_default_config()
 
 
-ROLLING_SCOPES = ("e2", "e3", "e4")
+ROLLING_SCOPES = ("e0", "e1", "e2", "e3", "e4", "e5")
 
 
 def set_all_seeds(seed: int):
@@ -48,17 +49,30 @@ def set_all_seeds(seed: int):
     torch.backends.cudnn.benchmark = False
 
 
-def configure_preprocessing(config: dict, normalize: str, rolling_scope: str = "e4") -> None:
+def configure_preprocessing(config: dict, normalize: str, rolling_scope: str = "e5") -> None:
     """Apply the explicit preprocessing choice and isolate its artifacts."""
-    if normalize not in {"per_code", "rolling"}:
+    if normalize not in {"per_code", "rolling", "relative"}:
         raise ValueError(f"未知 normalize: {normalize}")
     config["NORMALIZE"] = normalize
-    if normalize == "rolling":
+    if normalize == "per_code":
+        config["SCALER_PATH"] = "logs/scaler_per_code.pkl"
+        config["LOG_DIR"] = "./logs"
+    elif normalize == "rolling":
         if rolling_scope not in ROLLING_SCOPES:
-            raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 e2/e3/e4")
+            raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
         config["ROLLING_SCOPE"] = rolling_scope
         config["SCALER_PATH"] = f"logs/rolling_{rolling_scope}/scaler_rolling_{rolling_scope}.pkl"
         config["LOG_DIR"] = f"./logs/rolling_{rolling_scope}"
+    else:  # relative：无统计 state，列规则确定性重建
+        config["SCALER_PATH"] = None
+        config["LOG_DIR"] = "./logs/relative"
+
+
+def resolve_featurenum(requested: int | None, actual: int) -> int:
+    """实测维度为唯一事实源：requested 缺省取实测，显式值与实测不符则报错。"""
+    if requested is not None and requested != actual:
+        raise ValueError(f"--featurenum 与实测维度不符: requested={requested} actual={actual}")
+    return actual
 
 
 def load_rolling_state(path: str, expected_scope: str | None = None) -> _RollingDatasetState:
@@ -84,16 +98,17 @@ def build_preprocessing_metadata(
     num_classes: int,
     scope: str | None = None,
     seed: int | None = None,
+    feature_cols_out: list[str] | None = None,
 ) -> dict:
-    """Build JSON-safe run metadata and reject incompatible model dimensions."""
-    if featurenum != 69:
-        raise ValueError(f"preprocessing metadata featurenum 不匹配: {featurenum}, expected 69")
+    """Build JSON-safe run metadata for checkpoint self-description (featurenum 实测派生)。"""
+    output_cols = list(feature_cols if feature_cols_out is None else feature_cols_out)
     metadata: dict = {
         "mode": mode,
         "featurenum": featurenum,
         "seq_len": seq_len,
         "num_classes": num_classes,
         "feature_cols": list(feature_cols),
+        "feature_cols_out": output_cols,
     }
     if seed is not None:
         metadata["seed"] = seed
@@ -113,7 +128,7 @@ def build_preprocessing_metadata(
     return metadata
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None):
     p = argparse.ArgumentParser(description="Parquet 直通训练")
     p.add_argument("--parquet", type=str, default=config['PARQUET_PATH'], help="parquet 路径")
     p.add_argument("--train_start", type=str, default=config['TRAIN_START'])
@@ -137,11 +152,27 @@ def parse_args():
     p.add_argument("--pure_reg", action="store_true", help="纯回归消融：仅 Huber(ret_pred)，分类头无梯度")
     p.add_argument("--lambda_reg", type=float, default=config['LAMBDA_REG'], help="双头回归项权重 λ")
     p.add_argument("--huber_delta", type=float, default=config['HUBER_DELTA'], help="Huber delta")
-    p.add_argument("--normalize", choices=["per_code", "rolling"], default=config["NORMALIZE"])
+    p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=config["NORMALIZE"])
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=config["ROLLING_SCOPE"],
-                   help="rolling 子集范围 e2/e3/e4（默认 e4=全量；非 rolling 时忽略）")
+                   help="rolling 子集范围 e0..e5（默认 e5=含 G9 raw 全量；非 rolling 时忽略）")
+    p.add_argument("--feature_cols", nargs="*", default=None, help="显式特征列子集；缺省按 normalize 推导")
+    p.add_argument("--featurenum", type=int, default=None,
+                   help="模型输入维度；缺省按实测派生，显式值与实测不符则报错")
     p.add_argument("--seed", type=int, default=config["SEED"], help="全局随机种子（默认 42）")
-    return p.parse_args()
+    p.add_argument("--cache_dir", type=str, default=config["CACHE_DIR"],
+                   help="feature memmap 缓存根目录（默认 None：CNN_DATA_CACHE > 平台默认）")
+    p.add_argument("--no_cache", action="store_true", help="关闭 feature memmap 缓存，回到原内存路径")
+    p.add_argument("--rebuild_cache", action="store_true", help="跳过缓存命中，强制重建并写新 generation")
+    return p.parse_args(argv)
+
+
+def build_cache_settings(args) -> dict:
+    """由 CLI 派生 CACHE_* 配置；--no_cache 时回到 cache_enabled=False 原内存路径。"""
+    return {
+        "CACHE_ENABLED": not args.no_cache,
+        "CACHE_DIR": args.cache_dir,
+        "REBUILD_CACHE": args.rebuild_cache,
+    }
 
 
 def main():
@@ -179,6 +210,8 @@ def main():
     config['HUBER_DELTA'] = args.huber_delta
     config['SEED'] = args.seed
     config['ROLLING_SCOPE'] = args.rolling_scope
+    config['FEATURE_COLS'] = args.feature_cols
+    config.update(build_cache_settings(args))
     configure_preprocessing(config, args.normalize, args.rolling_scope)
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
@@ -192,6 +225,10 @@ def main():
         print(f"  {k}: {v}")
     print(f"  BINS: len={len(config['BINS'])} {config['BINS'][:3]}...{config['BINS'][-3:]}")
     print(f"  CNNTransformerConfig: {config['CNNTransformerConfig']}")
+    if config["CACHE_ENABLED"]:
+        print(f"  CACHE: enabled, rebuild={config['REBUILD_CACHE']}, root={resolve_cache_root(config['CACHE_DIR'])}")
+    else:
+        print("  CACHE: disabled (原内存路径)")
     print("=" * 60)
 
     # 日志
@@ -213,9 +250,13 @@ def main():
         num_workers=config['NUM_WORKERS'],
         normalize=config['NORMALIZE'],
         rolling_scope=config['ROLLING_SCOPE'],
+        feature_cols=config['FEATURE_COLS'],
         scaler_path=config['SCALER_PATH'],
         max_codes=config['MAX_CODES'],
         max_windows_per_code=config['MAX_WINDOWS_PER_CODE'],
+        cache_enabled=config['CACHE_ENABLED'],
+        cache_dir=config['CACHE_DIR'],
+        rebuild_cache=config['REBUILD_CACHE'],
     )
 
     # 若 smoke 模式，使用更小的时间范围以加速
@@ -242,6 +283,7 @@ def main():
     )
     train_dataset = cast(ParquetDataset, train_loader.dataset)
     dataset_scaler = train_dataset.scaler_stats
+    actual_featurenum = resolve_featurenum(args.featurenum, train_dataset.num_features)
     if config["NORMALIZE"] == "rolling":
         if not isinstance(dataset_scaler, _RollingDatasetState):
             raise ValueError("rolling 数据集缺少有效 preprocessing identity")
@@ -249,21 +291,23 @@ def main():
             "rolling",
             dataset_scaler,
             train_dataset.feature_cols,
-            train_dataset.num_features,
+            actual_featurenum,
             config["SEQ_LEN"],
             config["CNNTransformerConfig"]["num_classes"],
             scope=config["ROLLING_SCOPE"],
             seed=config["SEED"],
+            feature_cols_out=train_dataset.feature_cols_out,
         )
         preprocessing_metadata["rolling_audit"] = dict(train_dataset.rolling_audit)
     else:
         preprocessing_metadata = {
-            "mode": "per_code",
+            "mode": config["NORMALIZE"],
             "seed": config.get("SEED"),
             "schema_manifest": getattr(dataset_scaler, "identity_manifest", None),
             "schema_identity": getattr(dataset_scaler, "identity_hash", None),
             "feature_cols": list(train_dataset.feature_cols),
-            "featurenum": train_dataset.num_features,
+            "feature_cols_out": list(train_dataset.feature_cols_out),
+            "featurenum": actual_featurenum,
             "seq_len": config["SEQ_LEN"],
             "num_classes": config["CNNTransformerConfig"]["num_classes"],
         }
@@ -283,13 +327,7 @@ def main():
     if val_loader is not None and len(cast(ParquetDataset, val_loader.dataset)) == 0:
         logger.warning("验证集为空，请检查 VAL_START/VAL_END 与 max_codes 组合")
 
-    # 自动校正 featurenum
-    actual_featurenum = train_dataset.num_features
-    if config["NORMALIZE"] == "rolling" and actual_featurenum != config["CNNTransformerConfig"]["featurenum"]:
-        raise ValueError(
-            "rolling preprocessing 与模型 featurenum 不匹配，拒绝加载旧/错误维度配置: "
-            f"config={config['CNNTransformerConfig']['featurenum']} actual={actual_featurenum}"
-        )
+    # featurenum 以实测为权威（rolling 与非 rolling 一致，仅告警并自动校正）
     if actual_featurenum != config["CNNTransformerConfig"]['featurenum']:
         logger.warning(f"特征数不匹配: config={config['CNNTransformerConfig']['featurenum']} vs 实际={actual_featurenum}，已自动校正")
         config["CNNTransformerConfig"]['featurenum'] = actual_featurenum

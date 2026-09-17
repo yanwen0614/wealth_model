@@ -11,7 +11,7 @@
 - 序列长度 `T=60`，预测 horizon=5；标签收益为 `open[t+1+horizon]/open[t+1]-1`。
 - `BINS` 含 51 个边界，对应 `C=52` 个类别。
 - scaler 只在训练集 fit，验证集复用 `logs/scaler_per_code.pkl`。
-- 回测按 T 日决策、T+1 open 买入、T+6 open 卖出。
+- 回测按 T 日决策、T+1 open 买入、T+6 open 卖出；费用=买佣 0.025%(最低5元)/卖佣 0.025%+印花税 0.025%，基准=大盘指数（默认沪深300 `000300.SH`）。
 
 运行、数据处理和归一化细节见 [README_TRAINING_CHAIN.md](README_TRAINING_CHAIN.md) 与
 [per-code 归一化规范](docs/per_code_normalization_spec.md)。
