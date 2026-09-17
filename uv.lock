@@ -145,7 +145,6 @@ dev = [
     { name = "pyright", specifier = ">=1.1.411" },
     { name = "ruff", specifier = ">=0.15" },
 ]
-]
 
 [[package]]
 name = "blinker"
