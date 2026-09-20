@@ -20,6 +20,7 @@ dependencies = [
     "torchvision==0.27.0 ; sys_platform != 'win32' and sys_platform != 'linux'",
     # 工具
     "tqdm>=4.67",
+    "xgboost>=3.4.1",
 ]
 
 [project.optional-dependencies]
