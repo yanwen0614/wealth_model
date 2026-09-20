@@ -382,6 +382,8 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
                         skips["limit_up"] += 1
                         continue
                     budget = (nav_pre / target_size) * capital
+                    # 约束：单笔预算不得超过可用现金（防止持仓升值不均时透支产生隐性杠杆）
+                    budget = min(budget, cash * capital)
                     if budget <= min_commission:
                         continue
                     b_star = (min_commission * (1.0 + buy_rate) / buy_rate) if buy_rate > 0 else float("inf")

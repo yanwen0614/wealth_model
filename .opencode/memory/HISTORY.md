@@ -22,3 +22,10 @@
 [2026-09-14 23:58] 文档+记忆同步：回测口径升级（A股费用模型/指数基准/小TopN/avg_cash_ratio），commit 4073bad
 [2026-09-15 00:59] add-strong-buy-gate 完成（强买门槛）+ E0-E5 综合结论：E0 relative 最稳
 [2026-09-16 01:46] E0 (relative) 设为 baseline：config.defaults NORMALIZE=relative, SCALER_PATH=None; dataset.py 默认 normalize=relative
+[2026-09-20 15:31] 建立 scripts/eval_three_way.py 严格三分评估规范：val/test 对比 + 阈值样本外校准，发现 val 达不到 75% precision（顶格 57.8%）
+[2026-09-20 15:34] 新增 label_mode=excess 截面超额收益标签选项（默认 absolute 不变），含纯函数、dataset 应用、缓存 key 隔离与单测
+[2026-09-20 16:04] 特征/截面特征研究：单特征 IC、冗余簇、截面 rank 原型（Ridge/GBDT RankIC 0.08-0.09 vs DL 0.025-0.046），报告 logs/ic_analysis/REPORT.md
+[2026-09-20 16:30] 新增 cs_rank 逐日全市场截面 rank 特征（可选默认关，旁路归一化追加 F=69）
+[2026-09-20 17:09] 完成 GBDT 截面 rank 生产模型（logs/gbdt_cs）：严格三分 test RankIC 0.075、阈值样本外 precision 0.547，确认 75% 胜率不可达
+[2026-09-20 17:47] 市场择时研究：test top10 股票级胜率诚实上限 ~0.47，无法达 75%；市场方向不可预测（AUC≈0.5），val→test 过滤器不可迁移
+[2026-09-20 19:24] 完成散户模型全链路研究：GBDT截面rank+target动态退出回测(test +40.6%/Sharpe1.45, val +58.5%)，修复引擎隐性杠杆bug，确定"75%单票胜率"不可达(天花板52-58%)

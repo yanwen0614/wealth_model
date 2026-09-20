@@ -23,6 +23,9 @@ _BASE_CONFIG = {
     "TEST_START": "2026-01-01", "TEST_END": None,
     "NORMALIZE": "relative", "SCALER_PATH": None,
     "ROLLING_SCOPE": "e5", "SEED": 42,
+    "LABEL_MODE": "absolute",  # absolute=原始 future_ret；excess=截面超额收益
+    "CS_RANK": False,  # True=追加逐日全市场截面 rank 特征（旁路归一化）；默认关
+    "CS_RANK_FEATURES": None,  # None=用 data/schema.DEFAULT_CS_RANK_FEATURES（16 个独立特征）
     "MAX_CODES": None, "MAX_WINDOWS_PER_CODE": None,
     "model": "CNNTransformer", "criterion": "EMDLoss",
     "EMLossConfig": {"p": 2, "label_smoothing": True, "smooth_eps": 0.1},

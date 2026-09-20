@@ -59,6 +59,16 @@ APPROVED_RAW_FEATURES: tuple[str, ...] = tuple(
     column for columns in FEATURE_GROUPS.values() for column in columns
 )
 
+# 截面 rank（cs_rank）默认特征：研究推荐的 16 个「独立特征」，已剔除 17 个冗余价格水平列
+# （open/high/low/close/ma/ema/sar/std/atr 本质同一价格水平变量，截面 rank 前需先 /close-1，暂不纳入）。
+# 顺序即输出追加顺序；列名以 `cs_` 前缀追加在归一化输出末尾（旁路归一化）。
+DEFAULT_CS_RANK_FEATURES: tuple[str, ...] = (
+    "dmi", "adx", "boll", "kelch", "trend_duokong_dev",
+    "volatility_5d", "volatility_10d", "volatility_20d",
+    "volume_ratio_5d", "volume_ratio_10d", "amihud", "macd",
+    "gross_margin", "net_margin", "debt_to_equity", "roe",
+)
+
 G9_RAW_FEATURES = (
     "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio",
     "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio",

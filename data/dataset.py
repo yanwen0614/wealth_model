@@ -10,6 +10,7 @@
 - 读取单文件 parquet（11M+ 行，5166 股，2013-2025）
 - 按 code 分组、按 kline_time 排序、过滤 is_trading
 - 计算未来 N 日收益率标签（open-open 口径 open[t+1+horizon]/open[t+1]-1，与回测实盘 T+1 open 买入口径对齐）
+- label_mode 标签口径：absolute（默认, 原始未来收益）/ excess（按 kline_time 剔除当日截面均值，剥离市场 beta）
 - 依据 BINS 离散化为多分类标签（与 main2.py EMDLoss 配套）
 - 滑动窗口生成 [seq_len, num_features] 样本，默认输出 F=53（52 特征 + 1 shared G9 mask）
 - 构建全局索引，支持 DataLoader 多进程
@@ -43,10 +44,13 @@ from data.feature_cache import (
     compute_cache_key,
     resolve_cache_root,
 )
-from data.labels import _future_ret_open_open
+from data.labels import _cross_sectional_excess, _future_ret_open_open
 from data.rolling_scaler import RollingNormalizationConfig, RollingNormalizer
 from data.scaler import SCALER_VERSION, PerCodeGroupedScaler, RelativeScaler
-from data.schema import BASE_COLUMNS, EXPORT_FACTORS, _default_feature_cols  # noqa: F401
+from data.schema import BASE_COLUMNS, DEFAULT_CS_RANK_FEATURES, EXPORT_FACTORS, _default_feature_cols  # noqa: F401
+
+# 截面 rank 缺失（原始值 NaN/inf 或当日无有效截面）时的中性填充：rank∈[0,1] 的中位数。
+CS_RANK_FILL = 0.5
 
 
 @dataclass
@@ -63,6 +67,20 @@ class ParquetDataConfig:
     feature_cols: list[str] | None = None
     # 过滤 is_trading（必须 True，避免合成行污染窗口）
     filter_is_trading: bool = True
+    # 标签口径：
+    # - "absolute"（默认，现有行为）：y = future_ret = open[t+1+horizon]/open[t+1]-1
+    # - "excess"：y = future_ret - 当日（kline_time）截面均值，剥离市场 beta；
+    #   截面均值在 is_trading 过滤后按日统计，仅纳入有限标签。
+    # 注意：excess 模式下 groups["future_ret"] 保存的即最终超额收益（__getitem__ y_ret 同源），
+    # 原始绝对收益不再单独保留（可由 open 价格按同口径重算）。
+    label_mode: str = "absolute"
+    # 截面 rank 特征（可选，默认关，不影响现有行为）：
+    # - cs_rank=True 时在按 code 分组之前、全市场（含 context warmup 行）按 kline_time 逐日计算
+    #   百分位 rank，必须在 max_codes 截断前完成，否则 rank 只相对少数股票、语义错误；
+    # - cs_rank_features=None 用 data/schema.DEFAULT_CS_RANK_FEATURES（16 个独立特征）；
+    # - 输出列 `cs_<feature>` 追加在归一化输出末尾并旁路归一化（rank∈[0,1] 绝不能再做时序归一化）。
+    cs_rank: bool = False
+    cs_rank_features: list[str] | None = None
     # 数据集职责决定缓存失配时是否允许拟合。
     role: str = "training"  # "training" | "validation" | "evaluation"
     # 时间切分
@@ -207,6 +225,8 @@ class ParquetDataset(Dataset):
             raise ValueError("filter_is_trading 必须为 True，禁止将合成行用于训练/评估")
         if config.role not in {"training", "validation", "evaluation"}:
             raise ValueError(f"未知 dataset role: {config.role}")
+        if config.label_mode not in {"absolute", "excess"}:
+            raise ValueError(f"未知 label_mode: {config.label_mode}, 可选 absolute/excess")
         self.config = config
         self.bins = np.array(config.bins, dtype=np.float64)
 
@@ -219,6 +239,30 @@ class ParquetDataset(Dataset):
         if normalize == "relative":
             return RelativeScaler.transform_config_digest()
         return PerCodeGroupedScaler.transform_config_digest()
+
+    @staticmethod
+    def _resolve_cs_rank_features(feature_cols: list[str], requested: list[str] | None) -> list[str]:
+        """解析 cs_rank 特征子集：缺省用 DEFAULT_CS_RANK_FEATURES，去重保序并校验属于 feature_cols。"""
+        features = list(DEFAULT_CS_RANK_FEATURES if requested is None else requested)
+        features = list(dict.fromkeys(features))
+        unknown = [column for column in features if column not in feature_cols]
+        if unknown:
+            raise ValueError(f"cs_rank_features 不在 feature_cols 中: {unknown}")
+        return features
+
+    @staticmethod
+    def _compute_cross_sectional_rank(df: pd.DataFrame, cs_features: list[str]) -> None:
+        """就地新增 `cs_<feature>`：按 kline_time 逐日全市场百分位 rank(pct=True)。
+
+        必须在 sort_values(["code","kline_time"]) 分组与 max_codes 截断之前调用，保证截面
+        覆盖全部股票（含 `_transform_context=True` 的真实历史 warmup 行）。原始 NaN/inf 不
+        参与 rank，输出 NaN 由下游统一填中性值。
+        """
+        for column in cs_features:
+            values = pd.to_numeric(df[column], errors="coerce")
+            values = values.where(np.isfinite(values))
+            df[f"cs_{column}"] = values.groupby(df["kline_time"].to_numpy()).rank(pct=True)
+        print(f"[ParquetDataset] 截面 rank: {len(cs_features)} 列 (全市场逐日 pct), 例: cs_{cs_features[0]}")
 
     @staticmethod
     def _scaler_identity(cfg: ParquetDataConfig, pf: pq.ParquetFile, feature_cols: list[str]) -> dict:
@@ -286,6 +330,10 @@ class ParquetDataset(Dataset):
             horizon=cfg.horizon,
             max_windows_per_code=cfg.max_windows_per_code,
             bins_digest=compute_bins_digest([float(b) for b in bins]),
+            label_mode=cfg.label_mode,
+            cs_rank=cfg.cs_rank,
+            cs_rank_features=ParquetDataset._resolve_cs_rank_features(feature_cols, cfg.cs_rank_features)
+            if cfg.cs_rank else None,
         )
 
     def _load_and_prepare(self, scaler_stats: dict | object | None):
@@ -306,6 +354,11 @@ class ParquetDataset(Dataset):
         self.feature_cols = feature_cols  # 输入 raw 特征列（默认 F=51）
         self.feature_cols_out = list(feature_cols)  # 输出特征列（per_code 可能追加 mask）
         self.num_features = len(feature_cols)
+        # cs_rank 配置在两条路径（缓存命中/未命中）都可用：cs 列名确定性由 feature_cols + 请求派生。
+        self.cs_rank_features = (
+            self._resolve_cs_rank_features(feature_cols, cfg.cs_rank_features) if cfg.cs_rank else []
+        )
+        self.cs_rank_cols = [f"cs_{column}" for column in self.cs_rank_features]
         expected_identity = self._scaler_identity(cfg, pf, feature_cols)
         print(f"[ParquetDataset] 特征列数: {self.num_features}, 特征: {feature_cols[:8]}...")
 
@@ -354,6 +407,11 @@ class ParquetDataset(Dataset):
         if cfg.end_date:
             df = df[df["kline_time"] <= pd.to_datetime(cfg.end_date)]
         print(f"[ParquetDataset] 时间过滤后: {len(df):,} 行, 范围 {df['kline_time'].min()} -> {df['kline_time'].max()}")
+
+        # 截面 rank：必须在按 code 分组/排序与 max_codes 截断之前，在全体股票（含 context 行）
+        # 的逐日截面上计算；否则 rank 只相对被保留的少数股票，语义错误。
+        if cfg.cs_rank:
+            self._compute_cross_sectional_rank(df, self.cs_rank_features)
 
         # 按 code 分组排序
         df = cast(Any, df).sort_values(["code", "kline_time"]).reset_index(drop=True)
@@ -451,6 +509,11 @@ class ParquetDataset(Dataset):
         else:
             raise ValueError(f"未知 normalize: {cfg.normalize}, 可选 relative/per_code/none/rolling")
 
+        # 截面 rank 列追加在归一化输出（含 mask）之后并旁路归一化：列名与主循环拼接顺序严格一致。
+        if self.cs_rank_cols:
+            self.feature_cols_out = list(self.feature_cols_out) + list(self.cs_rank_cols)
+            self.num_features = len(self.feature_cols_out)
+
         print(f"[ParquetDataset] 输出特征列数: {self.num_features}, 输出特征: {self.feature_cols_out[:8]}...")
 
         # 3. 按 code 构建分组数据与索引
@@ -479,6 +542,13 @@ class ParquetDataset(Dataset):
             feat = group[feature_cols].values.astype(np.float64)  # 先 float64 便于处理 NaN
             close = group["close"].values.astype(np.float64)
             open_arr = group["open"].values.astype(np.float64)
+            # cs rank 提取为独立旁路矩阵：不进入 scaler/COLUMN_RULES，缺失填 neutral。
+            cs_feat = None
+            if self.cs_rank_cols:
+                cs_feat = np.nan_to_num(
+                    group[self.cs_rank_cols].values.astype(np.float64),
+                    nan=CS_RANK_FILL, posinf=CS_RANK_FILL, neginf=CS_RANK_FILL,
+                )
 
             # NaN 填充 + 归一化（per_code / relative 按 code 独立）
             if cfg.normalize == "per_code":
@@ -503,6 +573,10 @@ class ParquetDataset(Dataset):
                     self.rolling_audit[key] = int(self.rolling_audit[key]) + int(value)
             else:
                 feat = self._preprocess_features(feat, feature_cols)
+
+            # cs rank 输出列顺序 = 归一化输出（含 mask）后追加，与 feature_cols_out 一致。
+            if cs_feat is not None:
+                feat = np.concatenate([feat, cs_feat], axis=1)
 
             # context 保留为窗口 warmup 输入：group/feat/close/open_arr 保留全部行（context 在先），
             # 用 is_context 保证标签日恒为非 context 的真实交易日。
@@ -577,6 +651,10 @@ class ParquetDataset(Dataset):
             )
         if total_windows == 0:
             raise ValueError("无有效样本，请检查数据过滤条件（is_trading/时间范围/特征列）")
+
+        # 截面超额收益：在 groups 建成后、标签统计/缓存落盘前统一变换（不影响索引）
+        if cfg.label_mode == "excess":
+            self._apply_excess_labels()
 
         # 标签分布统计
         self._print_label_stats()
@@ -690,7 +768,9 @@ class ParquetDataset(Dataset):
         elif cfg.normalize == "relative":
             # relative 无状态：按 rules 重建当期变换器，绝不 fit。
             scaler = RelativeScaler(feature_cols=feature_cols, add_mask=cfg.per_code_add_mask)
-            if list(scaler.feature_cols_out) != list(self.feature_cols_out):
+            # 缓存 feature_cols_out 含旁路追加的 cs rank 列，scaler 重建结果不含，需补上再比对。
+            expected_out = list(scaler.feature_cols_out) + list(self.cs_rank_cols)
+            if expected_out != list(self.feature_cols_out):
                 raise ValueError("relative 缓存 feature_cols_out 与 rules 重建结果不匹配")
             if scaler_stats is not None:
                 if not isinstance(scaler_stats, RelativeScaler):
@@ -716,6 +796,9 @@ class ParquetDataset(Dataset):
                     "role": cfg.role,
                     "normalize": cfg.normalize,
                     "rolling_scope": cfg.rolling_scope if cfg.normalize == "rolling" else None,
+                    "label_mode": cfg.label_mode,
+                    "cs_rank": cfg.cs_rank,
+                    "cs_rank_features": list(self.cs_rank_features) if cfg.cs_rank else None,
                 },
                 extra=extra or None,
             )
@@ -737,6 +820,29 @@ class ParquetDataset(Dataset):
         # per_code 分支在 _load_and_prepare 循环内已逐股 transform，此处仅 fallback 填0
         feat = np.where(np.isnan(feat), 0, feat)
         return feat
+
+    def _apply_excess_labels(self) -> None:
+        """将 absolute future_ret 就地转为截面超额收益并重算离散标签。
+
+        截面均值按 kline_time 日期跨全部 code 统计（is_trading 已在上游过滤，合成行不参与）；
+        NaN 标签不参与均值且输出仍为 NaN，故窗口 valid_starts/index 不变，仅 groups 内
+        `future_ret`/`discrete` 被替换为超额口径。`start_date` 之前的 context warmup 行与
+        标签日日期天然互斥，不会污染任何标签日的截面均值。
+        """
+        codes = list(self.groups)
+        dates = np.concatenate([np.asarray(self.groups[code]["kline_time"]) for code in codes])
+        rets = np.concatenate(
+            [np.asarray(self.groups[code]["future_ret"], dtype=np.float64) for code in codes]
+        )
+        excess = _cross_sectional_excess(dates, rets)
+        offset = 0
+        for code in codes:
+            n = int(self.groups[code]["n"])
+            chunk = excess[offset: offset + n]
+            offset += n
+            self.groups[code]["future_ret"] = chunk.astype(np.float32)
+            self.groups[code]["discrete"] = np.digitize(chunk, self.bins).astype(np.int64)
+        print(f"[ParquetDataset] label_mode=excess：已按 kline_time 剔除截面均值（{len(codes)} 只）")
 
     def _print_label_stats(self):
         """打印标签分布"""
@@ -863,6 +969,18 @@ if __name__ == "__main__":
         choices=["e0", "e1", "e2", "e3", "e4", "e5"], help="rolling 子集范围",
     )
     parser.add_argument("--scaler_path", type=str, default=None, help="scaler 持久化路径")
+    parser.add_argument(
+        "--label_mode", type=str, default="absolute", choices=["absolute", "excess"],
+        help="标签口径：absolute 原始未来收益；excess 截面超额收益",
+    )
+    parser.add_argument(
+        "--cs_rank", action="store_true",
+        help="启用逐日全市场截面 rank 特征（默认关；列 cs_<feature> 追加并旁路归一化）",
+    )
+    parser.add_argument(
+        "--cs_rank_features", nargs="*", default=None,
+        help="cs_rank 特征子集；缺省用 data/schema.DEFAULT_CS_RANK_FEATURES 的 16 个独立特征",
+    )
     args = parser.parse_args()
 
     print(f"[Test] normalize={args.normalize}, max_codes={args.max_codes}")
@@ -876,6 +994,9 @@ if __name__ == "__main__":
         normalize=args.normalize,
         rolling_scope=args.rolling_scope,
         scaler_path=args.scaler_path,
+        label_mode=args.label_mode,
+        cs_rank=args.cs_rank,
+        cs_rank_features=args.cs_rank_features,
     )
     ds = ParquetDataset(cfg)
     print(f"Dataset len: {len(ds)}")

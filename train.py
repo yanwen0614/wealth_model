@@ -155,6 +155,12 @@ def parse_args(argv: list[str] | None = None):
     p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=config["NORMALIZE"])
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=config["ROLLING_SCOPE"],
                    help="rolling 子集范围 e0..e5（默认 e5=含 G9 raw 全量；非 rolling 时忽略）")
+    p.add_argument("--label_mode", choices=["absolute", "excess"], default=config["LABEL_MODE"],
+                   help="标签口径：absolute=原始未来收益（默认）；excess=按日截面超额收益")
+    p.add_argument("--cs_rank", action="store_true",
+                   help="启用逐日全市场截面 rank 特征（默认关；列 cs_<feature> 追加并旁路归一化）")
+    p.add_argument("--cs_rank_features", nargs="*", default=config["CS_RANK_FEATURES"],
+                   help="cs_rank 特征子集；缺省用 DEFAULT_CS_RANK_FEATURES 的 16 个独立特征")
     p.add_argument("--feature_cols", nargs="*", default=None, help="显式特征列子集；缺省按 normalize 推导")
     p.add_argument("--featurenum", type=int, default=None,
                    help="模型输入维度；缺省按实测派生，显式值与实测不符则报错")
@@ -163,6 +169,16 @@ def parse_args(argv: list[str] | None = None):
                    help="feature memmap 缓存根目录（默认 None：CNN_DATA_CACHE > 平台默认）")
     p.add_argument("--no_cache", action="store_true", help="关闭 feature memmap 缓存，回到原内存路径")
     p.add_argument("--rebuild_cache", action="store_true", help="跳过缓存命中，强制重建并写新 generation")
+    # 模型选择
+    p.add_argument("--model", choices=["cnn_transformer", "retail_friendly"],
+                   default="cnn_transformer", help="模型架构（默认 cnn_transformer）")
+    # 零售模型专属参数
+    p.add_argument("--pos_weight", type=float, default=2.0,
+                   help="零售模型 BCEWithLogitsLoss 正类权重（>1 → FP 惩罚更大 → 更高 precision）")
+    p.add_argument("--default_threshold", type=float, default=0.5,
+                   help="零售模型初始决策阈值")
+    p.add_argument("--target_precision", type=float, default=0.75,
+                   help="零售模型阈值校准目标 precision")
     return p.parse_args(argv)
 
 
@@ -211,7 +227,16 @@ def main():
     config['SEED'] = args.seed
     config['ROLLING_SCOPE'] = args.rolling_scope
     config['FEATURE_COLS'] = args.feature_cols
+    config['LABEL_MODE'] = args.label_mode
+    config['CS_RANK'] = args.cs_rank
+    config['CS_RANK_FEATURES'] = args.cs_rank_features
     config.update(build_cache_settings(args))
+    # 零售模型配置
+    config['MODEL'] = args.model
+    config['RETAIL_POS_WEIGHT'] = args.pos_weight
+    config['RETAIL_LAMBDA_REG'] = args.lambda_reg
+    config['RETAIL_DEFAULT_THRESHOLD'] = args.default_threshold
+    config['RETAIL_TARGET_PRECISION'] = args.target_precision
     configure_preprocessing(config, args.normalize, args.rolling_scope)
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
@@ -250,7 +275,10 @@ def main():
         num_workers=config['NUM_WORKERS'],
         normalize=config['NORMALIZE'],
         rolling_scope=config['ROLLING_SCOPE'],
+        label_mode=config['LABEL_MODE'],
         feature_cols=config['FEATURE_COLS'],
+        cs_rank=config['CS_RANK'],
+        cs_rank_features=config['CS_RANK_FEATURES'],
         scaler_path=config['SCALER_PATH'],
         max_codes=config['MAX_CODES'],
         max_windows_per_code=config['MAX_WINDOWS_PER_CODE'],
@@ -311,6 +339,9 @@ def main():
             "seq_len": config["SEQ_LEN"],
             "num_classes": config["CNNTransformerConfig"]["num_classes"],
         }
+    if config["CS_RANK"]:
+        preprocessing_metadata["cs_rank"] = True
+        preprocessing_metadata["cs_rank_features"] = list(train_dataset.cs_rank_features)
     log_config["preprocessing"] = preprocessing_metadata
     config["preprocessing"] = preprocessing_metadata
     with open(os.path.join(config["run_log_dir"], "config.json"), "w", encoding="utf-8") as f:
@@ -338,14 +369,17 @@ def main():
 
     # 模型
     logger.info("=== 初始化模型 ===")
-    model, model_cfg = build_model(config)
+    model, model_cfg = build_model(config, actual_featurenum=actual_featurenum)
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"总参数量: {total_params:,}")
     logger.info(f"可训练参数量: {trainable_params:,}")
     logger.info(f"可训练比例: {100*trainable_params/total_params:.2f}%")
-    # 打印输入维度校验
-    logger.info(f"模型输入: [batch, featurenum={model_cfg.featurenum}, seq_len={model_cfg.seq_len}] -> {model_cfg.num_classes} 类")
+    if config.get("MODEL") == "retail_friendly":
+        logger.info(f"模型: RetailFriendlyModel 输入 [B, F={model_cfg.featurenum}, T={model_cfg.seq_len}] → bin_logits[B] + ret_pred[B]")
+        logger.info(f"损失: RetailLoss(BCEWithLogits pos_weight={args.pos_weight} + {args.lambda_reg}×Huber)")
+    else:
+        logger.info(f"模型输入: [batch, featurenum={model_cfg.featurenum}, seq_len={model_cfg.seq_len}] -> {model_cfg.num_classes} 类")
 
     # 损失 & 优化器
     logger.info("=== 初始化损失与优化器 ===")
@@ -373,17 +407,27 @@ def main():
         logger.warning("训练被中断")
 
     # 可视化
-    train_losses, _, train_accs, _ = trainer.get_training_history()
-    try:
-        vis_path = os.path.join(config["run_log_dir"], "training_curve.png")
-        if val_loader is not None:
-            _, val_losses, _, val_accs = trainer.get_training_history()
-        else:
-            val_losses, val_accs = [], []
-        Visualizer.plot_training_curves(train_losses, val_losses, train_accs, val_accs, save_path=vis_path)
-        logger.info(f"训练曲线已保存: {vis_path}")
-    except (OSError, RuntimeError, TypeError, ValueError) as e:
-        logger.warning(f"可视化失败: {e}")
+    history = trainer.get_training_history()
+    if config.get("MODEL") == "retail_friendly":
+        # 零售模式：保存校准报告
+        report_path = os.path.join(config["run_log_dir"], "calibration_report.json")
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(history["calibration_report"], f, indent=2, ensure_ascii=False)
+        logger.info(f"校准报告已保存: {report_path}")
+        print(f"\n校准后阈值: {history['calibrated_threshold']:.3f}")
+        print(f"校准 precision: {history['calibration_report'].get('precision', 'N/A'):.2%}")
+    else:
+        train_losses, _, train_accs, _ = history
+        try:
+            vis_path = os.path.join(config["run_log_dir"], "training_curve.png")
+            if val_loader is not None:
+                _, val_losses, _, val_accs = history
+            else:
+                val_losses, val_accs = [], []
+            Visualizer.plot_training_curves(train_losses, val_losses, train_accs, val_accs, save_path=vis_path)
+            logger.info(f"训练曲线已保存: {vis_path}")
+        except (OSError, RuntimeError, TypeError, ValueError) as e:
+            logger.warning(f"可视化失败: {e}")
 
     # 加载最佳模型
     best_path = os.path.join(config["run_log_dir"], "best_model.pth")

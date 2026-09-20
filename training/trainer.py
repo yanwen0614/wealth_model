@@ -1,7 +1,10 @@
+import csv
+import json
 import logging
 import os
 from typing import List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -71,6 +74,15 @@ class Trainer:
         
         # 全局步数计数器
         self.global_step = 0
+
+        # ── 零售模式 ──
+        self._is_retail = config.get("MODEL") == "retail_friendly"
+        if self._is_retail:
+            self.val_precisions: List[float] = []
+            self.val_recalls: List[float] = []
+            self.val_f1s: List[float] = []
+            self.calibrated_threshold: float = config.get("RETAIL_DEFAULT_THRESHOLD", 0.5)
+            self.calibration_report: dict = {}
         
     def train_epoch(self, epoch: int) -> Tuple[float, float]:
         """
@@ -103,8 +115,14 @@ class Trainer:
             self.global_step += 1
 
             train_loss += loss.item() * data.size(0)
-            _, preds = torch.max(logits, 1)
-            train_correct += (preds == labels).sum().item()
+            if self._is_retail:
+                p_bin = torch.sigmoid(logits)
+                preds_bin = (p_bin > 0.5).long()
+                y_bin = (y_ret > 0.0).float() if y_ret is not None else (labels >= 26).float()
+                train_correct += (preds_bin == y_bin.long()).sum().item()
+            else:
+                _, preds = torch.max(logits, 1)
+                train_correct += (preds == labels).sum().item()
             train_total += labels.size(0)
             
             if (batch_idx + 1) % 100 == 0:
@@ -116,11 +134,11 @@ class Trainer:
     
     def validate_epoch(self) -> Tuple[float, float, torch.Tensor, torch.Tensor]:
         """
-        验证一个epoch
-        
+        验证一个epoch（普通模式：52类；零售模式：二分类+precision/recall/F1）
+         
         返回:
             avg_val_loss: 平均验证损失
-            avg_val_acc: 平均验证准确率
+            avg_val_acc: 平均验证准确率（零售模式为二分类准确率@0.5）
             all_labels: 所有真实标签
             all_preds: 所有预测标签
         """
@@ -140,17 +158,43 @@ class Trainer:
                 loss = _compute_loss(self.criterion, logits, ret_pred, labels, y_ret)
 
                 val_loss += loss.item() * data.size(0)
-                _, preds = torch.max(logits, 1)
-                val_correct += (preds == labels).sum().item()
+                if self._is_retail:
+                    p_bin = torch.sigmoid(logits)
+                    preds_bin = (p_bin >= self.calibrated_threshold).long()
+                    y_bin = (y_ret > 0.0).float() if y_ret is not None else (labels >= 26).float()
+                    val_correct += (preds_bin == y_bin.long()).sum().item()
+                    all_labels.append(y_bin.cpu())
+                    all_preds.append(p_bin.cpu())  # 存概率用于校准
+                else:
+                    _, preds = torch.max(logits, 1)
+                    val_correct += (preds == labels).sum().item()
+                    all_labels.append(labels.cpu())
+                    all_preds.append(preds.cpu())
                 val_total += labels.size(0)
-                
-                all_labels.append(labels.cpu())
-                all_preds.append(preds.cpu())
         
         avg_val_loss = val_loss / val_total
         avg_val_acc = val_correct / val_total
         all_labels = torch.cat(all_labels)
         all_preds = torch.cat(all_preds)
+
+        if self._is_retail:
+            # 零售模式：计算 precision/recall/F1
+            y_bin_all = all_labels  # [N]
+            p_bin_all = all_preds   # [N] (概率)
+            preds_at_th = (p_bin_all >= self.calibrated_threshold).float()
+            tp = ((preds_at_th == 1) & (y_bin_all == 1)).sum().item()
+            fp = ((preds_at_th == 1) & (y_bin_all == 0)).sum().item()
+            fn = ((preds_at_th == 0) & (y_bin_all == 1)).sum().item()
+            prec = tp / max(tp + fp, 1)
+            rec = tp / max(tp + fn, 1)
+            f1 = 2 * prec * rec / max(prec + rec, 1e-8)
+            self.val_precisions.append(prec)
+            self.val_recalls.append(rec)
+            self.val_f1s.append(f1)
+            self.logger.info(
+                f'  Val Precision: {prec:.2%}  Recall: {rec:.2%}  '
+                f'F1: {f1:.3f}  p_bin avg: {float(p_bin_all.mean()):.3f}'
+            )
         
         return avg_val_loss, avg_val_acc, all_labels, all_preds
     
@@ -174,6 +218,96 @@ class Trainer:
     def save_confusion_matrix(self, cm, class_names, epoch: Optional[int] = None):
         """保留旧接口，实际输出由 reporting 模块完成。"""
         save_confusion_matrix(cm, class_names, self.config.get('run_log_dir', './logs'), epoch, self.logger)
+
+    # ── 零售模式：阈值校准 ──
+
+    @torch.no_grad()
+    def calibrate_threshold(
+        self,
+        target_precision: float = 0.75,
+        min_threshold: float = 0.50,
+        max_threshold: float = 0.95,
+        step: float = 0.025,
+    ) -> float:
+        """校准决策阈值，使验证集 precision 达到目标值。
+
+        验证集预测已由最后一次 validate_epoch 收集在 val_preds 中。
+        """
+        self.logger.info("=" * 52)
+        self.logger.info(f"阈值校准: 目标 precision ≥ {target_precision:.0%}")
+        self.logger.info("-" * 52)
+
+        # --- 这里简化实现：重新跑一次 val 收集 p_bin ---
+        # 在零售模式下，validate_epoch 已经存了概率在 all_preds，但 train() 中
+        # 最后一次 validate_epoch 的数据还在内存。更稳妥：重新收集
+        all_p_bin: List[torch.Tensor] = []
+        all_y_bin: List[torch.Tensor] = []
+        all_y_ret: List[torch.Tensor] = []
+
+        self.model.eval()
+        for batch in self.val_loader:
+            data, labels, y_ret = _unpack_batch(batch)
+            data = data.to(self.device)
+            y_bin = (y_ret > 0.0).float() if y_ret is not None else (labels >= 26).float()
+            logits, _ = _unpack_outputs(self.model(data))
+            p_bin = torch.sigmoid(logits)
+            all_p_bin.append(p_bin.cpu())
+            all_y_bin.append(y_bin.cpu())
+            if y_ret is not None:
+                all_y_ret.append(y_ret.cpu())
+
+        p_bin_all = torch.cat(all_p_bin).numpy()
+        y_bin_all = torch.cat(all_y_bin).numpy()
+        y_ret_all = torch.cat(all_y_ret).numpy() if all_y_ret else None
+
+        thresholds = np.arange(min_threshold, max_threshold + step, step)
+        results: list = []
+
+        for th in thresholds:
+            preds = (p_bin_all >= th).astype(np.float32)
+            tp = ((preds == 1) & (y_bin_all == 1)).sum()
+            fp = ((preds == 1) & (y_bin_all == 0)).sum()
+            fn = ((preds == 0) & (y_bin_all == 1)).sum()
+            n_pos = int(preds.sum())
+            prec = tp / max(tp + fp, 1)
+            rec = tp / max(tp + fn, 1)
+            f1 = 2 * prec * rec / max(prec + rec, 1e-8)
+            avg_ret = float(y_ret_all[preds == 1].mean()) if n_pos > 0 and y_ret_all is not None else float("nan")
+            results.append((th, prec, rec, f1, n_pos, avg_ret))
+
+        # 打印校准报告
+        self.logger.info(f"{'阈值':>6} | {'精确率':>8} | {'召回率':>8} | {'F1':>6} | {'选股数':>8} | {'均涨幅':>8}")
+        self.logger.info("-" * 60)
+        for th, prec, rec, f1, n, avg_ret in results:
+            if prec >= target_precision - 0.05 or n > 0:
+                avg_ret_str = f"{avg_ret:>8.4f}" if np.isfinite(avg_ret) else "     nan"
+                self.logger.info(f"{th:>6.3f} | {prec:>8.2%} | {rec:>8.2%} | {f1:>6.3f} | {n:>8d} | {avg_ret_str}")
+
+        # 选最佳：满足 precision >= target 的最低阈值
+        valid = [r for r in results if r[1] >= target_precision and r[4] > 0]
+        if valid:
+            best_th, best_prec, best_rec, best_f1, best_n, best_avg_r = valid[0]
+        else:
+            best_idx = int(np.argmax([r[1] for r in results]))
+            best_th, best_prec, best_rec, best_f1, best_n, best_avg_r = results[best_idx]
+            self.logger.warning(f"⚠ 无法达 target_precision={target_precision:.0%}，取最高 precision")
+
+        self.calibrated_threshold = float(best_th)
+        self.calibration_report = {
+            "threshold": float(best_th),
+            "precision": float(best_prec),
+            "recall": float(best_rec),
+            "f1": float(best_f1),
+            "n_picks": int(best_n),
+            "avg_ret_when_pick": float(best_avg_r) if np.isfinite(best_avg_r) else None,
+            "target_precision": target_precision,
+        }
+
+        self.logger.info("-" * 60)
+        avg_ret_str = f"{best_avg_r:.4f}" if np.isfinite(best_avg_r) else "nan"
+        self.logger.info(f"✓ 选定阈值={best_th:.3f}  |  precision={best_prec:.2%}  recall={best_rec:.2%}  选股数={best_n}  均涨幅={avg_ret_str}")
+        self.logger.info("=" * 52)
+        return float(best_th)
     
     def train(self):
         """执行完整的训练流程"""
@@ -217,17 +351,17 @@ class Trainer:
                 if avg_val_acc > best_val_acc:
                     best_val_acc = avg_val_acc
                 
-                if (epoch + 1) % 1 == 0:
-                    self.print_confusion_matrix(all_labels, all_preds, epoch)
-                
-                # 计算并打印涨跌二分类指标
-                try:
-                    precision, recall = calculate_latter_half_metrics(
-                        all_labels, all_preds, num_classes=self.config.get('num_classes')
-                    )
-                    self.logger.info(f'涨跌二分类 - 涨类精确率: {precision:.4f}, 涨类召回率: {recall:.4f}')
-                except Exception as e:
-                    self.logger.warning(f'计算后半类指标失败: {e}')
+                if not self._is_retail:
+                    # 普通模式：混淆矩阵 + 涨跌二分类指标
+                    if (epoch + 1) % 1 == 0:
+                        self.print_confusion_matrix(all_labels, all_preds, epoch)
+                    try:
+                        precision, recall = calculate_latter_half_metrics(
+                            all_labels, all_preds, num_classes=self.config.get('num_classes')
+                        )
+                        self.logger.info(f'涨跌二分类 - 涨类精确率: {precision:.4f}, 涨类召回率: {recall:.4f}')
+                    except Exception as e:
+                        self.logger.warning(f'计算后半类指标失败: {e}')
                 
                 # 打印epoch结果（包含最佳验证结果）
                 self.logger.info(f'Epoch [{epoch+1}/{epochs}], '
@@ -249,6 +383,12 @@ class Trainer:
         if has_val:
             self.model.load_state_dict(torch.load(self.early_stopping.path, map_location=self.device))
             self.logger.info(f"训练结束，已加载最佳模型: {self.early_stopping.path}")
+            # 零售模式：阈值校准
+            if self._is_retail:
+                self.logger.info("")
+                self.calibrate_threshold(
+                    target_precision=self.config.get("RETAIL_TARGET_PRECISION", 0.75),
+                )
         else:
             self.logger.info("训练结束（无验证集，未保存模型）")
     
@@ -274,14 +414,22 @@ class Trainer:
             if hasattr(self.scheduler, 'get_last_lr'):
                 self.logger.info(f"当前学习率：{self.scheduler.get_last_lr()}")
 
-    def get_training_history(self) -> Tuple[List[float], List[float], List[float], List[float]]:
+    def get_training_history(self):
         """
         获取训练历史记录
-        
+         
         返回:
-            train_losses: 训练损失列表
-            val_losses: 验证损失列表
-            train_accs: 训练准确率列表
-            val_accs: 验证准确率列表
+            普通模式: (train_losses, val_losses, train_accs, val_accs)
+            零售模式: dict 含 loss/acc 及 precision/recall/f1/calibration
         """
+        if self._is_retail:
+            return {
+                "train_losses": self.train_losses,
+                "val_losses": self.val_losses,
+                "val_precisions": self.val_precisions,
+                "val_recalls": self.val_recalls,
+                "val_f1s": self.val_f1s,
+                "calibrated_threshold": self.calibrated_threshold,
+                "calibration_report": self.calibration_report,
+            }
         return self.train_losses, self.val_losses, self.train_accs, self.val_accs

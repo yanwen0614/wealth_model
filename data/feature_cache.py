@@ -91,6 +91,9 @@ def compute_cache_key(
     max_windows_per_code: int | None,
     bins_digest: str,
     version: str = CACHE_FORMAT_VERSION,
+    label_mode: str = "absolute",
+    cs_rank: bool = False,
+    cs_rank_features: Sequence[str] | None = None,
 ) -> str:
     """由影响缓存内容/索引/标签的全部字段派生稳定 16-hex 短 key。"""
     payload = {
@@ -104,6 +107,14 @@ def compute_cache_key(
         "max_windows_per_code": None if max_windows_per_code is None else int(max_windows_per_code),
         "bins_digest": bins_digest,
     }
+    # 默认 absolute 不写入 payload，保持既有生成缓存 key 逐字节不变（不无谓失效）；
+    # 非默认标签口径（如 excess）必须使 key 失效，避免 absolute/excess 标签串缓存。
+    if label_mode != "absolute":
+        payload["label_mode"] = str(label_mode)
+    # 同理：cs_rank 默认关不写入 key，保持既有缓存不变；开启时特征列表必须使 key 失效。
+    if cs_rank:
+        payload["cs_rank"] = True
+        payload["cs_rank_features"] = list(cs_rank_features) if cs_rank_features else []
     return _canonical_digest(payload)[:16]
 
 
