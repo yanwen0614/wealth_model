@@ -161,6 +161,10 @@ def parse_args(argv: list[str] | None = None):
                    help="启用逐日全市场截面 rank 特征（默认关；列 cs_<feature> 追加并旁路归一化）")
     p.add_argument("--cs_rank_features", nargs="*", default=config["CS_RANK_FEATURES"],
                    help="cs_rank 特征子集；缺省用 DEFAULT_CS_RANK_FEATURES 的 16 个独立特征")
+    p.add_argument("--mkt_factors", action="store_true",
+                   help="启用全市场截面因子（默认关；列 mkt_* 追加在 cs 列之后并旁路归一化）")
+    p.add_argument("--mkt_factor_list", nargs="*", default=config["MKT_FACTOR_LIST"],
+                   help="市场因子子集；缺省用 DEFAULT_MKT_FACTOR_FEATURES 的 11 个因子")
     p.add_argument("--feature_cols", nargs="*", default=None, help="显式特征列子集；缺省按 normalize 推导")
     p.add_argument("--featurenum", type=int, default=None,
                    help="模型输入维度；缺省按实测派生，显式值与实测不符则报错")
@@ -230,6 +234,8 @@ def main():
     config['LABEL_MODE'] = args.label_mode
     config['CS_RANK'] = args.cs_rank
     config['CS_RANK_FEATURES'] = args.cs_rank_features
+    config['MKT_FACTORS'] = args.mkt_factors
+    config['MKT_FACTOR_LIST'] = args.mkt_factor_list
     config.update(build_cache_settings(args))
     # 零售模型配置
     config['MODEL'] = args.model
@@ -279,6 +285,8 @@ def main():
         feature_cols=config['FEATURE_COLS'],
         cs_rank=config['CS_RANK'],
         cs_rank_features=config['CS_RANK_FEATURES'],
+        mkt_factors=config['MKT_FACTORS'],
+        mkt_factor_list=config['MKT_FACTOR_LIST'],
         scaler_path=config['SCALER_PATH'],
         max_codes=config['MAX_CODES'],
         max_windows_per_code=config['MAX_WINDOWS_PER_CODE'],
@@ -342,6 +350,9 @@ def main():
     if config["CS_RANK"]:
         preprocessing_metadata["cs_rank"] = True
         preprocessing_metadata["cs_rank_features"] = list(train_dataset.cs_rank_features)
+    if config["MKT_FACTORS"]:
+        preprocessing_metadata["mkt_factors"] = True
+        preprocessing_metadata["mkt_factor_list"] = list(train_dataset.mkt_factor_features)
     log_config["preprocessing"] = preprocessing_metadata
     config["preprocessing"] = preprocessing_metadata
     with open(os.path.join(config["run_log_dir"], "config.json"), "w", encoding="utf-8") as f:

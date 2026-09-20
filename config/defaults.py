@@ -26,6 +26,8 @@ _BASE_CONFIG = {
     "LABEL_MODE": "absolute",  # absolute=原始 future_ret；excess=截面超额收益
     "CS_RANK": False,  # True=追加逐日全市场截面 rank 特征（旁路归一化）；默认关
     "CS_RANK_FEATURES": None,  # None=用 data/schema.DEFAULT_CS_RANK_FEATURES（16 个独立特征）
+    "MKT_FACTORS": False,  # True=追加全市场截面因子（每日广播，旁路归一化）；默认关
+    "MKT_FACTOR_LIST": None,  # None=用 data/schema.DEFAULT_MKT_FACTOR_FEATURES（11 个因子）
     "MAX_CODES": None, "MAX_WINDOWS_PER_CODE": None,
     "model": "CNNTransformer", "criterion": "EMDLoss",
     "EMLossConfig": {"p": 2, "label_smoothing": True, "smooth_eps": 0.1},

@@ -94,6 +94,8 @@ def compute_cache_key(
     label_mode: str = "absolute",
     cs_rank: bool = False,
     cs_rank_features: Sequence[str] | None = None,
+    mkt_factors: bool = False,
+    mkt_factor_list: Sequence[str] | None = None,
 ) -> str:
     """由影响缓存内容/索引/标签的全部字段派生稳定 16-hex 短 key。"""
     payload = {
@@ -115,6 +117,10 @@ def compute_cache_key(
     if cs_rank:
         payload["cs_rank"] = True
         payload["cs_rank_features"] = list(cs_rank_features) if cs_rank_features else []
+    # 同理：mkt_factors 默认关不写入 key，保持既有缓存不变；开启时因子列表必须使 key 失效。
+    if mkt_factors:
+        payload["mkt_factors"] = True
+        payload["mkt_factor_list"] = list(mkt_factor_list) if mkt_factor_list else []
     return _canonical_digest(payload)[:16]
 
 

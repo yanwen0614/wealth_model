@@ -69,6 +69,41 @@ DEFAULT_CS_RANK_FEATURES: tuple[str, ...] = (
     "gross_margin", "net_margin", "debt_to_equity", "roe",
 )
 
+# 全市场截面因子（mkt_factors）默认列表：每日全股票共享的时间序列，广播到当日所有股票。
+# 命名已自带 `mkt_` 前缀，输出时直接作为列名追加（不再加前缀），旁路归一化。
+# 共 11 个：上涨占比/站上MA20占比/截面收益标准差/等权市场过去5/10/20日累计收益/
+# 市场已实现波动/平均换手/涨停占比/跌停占比/截面偏度。
+# 精确公式见 `ParquetDataset._compute_market_factors` docstring。
+DEFAULT_MKT_FACTOR_FEATURES: tuple[str, ...] = (
+    "mkt_breadth_up",
+    "mkt_breadth_ma20",
+    "mkt_dispersion",
+    "mkt_mom_5d",
+    "mkt_mom_10d",
+    "mkt_mom_20d",
+    "mkt_vol_20d",
+    "mkt_turnover",
+    "mkt_limit_up",
+    "mkt_limit_down",
+    "mkt_skew",
+)
+
+# 市场因子缺失（早期日期历史窗口不足/所需原始列缺席）时的中性填充：
+# 占比类用 0.5（无信息先验），其余（波动/动量/偏度/涨跌停占比/换手）用 0.0。
+MKT_FACTOR_NEUTRAL: dict[str, float] = {
+    "mkt_breadth_up": 0.5,
+    "mkt_breadth_ma20": 0.5,
+    "mkt_dispersion": 0.0,
+    "mkt_mom_5d": 0.0,
+    "mkt_mom_10d": 0.0,
+    "mkt_mom_20d": 0.0,
+    "mkt_vol_20d": 0.0,
+    "mkt_turnover": 0.0,
+    "mkt_limit_up": 0.0,
+    "mkt_limit_down": 0.0,
+    "mkt_skew": 0.0,
+}
+
 G9_RAW_FEATURES = (
     "margin_balance_ratio", "margin_buy_ratio", "margin_net_buy_ratio",
     "margin_balance_chg_5d", "short_balance_ratio", "short_sell_vol_ratio",

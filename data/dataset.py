@@ -47,7 +47,14 @@ from data.feature_cache import (
 from data.labels import _cross_sectional_excess, _future_ret_open_open
 from data.rolling_scaler import RollingNormalizationConfig, RollingNormalizer
 from data.scaler import SCALER_VERSION, PerCodeGroupedScaler, RelativeScaler
-from data.schema import BASE_COLUMNS, DEFAULT_CS_RANK_FEATURES, EXPORT_FACTORS, _default_feature_cols  # noqa: F401
+from data.schema import (  # noqa: F401
+    BASE_COLUMNS,
+    DEFAULT_CS_RANK_FEATURES,
+    DEFAULT_MKT_FACTOR_FEATURES,
+    EXPORT_FACTORS,
+    MKT_FACTOR_NEUTRAL,
+    _default_feature_cols,
+)
 
 # 截面 rank 缺失（原始值 NaN/inf 或当日无有效截面）时的中性填充：rank∈[0,1] 的中位数。
 CS_RANK_FILL = 0.5
@@ -81,6 +88,14 @@ class ParquetDataConfig:
     # - 输出列 `cs_<feature>` 追加在归一化输出末尾并旁路归一化（rank∈[0,1] 绝不能再做时序归一化）。
     cs_rank: bool = False
     cs_rank_features: list[str] | None = None
+    # 全市场截面因子（可选，默认关，不影响现有行为）：
+    # - mkt_factors=True 时在按 code 分组之前、全市场（含 context warmup 行）按 kline_time 逐日计算
+    #   M 个全市场因子（每日全股票共享的时间序列），必须在 max_codes 截断前完成，保证全市场口径；
+    # - mkt_factor_list=None 用 data/schema.DEFAULT_MKT_FACTOR_FEATURES（11 个）；
+    # - 输出列（列名即 `mkt_*`，不再加前缀）追加在归一化输出（含 mask）与 cs 列之后并旁路归一化
+    #   （因子已是标准化时间序列：占比∈[0,1]、动量/波动/偏度为 z-score 量级，绝不能再做时序归一化）。
+    mkt_factors: bool = False
+    mkt_factor_list: list[str] | None = None
     # 数据集职责决定缓存失配时是否允许拟合。
     role: str = "training"  # "training" | "validation" | "evaluation"
     # 时间切分
@@ -265,6 +280,88 @@ class ParquetDataset(Dataset):
         print(f"[ParquetDataset] 截面 rank: {len(cs_features)} 列 (全市场逐日 pct), 例: cs_{cs_features[0]}")
 
     @staticmethod
+    def _resolve_mkt_factor_list(requested: list[str] | None) -> list[str]:
+        """解析市场因子子集：缺省用 DEFAULT_MKT_FACTOR_FEATURES，去重保序并校验为已知因子。"""
+        factors = list(DEFAULT_MKT_FACTOR_FEATURES if requested is None else requested)
+        factors = list(dict.fromkeys(factors))
+        unknown = [column for column in factors if column not in MKT_FACTOR_NEUTRAL]
+        if unknown:
+            raise ValueError(f"mkt_factor_list 含未知市场因子: {unknown}")
+        return factors
+
+    @staticmethod
+    def _compute_market_factors(df: pd.DataFrame, mkt_features: list[str]) -> None:
+        """就地新增 `mkt_*` 列：按 kline_time 逐日用全体股票计算后广播到当日所有股票。
+
+        每个因子精确定义（`ret = close/open-1`，仅 open>0 且有限的行参与截面统计）：
+        - `mkt_breadth_up`：当日上涨占比 = mean(ret > 0) ∈ [0,1]
+        - `mkt_breadth_ma20`：站上 MA20 占比 = mean(close > ma_20) ∈ [0,1]（ma_20 缺席则当日无值）
+        - `mkt_dispersion`：截面收益标准差 = std(ret)（当日有效值 <2 则无值）
+        - `mkt_mom_5d/10d/20d`：等权市场过去 N 日累计收益 = prod(1+mkt_ret)-1，
+          其中 `mkt_ret[d] = mean(ret)` 为当日截面平均，要求过去 N 日（含当日）均有值
+        - `mkt_vol_20d`：市场已实现波动 = std(mkt_ret[d-19..d])（20 日滚动，要求满 20 日）
+        - `mkt_turnover`：平均换手 = mean(volume/(TOT_SHARE*1e4))（volume/TOT_SHARE 缺席则无值）
+        - `mkt_limit_up`：涨停占比 ≈ mean(ret >= 0.095)（10% 涨停近似，取 0.095 容差）
+        - `mkt_limit_down`：跌停占比 ≈ mean(ret <= -0.095)
+        - `mkt_skew`：截面收益偏度 = skew(ret)（当日有效值 <3 则无值）
+
+        缺失处理：历史窗口不足的早期日期（如 mom_20/vol_20 前 19 天）与所需原始列
+        缺席（如 mini 合成数据无 volume/TOT_SHARE/ma_20）时输出 NaN，由下游按
+        `MKT_FACTOR_NEUTRAL`（占比类 0.5，其余 0.0）填充。必须在 max_codes 截断前调用。
+        """
+        dates = pd.to_datetime(df["kline_time"])
+        close = pd.to_numeric(df["close"], errors="coerce").to_numpy(dtype=np.float64)
+        open_arr = pd.to_numeric(df["open"], errors="coerce").to_numpy(dtype=np.float64)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ret = np.where(np.isfinite(close) & np.isfinite(open_arr) & (open_arr > 0),
+                           close / open_arr - 1.0, np.nan)
+        ret = np.where(np.isfinite(ret), ret, np.nan)
+        frame = pd.DataFrame({"kline_time": dates, "ret": ret})
+        if "ma_20" in df.columns:
+            ma20 = pd.to_numeric(df["ma_20"], errors="coerce").to_numpy(dtype=np.float64)
+            frame["above_ma20"] = np.where(np.isfinite(close) & np.isfinite(ma20), close > ma20, np.nan)
+        if "volume" in df.columns and "TOT_SHARE" in df.columns:
+            vol = pd.to_numeric(df["volume"], errors="coerce").to_numpy(dtype=np.float64)
+            shr = pd.to_numeric(df["TOT_SHARE"], errors="coerce").to_numpy(dtype=np.float64)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                turnover = np.where(np.isfinite(vol) & np.isfinite(shr) & (shr > 0),
+                                    vol / (shr * 1e4), np.nan)
+            frame["turnover"] = np.where(np.isfinite(turnover), turnover, np.nan)
+
+        grouped = frame.groupby("kline_time", sort=True)
+        breadth_up = grouped["ret"].apply(lambda s: float(np.mean(s.to_numpy() > 0)) if s.count() else np.nan)
+        dispersion = grouped["ret"].std(ddof=1)
+        skew = grouped["ret"].apply(lambda s: float(s.skew()) if s.count() >= 3 else np.nan)
+        limit_up = grouped["ret"].apply(lambda s: float(np.mean(s.to_numpy() >= 0.095)) if s.count() else np.nan)
+        limit_down = grouped["ret"].apply(lambda s: float(np.mean(s.to_numpy() <= -0.095)) if s.count() else np.nan)
+        if "above_ma20" in frame.columns:
+            breadth_ma20 = grouped["above_ma20"].mean()
+        else:
+            breadth_ma20 = pd.Series(np.nan, index=breadth_up.index)
+        if "turnover" in frame.columns:
+            turnover_d = grouped["turnover"].mean()
+        else:
+            turnover_d = pd.Series(np.nan, index=breadth_up.index)
+
+        mkt_ret = grouped["ret"].mean().sort_index()
+        mom_5d = (1.0 + mkt_ret).rolling(5, min_periods=5).apply(np.prod, raw=True) - 1.0
+        mom_10d = (1.0 + mkt_ret).rolling(10, min_periods=10).apply(np.prod, raw=True) - 1.0
+        mom_20d = (1.0 + mkt_ret).rolling(20, min_periods=20).apply(np.prod, raw=True) - 1.0
+        vol_20d = mkt_ret.rolling(20, min_periods=20).std(ddof=1)
+
+        daily = pd.DataFrame({
+            "mkt_breadth_up": breadth_up, "mkt_breadth_ma20": breadth_ma20,
+            "mkt_dispersion": dispersion, "mkt_mom_5d": mom_5d, "mkt_mom_10d": mom_10d,
+            "mkt_mom_20d": mom_20d, "mkt_vol_20d": vol_20d, "mkt_turnover": turnover_d,
+            "mkt_limit_up": limit_up, "mkt_limit_down": limit_down, "mkt_skew": skew,
+        })
+        keys = dates.dt.tz_localize(None) if getattr(dates.dt, "tz", None) is not None else dates
+        daily.index = pd.to_datetime(daily.index).tz_localize(None)
+        for column in mkt_features:
+            df[column] = keys.map(daily[column]).to_numpy(dtype=np.float64)
+        print(f"[ParquetDataset] 市场因子: {len(mkt_features)} 列 (全市场逐日广播), 例: {mkt_features[0]}")
+
+    @staticmethod
     def _scaler_identity(cfg: ParquetDataConfig, pf: pq.ParquetFile, feature_cols: list[str]) -> dict:
         path = os.path.realpath(cfg.parquet_path)
         stat = os.stat(path)
@@ -334,6 +431,9 @@ class ParquetDataset(Dataset):
             cs_rank=cfg.cs_rank,
             cs_rank_features=ParquetDataset._resolve_cs_rank_features(feature_cols, cfg.cs_rank_features)
             if cfg.cs_rank else None,
+            mkt_factors=cfg.mkt_factors,
+            mkt_factor_list=ParquetDataset._resolve_mkt_factor_list(cfg.mkt_factor_list)
+            if cfg.mkt_factors else None,
         )
 
     def _load_and_prepare(self, scaler_stats: dict | object | None):
@@ -359,6 +459,11 @@ class ParquetDataset(Dataset):
             self._resolve_cs_rank_features(feature_cols, cfg.cs_rank_features) if cfg.cs_rank else []
         )
         self.cs_rank_cols = [f"cs_{column}" for column in self.cs_rank_features]
+        # 市场因子列名即 `mkt_*` 本身（不再加前缀），不依赖 feature_cols，直接校验已知因子。
+        self.mkt_factor_features = (
+            self._resolve_mkt_factor_list(cfg.mkt_factor_list) if cfg.mkt_factors else []
+        )
+        self.mkt_factor_cols = list(self.mkt_factor_features)
         expected_identity = self._scaler_identity(cfg, pf, feature_cols)
         print(f"[ParquetDataset] 特征列数: {self.num_features}, 特征: {feature_cols[:8]}...")
 
@@ -372,8 +477,13 @@ class ParquetDataset(Dataset):
         # 读取全表（11M 行，约 3.5G parquet，内存约 4-5G）
         # 使用 pyarrow 读取后转 pandas，按需过滤日期
         print(f"[ParquetDataset] 读取 parquet: {cfg.parquet_path}")
-        # 仅读取需要的列以降低内存
+        # 仅读取需要的列以降低内存；市场因子需额外原始列（ma_20/volume/TOT_SHARE/high/low），
+        # 仅当 parquet schema 存在时才读（mini 合成数据缺席则下游填中性值）。
         read_cols = ["code", "kline_time", "close", "open", "is_trading"] + feature_cols
+        if cfg.mkt_factors:
+            for extra in ("ma_20", "high", "low", "volume", "TOT_SHARE"):
+                if extra in all_cols:
+                    read_cols.append(extra)
         # 去重
         read_cols = list(dict.fromkeys(read_cols))
         table = pq.read_table(cfg.parquet_path, columns=read_cols)
@@ -412,6 +522,10 @@ class ParquetDataset(Dataset):
         # 的逐日截面上计算；否则 rank 只相对被保留的少数股票，语义错误。
         if cfg.cs_rank:
             self._compute_cross_sectional_rank(df, self.cs_rank_features)
+
+        # 市场因子：与 cs_rank 同处（时间过滤后、分组与 max_codes 截断前），全市场逐日计算后广播。
+        if cfg.mkt_factors:
+            self._compute_market_factors(df, self.mkt_factor_features)
 
         # 按 code 分组排序
         df = cast(Any, df).sort_values(["code", "kline_time"]).reset_index(drop=True)
@@ -514,6 +628,11 @@ class ParquetDataset(Dataset):
             self.feature_cols_out = list(self.feature_cols_out) + list(self.cs_rank_cols)
             self.num_features = len(self.feature_cols_out)
 
+        # 市场因子列追加在 cs 列之后并旁路归一化：最终列序 [归一化输出(含 mask)] + cs + mkt。
+        if self.mkt_factor_cols:
+            self.feature_cols_out = list(self.feature_cols_out) + list(self.mkt_factor_cols)
+            self.num_features = len(self.feature_cols_out)
+
         print(f"[ParquetDataset] 输出特征列数: {self.num_features}, 输出特征: {self.feature_cols_out[:8]}...")
 
         # 3. 按 code 构建分组数据与索引
@@ -549,6 +668,15 @@ class ParquetDataset(Dataset):
                     group[self.cs_rank_cols].values.astype(np.float64),
                     nan=CS_RANK_FILL, posinf=CS_RANK_FILL, neginf=CS_RANK_FILL,
                 )
+            # 市场因子提取为独立旁路矩阵：不进入 scaler，缺失按 MKT_FACTOR_NEUTRAL 逐列填充。
+            mkt_feat = None
+            if self.mkt_factor_cols:
+                raw_mkt = group[self.mkt_factor_cols].values.astype(np.float64)
+                fills = np.array([MKT_FACTOR_NEUTRAL[column] for column in self.mkt_factor_cols],
+                                 dtype=np.float64)
+                bad = ~np.isfinite(raw_mkt)
+                raw_mkt[bad] = np.take(fills, np.broadcast_to(np.arange(len(fills)), bad.shape)[bad])
+                mkt_feat = raw_mkt
 
             # NaN 填充 + 归一化（per_code / relative 按 code 独立）
             if cfg.normalize == "per_code":
@@ -574,9 +702,11 @@ class ParquetDataset(Dataset):
             else:
                 feat = self._preprocess_features(feat, feature_cols)
 
-            # cs rank 输出列顺序 = 归一化输出（含 mask）后追加，与 feature_cols_out 一致。
+            # cs/mkt 输出列顺序 = 归一化输出（含 mask）后先 cs 后 mkt，与 feature_cols_out 一致。
             if cs_feat is not None:
                 feat = np.concatenate([feat, cs_feat], axis=1)
+            if mkt_feat is not None:
+                feat = np.concatenate([feat, mkt_feat], axis=1)
 
             # context 保留为窗口 warmup 输入：group/feat/close/open_arr 保留全部行（context 在先），
             # 用 is_context 保证标签日恒为非 context 的真实交易日。
@@ -768,8 +898,8 @@ class ParquetDataset(Dataset):
         elif cfg.normalize == "relative":
             # relative 无状态：按 rules 重建当期变换器，绝不 fit。
             scaler = RelativeScaler(feature_cols=feature_cols, add_mask=cfg.per_code_add_mask)
-            # 缓存 feature_cols_out 含旁路追加的 cs rank 列，scaler 重建结果不含，需补上再比对。
-            expected_out = list(scaler.feature_cols_out) + list(self.cs_rank_cols)
+            # 缓存 feature_cols_out 含旁路追加的 cs/mkt 列，scaler 重建结果不含，需补上再比对。
+            expected_out = list(scaler.feature_cols_out) + list(self.cs_rank_cols) + list(self.mkt_factor_cols)
             if expected_out != list(self.feature_cols_out):
                 raise ValueError("relative 缓存 feature_cols_out 与 rules 重建结果不匹配")
             if scaler_stats is not None:
@@ -799,6 +929,8 @@ class ParquetDataset(Dataset):
                     "label_mode": cfg.label_mode,
                     "cs_rank": cfg.cs_rank,
                     "cs_rank_features": list(self.cs_rank_features) if cfg.cs_rank else None,
+                    "mkt_factors": cfg.mkt_factors,
+                    "mkt_factor_list": list(self.mkt_factor_features) if cfg.mkt_factors else None,
                 },
                 extra=extra or None,
             )
@@ -981,6 +1113,18 @@ if __name__ == "__main__":
         "--cs_rank_features", nargs="*", default=None,
         help="cs_rank 特征子集；缺省用 data/schema.DEFAULT_CS_RANK_FEATURES 的 16 个独立特征",
     )
+    parser.add_argument(
+        "--mkt_factors", action="store_true",
+        help="启用全市场截面因子（默认关；列 mkt_* 追加在 cs 列之后并旁路归一化）",
+    )
+    parser.add_argument(
+        "--mkt_factor_list", nargs="*", default=None,
+        help="市场因子子集；缺省用 data/schema.DEFAULT_MKT_FACTOR_FEATURES 的 11 个因子",
+    )
+    parser.add_argument(
+        "--feature_cols", nargs="*", default=None,
+        help="显式特征列子集；缺省按 schema 推导（旧 parquet 缺列时可显式传入可用子集）",
+    )
     args = parser.parse_args()
 
     print(f"[Test] normalize={args.normalize}, max_codes={args.max_codes}")
@@ -995,8 +1139,11 @@ if __name__ == "__main__":
         rolling_scope=args.rolling_scope,
         scaler_path=args.scaler_path,
         label_mode=args.label_mode,
+        feature_cols=args.feature_cols,
         cs_rank=args.cs_rank,
         cs_rank_features=args.cs_rank_features,
+        mkt_factors=args.mkt_factors,
+        mkt_factor_list=args.mkt_factor_list,
     )
     ds = ParquetDataset(cfg)
     print(f"Dataset len: {len(ds)}")
