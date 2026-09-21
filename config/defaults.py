@@ -12,12 +12,12 @@ else:
     _DEFAULT_PARQUET = "data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
 
 DEFAULT_PARQUET = _DEFAULT_PARQUET
-DEFAULT_BINS = (np.linspace(-25, 25, 51) / 100).tolist()
+DEFAULT_BINS = (np.linspace(-38, 38, 51) / 100).tolist()
 
 _BASE_CONFIG = {
     "DEVICE": "cuda" if torch.cuda.is_available() else "cpu",
     "PARQUET_PATH": DEFAULT_PARQUET, "BINS": DEFAULT_BINS,
-    "SEQ_LEN": 60, "HORIZON": 5, "BATCH_SIZE": 256, "NUM_WORKERS": 4,
+    "SEQ_LEN": 60, "HORIZON": 10, "BATCH_SIZE": 256, "NUM_WORKERS": 4,
     "TRAIN_START": "2013-01-01", "TRAIN_END": "2025-06-30",
     "VAL_START": "2025-07-01", "VAL_END": "2025-12-31",
     "TEST_START": "2026-01-01", "TEST_END": None,

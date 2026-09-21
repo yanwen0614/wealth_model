@@ -65,8 +65,8 @@ class ParquetDataConfig:
     # 默认指向当前 F60 schema（52 raw + 1 shared mask）的单文件 parquet；win32 实际路径由 train.py 按平台覆盖
     parquet_path: str = "data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
     seq_len: int = 60
-    horizon: int = 5  # 未来 N 日收益作为标签
-    bins: list[float] = field(default_factory=lambda: (np.linspace(-25, 25, 51) / 100).tolist())
+    horizon: int = 10  # 未来 N 日收益作为标签
+    bins: list[float] = field(default_factory=lambda: (np.linspace(-38, 38, 51) / 100).tolist())
     batch_size: int = 256
     num_workers: int = 4
     # 特征列：None 时自动推导（排除 code/kline_time/is_trading，保留全部数值列）
@@ -1131,7 +1131,7 @@ if __name__ == "__main__":
     cfg = ParquetDataConfig(
         parquet_path=args.parquet,
         seq_len=60,
-        horizon=5,
+        horizon=10,
         batch_size=64,
         num_workers=0,
         max_codes=args.max_codes,

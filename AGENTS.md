@@ -47,7 +47,7 @@ uv run ruff check .   # line-length 120, pyproject.toml
 
 - 单 parquet `data/test/train_data/train_data_v1_*.parquet` 11.4M行×58列 5166股，10基础+48因子。`is_trading=False` 的行 OHLC/因子=NaN 必须 `dataset.py:160` 过滤。
 - 当前默认特征为 **52 个 raw feature（`P18+R16+N12+G6`）+ 1 个共享 `g9_observed_mask`，输出 `F=53`**，列序 `[P→R→N→G→mask]`（`data/schema.py` `FEATURE_GROUPS`/`APPROVED_RAW_FEATURES`）。`close` 已解禁进 P 组（relative 分母 `close[t-1]`）。`F=69`（旧 51 raw + 18 逐列 mask）、`F=45`（39+6 mask）、`F=55` 均为**历史** schema，不代表当前默认输入。
-- 标签 `dataset.py:309` `future_ret[t]=open[t+1+horizon]/open[t+1]-1`（horizon=5），`np.digitize(BINS)` 52类，`BINS=linspace(-0.25,0.25,51)` `train.py:34`。窗口 `[s,s+60)` 取末日 `y`。
+- 标签 `dataset.py:309` `future_ret[t]=open[t+1+horizon]/open[t+1]-1`（horizon=10），`np.digitize(BINS)` 52类，`BINS=linspace(-0.38,0.38,51)` `config/defaults.py:15`。窗口 `[s,s+60)` 取末日 `y`。
 - 窗口 warmup（评估/验证）：`start_date` 之前最多 `seq_len-1`（rolling 非训练 251）条历史行以 `_transform_context=True` 保留，**可进入窗口作 warmup 输入，但绝不作为标签日**（`valid_starts` 过滤 `is_context[s+seq_len-1]`）；评估区间标签日覆盖 = 交易日数 − `(horizon+1)`（2026-01-01~08-31 由 95 → ≈154）。`data/feature_cache.py` `CACHE_FORMAT_VERSION=v3_relative_groups`（旧 `v2_context_warmup` 为历史）使旧语义缓存失效；训练集 start≈数据起点，窗口不变。勿与归一化统计预热混淆。
 
 ## Normalization — 三策略（relative/per_code/rolling）+ 列语义分组 P/R/N/G
