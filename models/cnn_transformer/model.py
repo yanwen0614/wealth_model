@@ -10,6 +10,8 @@ class PositionalEncoding(nn.Module):
     正弦余弦位置编码
     参考: https://pytorch.org/tutorials/beginner/transformer_tutorial.html
     """
+    pe: torch.Tensor  # register_buffer 注入，声明以满足类型检查
+
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)

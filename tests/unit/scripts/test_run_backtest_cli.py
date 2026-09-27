@@ -1,4 +1,4 @@
-"""T05: run_backtest CLI 参数默认值与 --cost_rate deprecation 单测."""
+"""run_backtest CLI 参数默认值/废弃告警与 target metrics 单测（adapter 唯一路径）."""
 import contextlib
 import io
 import json
@@ -6,17 +6,18 @@ import os
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
 
-from backtest.engine import BacktestResult
+import scripts.run_backtest as entry_mod
 from scripts.run_backtest import (
     default_index_dir,
     index_covers_trade_days,
     load_index_close,
     parse_args,
-    run_target_mode,
+    run_adapter_target,
 )
 
 
@@ -26,7 +27,7 @@ class TestRunBacktestCLI(unittest.TestCase):
             return parse_args()
 
     def test_fee_defaults(self):
-        a = self._parse(["--preds", "x.npz", "--ohlc", "o.npz"])
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet"])
         self.assertEqual(a.capital, 1_000_000.0)
         self.assertEqual(a.buy_rate, 0.00025)
         self.assertEqual(a.sell_rate, 0.00025)
@@ -35,20 +36,23 @@ class TestRunBacktestCLI(unittest.TestCase):
         self.assertIsNone(a.cost_rate)
 
     def test_target_exit_defaults(self):
-        a = self._parse(["--preds", "x.npz", "--mode", "target"])
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet", "--mode", "target"])
         self.assertEqual(a.sell_buffer, 500)
         self.assertFalse(a.exit_on_nonpositive)
         self.assertEqual(a.exit_threshold, 0.0)
 
     def test_cost_rate_deprecated_warning_and_ignored(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            a = self._parse(["--preds", "x.npz", "--ohlc", "o.npz", "--cost_rate", "0.0015"])
-        self.assertIn("cost_rate", buf.getvalue())
-        self.assertIsNone(a.cost_rate)
+        with (mock.patch.object(entry_mod, "run_adapter_rolling") as default,
+              tempfile.TemporaryDirectory() as tmp,
+              self.assertLogs(entry_mod.logger, level="WARNING") as logs):
+            entry_mod.main(["--preds", "x.npz", "--parquet", "q.parquet",
+                            "--cost_rate", "0.0015", "--out_dir", tmp])
+        default.assert_called_once()
+        self.assertIsNone(default.call_args[0][0].cost_rate)
+        self.assertTrue(any("cost_rate" in m for m in logs.output))
 
     def test_fee_overrides(self):
-        a = self._parse(["--preds", "x.npz", "--ohlc", "o.npz", "--capital", "4e4",
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet", "--capital", "4e4",
                          "--buy_rate", "0.0003", "--min_commission", "1", "--exit-on-nonpositive",
                          "--exit_threshold", "0.01"])
         self.assertEqual(a.capital, 40000.0)
@@ -58,13 +62,13 @@ class TestRunBacktestCLI(unittest.TestCase):
         self.assertEqual(a.exit_threshold, 0.01)
 
     def test_benchmark_defaults(self):
-        a = self._parse(["--preds", "x.npz", "--ohlc", "o.npz"])
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet"])
         self.assertEqual(a.topn, [5, 10, 20])
         self.assertEqual(a.benchmark_index, "000300.SH")
         self.assertEqual(a.index_dir, default_index_dir())
 
     def test_benchmark_overrides(self):
-        a = self._parse(["--preds", "x.npz", "--ohlc", "o.npz", "--benchmark_index", "000905.SH",
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet", "--benchmark_index", "000905.SH",
                          "--index_dir", "D:/idx", "--topn", "5", "10"])
         self.assertEqual(a.benchmark_index, "000905.SH")
         self.assertEqual(a.index_dir, "D:/idx")
@@ -83,78 +87,82 @@ class TestIndexBenchmarkHelpers(unittest.TestCase):
 
 
 class TestStrongBuyThresholdCLI(unittest.TestCase):
-    """T02: --strong_buy_threshold CLI 参数（target 模式强买门槛）."""
+    """--strong_buy_threshold CLI 参数（target 模式强买门槛）."""
 
     def _parse(self, argv):
         with mock.patch.object(sys, "argv", ["run_backtest", *argv]):
             return parse_args()
 
     def test_default_zero(self):
-        a = self._parse(["--preds", "x.npz", "--mode", "target"])
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet", "--mode", "target"])
         self.assertEqual(a.strong_buy_threshold, 0.0)
 
     def test_override(self):
-        a = self._parse(["--preds", "x.npz", "--mode", "target",
+        a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet", "--mode", "target",
                          "--strong_buy_threshold", "0.02"])
         self.assertEqual(a.strong_buy_threshold, 0.02)
 
 
 class TestTargetMetricsStrongBuy(unittest.TestCase):
-    """T02: target metrics 新增 strong_buy 键；打印/图题同步."""
+    """target metrics：adapter target 口径（final_nav/config_hash/data_fingerprint），打印含 strong_buy."""
 
-    def _run(self, extra_argv, tmp):
-        with mock.patch.object(sys, "argv",
-                               ["run_backtest", "--preds", "x.npz", "--mode", "target", *extra_argv]):
+    def _run(self, extra_argv, tmp, benchmark=None):
+        with mock.patch.object(sys, "argv", ["run_backtest", "--preds", "x.npz", "--parquet", "q.parquet",
+                                              "--mode", "target", *extra_argv]):
             args = parse_args()
-        args.full_ohlc = "fake.npz"
         days = np.array(["2026-01-05", "2026-01-06"], dtype="datetime64[D]")
-        full = {"codes": np.array(["000001"]), "dates": days}
         preds = {"exp_ret": np.array([0.10]), "true_ret": np.array([0.10]),
                  "dates": days, "codes": np.array(["000001"])}
-        skipped = {np.datetime64("2026-01-05"): {"strong_buy": 3, "limit_up": 1}}
-        res = BacktestResult(nav=np.array([1.0, 1.02, 1.05]), holdings=np.array([]),
-                             skipped=skipped, avg_cash_ratio=0.3)
-        fake_plt = mock.MagicMock()
-        mock_run = mock.Mock(return_value=res)
+        outcome = SimpleNamespace(account_evaluation={"total_return": 0.05, "annualized_return": 0.06,
+                                                      "sharpe": 0.8, "max_drawdown": 0.01},
+                                  config_hash="h", data_fingerprint="f")
+        mock_run = mock.Mock(return_value=outcome)
         buf = io.StringIO()
         with mock.patch.multiple("scripts.run_backtest",
-                                 load_full_ohlc=mock.Mock(return_value=full),
-                                 load_index_close=mock.Mock(
-                                     return_value=(days, np.array([3000.0, 3010.0]))),
-                                 index_covers_trade_days=mock.Mock(return_value=False),
                                  load_preds=mock.Mock(return_value=preds),
-                                 run_backtest_target=mock_run,
-                                 save_holdings_csv=mock.Mock(),
-                                 plt=fake_plt), contextlib.redirect_stdout(buf):
-            run_target_mode(args, tmp)
+                                 _resolve_benchmark=mock.Mock(return_value=benchmark or (None, None)),
+                                 run_cnn_backtest=mock_run), contextlib.redirect_stdout(buf):
+            run_adapter_target(args, tmp)
         with open(os.path.join(tmp, "metrics.json"), encoding="utf-8") as f:
-            return json.load(f), fake_plt, buf.getvalue(), mock_run
+            return json.load(f), buf.getvalue(), mock_run
 
-    def test_new_keys_present_and_legacy_keys_kept(self):
+    def test_five_params_passthrough_and_target_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
-            metrics, fake_plt, out, mock_run = self._run(["--strong_buy_threshold", "0.02"], tmp)
-        # CLI 参数必须透传到引擎（防止改用常量而漏检）
-        self.assertEqual(mock_run.call_args.kwargs["strong_buy_threshold"], 0.02)
+            metrics, out, mock_run = self._run(["--strong_buy_threshold", "0.02", "--target_size", "7",
+                                                "--sell_buffer", "9", "--exit-on-nonpositive",
+                                                "--exit_threshold", "0.01"], tmp)
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs["mode"], "target")
+        self.assertEqual(kwargs["target_size"], 7)
+        self.assertEqual(kwargs["sell_buffer"], 9)
+        self.assertTrue(kwargs["exit_on_nonpositive"])
+        self.assertEqual(kwargs["exit_threshold"], 0.01)
+        self.assertEqual(kwargs["strong_buy_threshold"], 0.02)
         self.assertEqual(metrics["strong_buy_threshold"], 0.02)
-        # target 配置键保留
-        self.assertEqual(metrics["target_size"], 100)
-        self.assertEqual(metrics["sell_buffer"], 500)
-        self.assertFalse(metrics["exit_on_nonpositive"])
-        self.assertEqual(metrics["exit_threshold"], 0.0)
+        self.assertEqual(metrics["target_size"], 7)
+        self.assertEqual(metrics["sell_buffer"], 9)
         tm = metrics["models"]["x"]["target"]
-        self.assertEqual(tm["n_skipped_strong_buy"], 3)
-        self.assertEqual(tm["n_skipped_limit_up"], 1)
-        # 打印行与图题补 strong_buy 阈值/跳过计数
+        self.assertAlmostEqual(tm["final_nav"], 1050000.0)
+        self.assertEqual(tm["config_hash"], "h")
+        self.assertEqual(tm["data_fingerprint"], "f")
+        self.assertNotIn("excess_annual", tm)
         self.assertIn("strong_buy=0.02", out)
-        self.assertIn("强买跳过=3", out)
-        self.assertIn("strong_buy=0.02", str(fake_plt.title.call_args))
 
     def test_default_threshold_zero_in_metrics(self):
         with tempfile.TemporaryDirectory() as tmp:
-            metrics, _, _, mock_run = self._run([], tmp)
+            metrics, out, mock_run = self._run([], tmp)
         self.assertEqual(mock_run.call_args.kwargs["strong_buy_threshold"], 0.0)
         self.assertEqual(metrics["strong_buy_threshold"], 0.0)
-        self.assertEqual(metrics["models"]["x"]["target"]["n_skipped_strong_buy"], 3)
+        self.assertIn("strong_buy=0.0", out)
+
+    def test_excess_annual_when_benchmark_present(self):
+        bench = (np.array([1.0, 1.02]),
+                 {"annual": 0.01, "sharpe": 0.5, "mdd": 0.0, "win_rate": 0.5})
+        with tempfile.TemporaryDirectory() as tmp:
+            metrics, _, _ = self._run([], tmp, benchmark=bench)
+        tm = metrics["models"]["x"]["target"]
+        self.assertAlmostEqual(tm["excess_annual"], 0.05)
+        self.assertIn("benchmark", metrics)
 
 
 if __name__ == "__main__":

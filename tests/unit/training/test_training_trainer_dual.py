@@ -1,13 +1,13 @@
 """T04 RED: Trainer single/dual-head batch + output unpacking."""
 import unittest
+from typing import Any, cast
 
 import torch
 
 from criterion.dual_loss import DualLoss
 from criterion.emd_loss import EMDLoss
 from training.batch import _compute_loss as batch_compute_loss
-from training.trainer import Trainer
-from training.trainer import _compute_loss, _unpack_batch, _unpack_outputs
+from training.trainer import Trainer, _compute_loss, _unpack_batch, _unpack_outputs
 
 
 class TestTrainerDualCompat(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestTrainerDualCompat(unittest.TestCase):
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
         return Trainer(model, {"run_log_dir": "/tmp/trainer-test", "DEVICE": "cpu"},
-                       train_loader, val_loader, criterion, optimizer)
+                       train_loader, cast(Any, val_loader), criterion, optimizer)
 
     def test_train_rejects_empty_training_loader(self):
         loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(

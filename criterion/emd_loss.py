@@ -1,6 +1,7 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
+
 
 class EMDLoss(nn.Module):
     """
@@ -22,7 +23,7 @@ class EMDLoss(nn.Module):
             smooth_eps (float): 标签平滑的强度，取值范围 (0, 1)
                                 表示将多少比例的概率从真实标签迁移到相邻类别
         """
-        super(EMDLoss, self).__init__()
+        super().__init__()
         self.num_classes = num_classes
         self.p = p
         self.label_smoothing = label_smoothing
@@ -101,7 +102,7 @@ class EMDLoss(nn.Module):
         """
         weights = self.smooth_weights
         if not isinstance(weights, torch.Tensor):
-            raise RuntimeError("label_smoothing is disabled")
+            raise RuntimeError("label_smoothing is disabled")  # noqa: TRY004 - 关闭平滑时误调是状态误用，沿用 RuntimeError 契约
 
         # 转换为 one-hot 编码，与 buffer 同设备防跨设备 matmul
         target_onehot = F.one_hot(targets, num_classes=self.num_classes).float().to(

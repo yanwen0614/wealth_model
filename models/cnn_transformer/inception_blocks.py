@@ -1,7 +1,9 @@
+
 import torch
-import torch.nn as nn
-from typing import List
+from torch import nn
+
 from .config import ModelConfig
+
 
 class LightInceptionBlock1D(nn.Module):
     """
@@ -27,15 +29,18 @@ class LightInceptionBlock1D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_sizes: List[int] = [1, 3, 5, 10, 20],
+        kernel_sizes: list[int] | None = None,
         expansion_factor: float = 0.5,
-        channel_ratios: List[float] = None,
+        channel_ratios: list[float] | None = None,
         use_pool_branch: bool = True,
         pool_type: str = "max",
         dropout: float = 0.1
     ):
         super().__init__()
-        
+
+        # 默认多尺度卷积核（None 守卫：避免可变默认参数共享）
+        if kernel_sizes is None:
+            kernel_sizes = [1, 3, 5, 10, 20]
         # 计算分支数量
         num_conv_branches = len(kernel_sizes)
         num_branches = num_conv_branches + (1 if use_pool_branch else 0)
