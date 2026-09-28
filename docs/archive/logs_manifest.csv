@@ -1,0 +1,341 @@
+path,type,size_bytes,action,reason,rerun_cmd,source,status,archive
+logs/analyze_trades.py,file,7076,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/archive_closeclose,dir,63625867,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/archive_intermediate,dir,410641111,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/attribution_20260916,dir,1196580,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_20260916_003518,dir,0,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_20260916_003540,dir,219037,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_2026_formal,dir,494342,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_6groups,dir,1595713,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_all_models,dir,1939420,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_e1e4_2026-01-01_2026-08-31,dir,12642546,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_fee_e0e5_rolling,dir,18834453,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_fee_target_b500,dir,2804598,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_fee_target_exitnp,dir,1181835,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_e0e5_rolling,dir,3879762,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_b500_s10,dir,508793,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_b500_s20,dir,726212,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_b500_s5,dir,374912,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_b500_s50,dir,1503465,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_exitnp_s10,dir,376160,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_exitnp_s20,dir,467084,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_exitnp_s5,dir,333845,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_idx_target_exitnp_s50,dir,730012,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_relative_run_20260914_024253_2026-01-01_2026-08-31,dir,3253233,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_rolling_e2_run_20260914_064942_2026-01-01_2026-08-31,dir,3273634,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_rolling_e3_run_20260914_093155_2026-01-01_2026-08-31,dir,3286851,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_rolling_e4_run_20260914_115221_2026-01-01_2026-08-31,dir,3285263,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_rolling_e5_run_20260914_141450_2026-01-01_2026-08-31,dir,3257737,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_rolling_final,dir,325820,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_rolling_gbdt,dir,1195620,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_run_20260914_045053_2026-01-01_2026-08-31,dir,3311699,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s10_t0.00,dir,511762,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s10_t0.02,dir,511439,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s10_t0.03,dir,501573,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s10_t0.05,dir,420275,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s50_t0.00,dir,1506394,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s50_t0.02,dir,1473919,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s50_t0.03,dir,1227896,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s50_t0.05,dir,681903,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s5_t0.00,dir,377880,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s5_t0.02,dir,377830,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s5_t0.03,dir,379454,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_b500_s5_t0.05,dir,365557,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s10_t0.00,dir,378871,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s10_t0.02,dir,378832,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s10_t0.03,dir,372780,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s10_t0.05,dir,359404,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s50_t0.00,dir,733026,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s50_t0.02,dir,734040,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s50_t0.03,dir,716363,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s50_t0.05,dir,526257,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s5_t0.00,dir,336791,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s5_t0.02,dir,336829,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s5_t0.03,dir,351636,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_sbg_exitnp_s5_t0.05,dir,323985,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_10,dir,221194,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_20,dir,297679,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_5,dir,169720,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_clf,dir,182563,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_e0e5_ts100,dir,3867266,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_e0e5_ts20,dir,876148,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_e0e5_ts50,dir,1940176,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_gbdt,dir,197767,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_gbdt_val,dir,158306,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l02_t10,dir,100635,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l02_t20,dir,107203,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l02_t5,dir,87545,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l04_t10,dir,87327,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l04_t20,dir,94401,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l04_t5,dir,85520,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l06_t10,dir,94903,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l06_t20,dir,113339,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_target_l06_t5,dir,84443,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_baseline_s10,dir,141775,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_baseline_s20,dir,142224,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_baseline_s5,dir,129870,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_baseline_s50,dir,169803,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t1pct_s10,dir,141853,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t1pct_s20,dir,142366,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t1pct_s5,dir,129894,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t1pct_s50,dir,169894,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t2pct_s10,dir,139242,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t2pct_s20,dir,140150,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t2pct_s5,dir,129838,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e0_t2pct_s50,dir,169898,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_baseline,dir,199291,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_baseline_s10,dir,114109,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_baseline_s20,dir,120206,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_baseline_s5,dir,114129,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_baseline_s50,dir,148012,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_t2pct,dir,204930,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_t2pct_s10,dir,114119,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_t2pct_s20,dir,120129,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_t2pct_s5,dir,114103,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e1_t2pct_s50,dir,147261,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_baseline,dir,208660,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_baseline_s10,dir,122055,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_baseline_s20,dir,139191,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_baseline_s5,dir,131598,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_baseline_s50,dir,160756,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_t2pct,dir,210025,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_t2pct_s10,dir,122069,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_t2pct_s20,dir,137666,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_t2pct_s5,dir,131565,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e2_t2pct_s50,dir,164328,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_baseline,dir,235683,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_baseline_s10,dir,114049,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_baseline_s20,dir,143104,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_baseline_s5,dir,110510,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_baseline_s50,dir,176727,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_t2pct,dir,231265,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_t2pct_s10,dir,114060,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_t2pct_s20,dir,143141,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_t2pct_s5,dir,110487,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e3_t2pct_s50,dir,175955,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_baseline,dir,238301,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_baseline_s10,dir,118058,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_baseline_s20,dir,126991,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_baseline_s5,dir,137549,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_baseline_s50,dir,174311,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_t2pct,dir,236336,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_t2pct_s10,dir,118071,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_t2pct_s20,dir,127020,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_t2pct_s5,dir,137516,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e4_t2pct_s50,dir,176157,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_baseline,dir,244354,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_baseline_s10,dir,138203,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_baseline_s20,dir,135551,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_baseline_s5,dir,125721,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_baseline_s50,dir,178631,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_t2pct,dir,231135,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_t2pct_s10,dir,138216,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_t2pct_s20,dir,141176,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_t2pct_s5,dir,125685,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/backtest_val_e5_t2pct_s50,dir,179140,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/baseline,dir,15015997,KEEP,训练证据/不可再生,train.py,-,IN_KEEP,logs/KEEP
+logs/bins_h10_quantile.json,file,1729,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/bins_quantile.json,file,20913,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/btF_buf20_test,dir,344589,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btF_buf20_val,dir,270706,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btF_dyn_test,dir,167055,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btF_dyn_val,dir,157472,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_buf20,dir,756951,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_buf200,dir,509158,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_buf50,dir,639469,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_e-0.005,dir,184096,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_e0,dir,227932,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_e0.005,dir,338119,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_e0.01,dir,598078,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_s100,dir,389774,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_s150,dir,552292,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_s200,dir,1061845,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_dyn_s50,dir,288201,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_rolling,dir,8210825,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/btR_rolling2,dir,29944167,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b0,dir,446218,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b10,dir,379565,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b100,dir,307259,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b20,dir,346691,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b200,dir,272865,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b50,dir,336616,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_s20_b500,dir,267149,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_val_s20_b20,dir,270594,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_buf_val_s20_b200,dir,209000,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s10_e0,dir,152661,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e-0.005,dir,142236,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e-0.01,dir,142276,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e-0.02,dir,137264,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e-0.03,dir,129151,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e-0.05,dir,124809,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e0,dir,166971,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e0.005,dir,250150,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s20_e0.01,dir,358494,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s30_e0,dir,188943,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_dyn_s50_e0,dir,200922,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s10_sb0,dir,152661,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s10_sb0.01,dir,152737,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s10_sb0.015,dir,162795,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s20_sb0,dir,166971,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s20_sb0.01,dir,167098,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s20_sb0.015,dir,172887,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s50_sb0,dir,200922,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s50_sb0.01,dir,201368,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/bt_gbdt_s50_sb0.015,dir,199318,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/check_cash_leverage.py,file,6695,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/clf_winrate,dir,1181219992,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/cs_expand,dir,3483249390,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/dl_csrank_output.log,file,2134481,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/dnn_cs,dir,64153829,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ensemble,dir,1067901263,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/eval_52cls_output.log,file,691,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_E1_2026-08-31.json,file,1988,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_E2_2026-08-31.json,file,2005,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_E3_2026-08-31.json,file,2011,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_E4_2026-08-31.json,file,2003,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_base_2026_formal.txt,file,4496,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_debug_stderr.txt,file,691,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_debug_stdout.txt,file,2564,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_decile.py,file,1390,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_l04_2026_formal.txt,file,4506,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_l06_2026_formal.txt,file,4492,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_l08_2026_formal.txt,file,848,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_preds_52cls.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/eval_strategy_backtest.py,file,6849,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_test_2026.py,file,4522,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/eval_three_way_report.json,file,6844,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_three_way_report.txt,file,3535,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e0.json,file,1956,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e1.json,file,1943,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e2.json,file,1973,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e2_small.json,file,1576,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e3.json,file,1969,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e4.json,file,1985,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_val_e5.json,file,1955,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/eval_xs_skill.py,file,2272,KEEP,配置/统计/日志证据,-,memory/rolling-xgb,IN_KEEP,logs/KEEP
+logs/explore_data.py,file,1553,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/feature_eng,dir,4518214193,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/gbdt_cs,dir,2401707084,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/horizon_target,dir,2348675472,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ic_analysis,dir,1969956897,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/logs,dir,0,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/logs_txt,dir,101688050,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/longshort,dir,128765,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/market_timing,dir,1182614,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/multi_seed_summary_20260906_102226.csv,file,290,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/ohlc_full_2026-01-01_2026-08-31.npz,file,13636580,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_full_rolling.npz,file,74096524,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_full_test.npz,file,24112724,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_full_val.npz,file,10747284,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_full_val2.npz,file,20167060,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_full_val_20250701_20251231.npz,file,10751444,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_path_2026-01-01_2026-08-31.npz,file,79521596,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_path_2026.npz,file,79521596,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_path_rolling.npz,file,429326588,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_path_test.npz,file,141594332,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ohlc_path_val.npz,file,62049884,DELETE,矩阵/预测缓存可重建,scripts/build_ohlc_path.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/pr_curve.png,file,128819,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_E1_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_E2_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_E3_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_E4_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oc_base.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oc_dual.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oc_pure_reg.npz,file,17455024,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_base.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_base_2026_formal.npz,file,29435260,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_dual.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_dual_2026.npz,file,29435260,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_dual_2026_formal.npz,file,29435260,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_l04.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_l04_2026_formal.npz,file,29435260,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_l06.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_l06_2026_formal.npz,file,29435260,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_l08.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_l1.npz,file,18701740,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_oo_pure_reg.npz,file,17455024,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_relative_run_20260914_024253_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_rolling_e2_run_20260914_064942_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_rolling_e3_run_20260914_093155_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_rolling_e4_run_20260914_115221_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_rolling_e5_run_20260914_141450_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_run_20260914_045053_2026-08-31.npz,file,47671060,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e0.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e1.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e2.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e2_small.npz,file,360940,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e3.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e4.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/preds_val_e5.npz,file,36813580,DELETE,矩阵/预测缓存可重建,scripts/eval_bins_mapping.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/prod_strategy,dir,811877066,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/read_metrics.py,file,443,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/read_rolling_metrics.py,file,391,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/relative,dir,77492756,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/retail_bce_output.log,file,1018008,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/retail_bg_20260920_103853,dir,14528312,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/retail_bg_v2_20260920_113700,dir,3684611,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/retail_final_20260920_114238,dir,7810,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/retail_relative,dir,74984833,KEEP,训练证据/不可再生,train.py,-,IN_KEEP,logs/KEEP
+logs/risk_overlay,dir,1004218,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/rolling_e2,dir,41605765,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/rolling_e3,dir,41606453,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/rolling_e4,dir,41604947,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/rolling_e5,dir,41170224,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/rolling_models,dir,1066040806,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/run_20260905_162450,dir,15741801,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260905_183102,dir,15957003,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260905_214209,dir,16059007,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_023713,dir,16263245,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_053441,dir,16105439,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_093515,dir,15683638,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_093517,dir,15688065,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_182226,dir,15459544,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_182436,dir,15110439,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_201155,dir,2176,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260906_201501,dir,15451779,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260912_232406,dir,2221,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260912_232514,dir,2221,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_012636,dir,15539956,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_093434,dir,9920,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_094944,dir,6729,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_095143,dir,7820,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_095335,dir,6729,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_100915,dir,8620,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_101158,dir,8720,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_101506,dir,15820,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_103612,dir,15909991,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_195314,dir,15541112,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260913_200741,dir,15541112,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260914_012625,dir,15484530,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260914_014544,dir,15486025,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/run_20260914_045053,dir,15924544,KEEP,训练证据/不可再生,train.py,ses_f43d,IN_KEEP,logs/KEEP
+logs/scaler.pkl,file,2732,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/scaler_per_code.pkl,file,9683862,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/scaler_per_code_legacy39_2026.pkl,file,9686118,KEEP,配置/统计/日志证据,-,ses_f43d,IN_KEEP,logs/KEEP
+logs/scaler_per_code_old.pkl,file,39912,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/test_lowvol.py,file,4059,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/topn_curve_e1e4_2026.png,file,96906,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_relative_run_20260914_024253_2026-01-01_2026-08-31.png,file,57044,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_rolling_e2_run_20260914_064942_2026-01-01_2026-08-31.png,file,59658,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_rolling_e3_run_20260914_093155_2026-01-01_2026-08-31.png,file,63007,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_rolling_e4_run_20260914_115221_2026-01-01_2026-08-31.png,file,64927,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_rolling_e5_run_20260914_141450_2026-01-01_2026-08-31.png,file,61216,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_run_20260914_045053_2026-01-01_2026-08-31.png,file,59860,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,ses_f43d,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_val.png,file,71430,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/topn_curve_val_head.png,file,61938,DELETE,曲线图可重绘,scripts/plot_topn_curve.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/trade_attribution,dir,1114061,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/ultra_selective,dir,54616,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,-,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/validate_target_bt.py,file,2588,KEEP,配置/统计/日志证据,-,-,IN_KEEP,logs/KEEP
+logs/wf_annual_fixed5y,dir,320477931,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/wf_bt20,dir,174510,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/wf_bt50,dir,273452,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/wf_check_bt20,dir,266726,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/wf_check_bt50,dir,389806,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/wf_check_eval.json,file,7106,KEEP,配置/统计/日志证据,-,memory/rolling-xgb,IN_KEEP,logs/KEEP
+logs/wf_check_report.txt,file,3593,KEEP,配置/统计/日志证据,-,memory/rolling-xgb,IN_KEEP,logs/KEEP
+logs/wf_eval.json,file,7122,KEEP,配置/统计/日志证据,-,memory/rolling-xgb,IN_KEEP,logs/KEEP
+logs/wf_report.txt,file,3604,KEEP,配置/统计/日志证据,-,memory/rolling-xgb,IN_KEEP,logs/KEEP
+logs/xgb_cs,dir,185281082,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/xgb_newtarget,dir,536495336,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/xgb_ranker,dir,108574366,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
+logs/xs_factors,dir,5553301758,DELETE,研究中间产物/可重跑,scripts/run_backtest.py,memory/rolling-xgb,ARCHIVED,D:/tmp/cnn_trash_20260927.tar.gz sha256=04DAAE92C4EEC91A63B27C5A2330D6FA44523EA51660B295C46D1F230CA8B9C2
