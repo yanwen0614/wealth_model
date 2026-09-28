@@ -23,10 +23,16 @@ import time
 
 import numpy as np
 
+from backtest.cnn_adapter.common import (
+    UNIFIED_BUY_RATE,
+    UNIFIED_MIN_COMMISSION,
+    UNIFIED_SELL_RATE,
+    UNIFIED_STAMP_RATE,
+    UNIFIED_TRANSFER_RATE,
+)
 from backtest.cnn_adapter.runner import run_cnn_backtest
 from backtest.engine import (
     DEFAULT_CAPITAL,
-    MIN_COMMISSION,
     benchmark_index_nav,
     nav_metrics,
 )
@@ -34,12 +40,8 @@ from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays
 
 logger = logging.getLogger(__name__)
 
-# 统一实盘费率（A股现状：佣金万2双边min5 + 印花税卖出单边万5（2023-08-28起减半）+ 过户费万1双边；
-# 不再沿用 backtest.engine 旧常量（佣万2.5/印花万2.5半价错误，无过户费），旧引擎已冻结退役。
-UNIFIED_BUY_RATE = 0.0002
-UNIFIED_SELL_RATE = 0.0002
-UNIFIED_STAMP_RATE = 0.0005
-UNIFIED_TRANSFER_RATE = 0.00001
+# 统一实盘费率引用 backtest.cnn_adapter.common 唯一事实源（旧 engine 费率常量已冻结退役，
+# 此处不再引用；CLI 默认即统一口径：佣万2/min5 + 印花卖万5 + 过户万1双边）。
 
 DEFAULT_INDEX_DIR_WIN = "Z:/test/kline_index/day"
 DEFAULT_INDEX_DIR_POSIX = "data/test/kline_index/day"
@@ -258,7 +260,8 @@ def parse_args(argv=None):
     p.add_argument("--stamp_rate", type=float, default=UNIFIED_STAMP_RATE, help="卖出印花税费率（统一实盘万5）")
     p.add_argument("--transfer_rate", type=float, default=UNIFIED_TRANSFER_RATE,
                    help="过户费费率（统一实盘万1双边）")
-    p.add_argument("--min_commission", type=float, default=MIN_COMMISSION, help="单笔最低佣金（元）")
+    p.add_argument("--min_commission", type=float, default=UNIFIED_MIN_COMMISSION,
+                   help="单笔最低佣金（元）")
     p.add_argument("--index_dir", default=default_index_dir(), help="大盘指数日线 parquet 目录")
     p.add_argument("--benchmark_index", default=DEFAULT_BENCHMARK_INDEX,
                    help="基准指数代码，默认 000300.SH（沪深300）")

@@ -10,33 +10,18 @@ import json
 import os
 import sys
 
-import numpy as np
-import pandas as pd
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from backtest.cnn_adapter.runner import run_cnn_backtest, write_cnn_result
+from research.goal_repro.common import FEES, FOLDS, IDENT, PARQUET, load_r1_preds
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-R1 = os.path.join(HERE, "runs", "r1")
-OUT = os.path.join(HERE, "runs", "r2")
-PARQUET = "data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet"
-FEES = {"commission_rate_buy": 0.0002, "commission_rate_sell": 0.0002,
-        "min_commission": 5.0, "stamp_tax_rate": 0.0005, "transfer_fee_rate": 0.00001}
-IDENT = {"model_name": "r1_hgb16", "checkpoint": "hgb200", "bins_version": "close5d",
-         "eval_script_version": "goal_repro@r2"}
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs", "r2")
 
 
 def run_all() -> dict:
     os.makedirs(OUT, exist_ok=True)
-    mkt_max = pd.to_datetime(
-        pd.read_parquet(PARQUET, columns=["kline_time"])["kline_time"]).max()
     summary = {}
-    for fold in ("fold1", "fold2"):
-        preds = dict(np.load(os.path.join(R1, f"preds_{fold}.npz"), allow_pickle=True))
-        dates = pd.to_datetime(np.asarray(preds["dates"]))
-        keep = dates < mkt_max  # 末日信号无 T+1 可执行，边界过滤（方法学正确）
-        preds = {k: np.asarray(v)[keep] for k, v in preds.items()}
-        print(f"[{fold}] signals={len(dates)} kept={int(keep.sum())}", flush=True)
+    for fold in FOLDS:
+        preds = load_r1_preds(fold)
         fold_out = {}
         for topn in (10, 50):
             outcome = run_cnn_backtest(pred_cache=preds, parquet_path=PARQUET, top_n=topn,

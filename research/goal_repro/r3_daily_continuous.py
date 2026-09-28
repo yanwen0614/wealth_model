@@ -9,26 +9,18 @@ import json
 import os
 import sys
 
-import numpy as np
-import pandas as pd
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from backtest.cnn_adapter.runner import run_cnn_backtest
-from research.goal_repro.r2_account_backtest import FEES, IDENT, PARQUET, R1
+from research.goal_repro.common import FEES, FOLDS, IDENT, PARQUET, load_r1_preds
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs", "r3")
 
 
 def main() -> None:
-    mkt_max = pd.to_datetime(
-        pd.read_parquet(PARQUET, columns=["kline_time"])["kline_time"]).max()
     os.makedirs(OUT, exist_ok=True)
     summary = {}
-    for fold in ("fold1", "fold2"):
-        preds = dict(np.load(os.path.join(R1, f"preds_{fold}.npz"), allow_pickle=True))
-        dates = pd.to_datetime(np.asarray(preds["dates"]))
-        keep = dates < mkt_max
-        preds = {k: np.asarray(v)[keep] for k, v in preds.items()}
+    for fold in FOLDS:
+        preds = load_r1_preds(fold)
         fold_out = {}
         for tag, buf in (("daily_hard", 0), ("inertia500", 500)):
             outcome = run_cnn_backtest(pred_cache=preds, parquet_path=PARQUET, mode="target",
