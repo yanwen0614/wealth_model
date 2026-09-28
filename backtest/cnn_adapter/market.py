@@ -149,6 +149,14 @@ def _optional_float(value: Any) -> float | None:
         return None
 
 
+def _optional_price(value: Any) -> float | None:
+    """价格标量 → float | None：None/NaN/非正一律 None（0.0 报价不可成交，禁入引擎）。"""
+    price = _optional_float(value)
+    if price is None or price <= 0.0:
+        return None
+    return price
+
+
 def _normalize_frame(frame: pd.DataFrame) -> _CodeCache:
     """parquet 行 → 按日期升序的位置化缓存（重复日期 keep=last，非法时间丢弃）。"""
     parsed = frame.copy()
@@ -158,10 +166,10 @@ def _normalize_frame(frame: pd.DataFrame) -> _CodeCache:
     dates = tuple(timestamp.date() for timestamp in parsed["_parsed_time"].tolist())
     length = len(dates)
     columns = (
-        tuple(_optional_float(value) for value in parsed["open"].tolist()),
-        tuple(_optional_float(value) for value in parsed["high"].tolist()),
-        tuple(_optional_float(value) for value in parsed["low"].tolist()),
-        tuple(_optional_float(value) for value in parsed["close"].tolist()),
+        tuple(_optional_price(value) for value in parsed["open"].tolist()),
+        tuple(_optional_price(value) for value in parsed["high"].tolist()),
+        tuple(_optional_price(value) for value in parsed["low"].tolist()),
+        tuple(_optional_price(value) for value in parsed["close"].tolist()),
         tuple(_optional_float(value) for value in parsed["volume"].tolist()),
         tuple(_optional_float(value) for value in parsed["amount"].tolist()),
         tuple(bool(value) for value in parsed["is_trading"].tolist()),

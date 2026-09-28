@@ -76,6 +76,21 @@ class TestSuspendedBar(_TempDirMixin):
         self.assertTrue(bar.is_trading)
         self.assertAlmostEqual(bar.close if bar.close is not None else -1.0, 10.2)
 
+    def test_zero_price_trading_row_maps_to_none(self):
+        # F60 新 vintage 实测：is_trading=True 但 OHLC=0 的脏行（如 000016.SZ 2026-08-24），
+        # 0.0 报价必须转 None（禁入引擎，防 _budget_shares 除零），is_trading 标记保持原样。
+        path = _write_parquet([_row(CODE_A, "2025-01-02"),
+                               _row(CODE_A, "2025-01-03", open=0.0, high=0.0,
+                                    low=0.0, close=0.0, volume=0.0, amount=0.0)],
+                              self.tmp_path("z.parquet"))
+        provider = CnnMarketDataProvider(path)
+        bar = provider.get_bar(CODE_A, datetime.date(2025, 1, 3))
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        self.assertTrue(bar.is_trading)
+        self.assertIsNone(bar.open)
+        self.assertIsNone(bar.close)
+
 
 class TestMissingBar(_TempDirMixin):
     def test_unknown_date_returns_none_and_counts(self):

@@ -47,7 +47,6 @@ _SCORES = (0.05, 0.02, -0.02, -0.05)
 _TRADING_DAYS = 12
 _TOP_N = 2
 _HORIZON = 5
-_COST_RATE = 0.0015
 _INITIAL_CAPITAL = 1_000_000.0
 
 
@@ -137,7 +136,7 @@ class TestPartialRegression(unittest.TestCase):
         codes = np.asarray([code for _ in days for code in _CODES])
         dates = np.asarray([day.isoformat() for day in days for _ in _CODES], dtype="datetime64[D]")
         old = run_backtest(exp_ret, codes, dates, _build_ohlc(), topn=_TOP_N,
-                           cost_rate=_COST_RATE, horizon=_HORIZON)
+                           horizon=_HORIZON)
         new = run_cnn_backtest(pred_cache=pred_cache, parquet_path=parquet_path, top_n=_TOP_N,
                                initial_capital=_INITIAL_CAPITAL, model_name="cnn_transformer",
                                checkpoint="logs/run_demo/best_model.pth", bins_version="BINS52_v1",

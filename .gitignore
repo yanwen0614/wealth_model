@@ -19,5 +19,6 @@ paper_jkx/logs/
 processed_data_train/
 processed_data_val/
 label_distribution_plots/
+research/goal_repro/runs/
 .opencode/*
 !.opencode/memory/
