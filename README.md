@@ -1,5 +1,8 @@
 # CNN 训练项目
 
+> 历史快照声明：本文档部分口径（`F69/horizon=5` 等）已过时，仅作历史记录。
+> 当前权威以 `docs/archive/data_contract_F53_H10_adapter.md`（代码实情裁决）为准。
+
 本项目以 parquet 为训练数据主入口，唯一训练入口是 `train.py`。
 
 当前默认契约：

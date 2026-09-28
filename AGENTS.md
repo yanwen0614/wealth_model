@@ -70,3 +70,10 @@ uv run ruff check .   # line-length 120, pyproject.toml
 - `data/dataset.py:82` `bins` 用 `field(default_factory=...)` — 直接写 `list` 会在 3.12 报 mutable default。
 - `logs/`、`*.parquet`、`*.pth` 不入库，`history` 在 `.opencode/memory/`（被 `.gitignore:15` 忽略）。
 - 详规见 `docs/per_code_normalization_spec.md`（P/R/N/G 分组与 `ColumnRule` 决策表，正文含历史 G1~G9 说明）与项目记忆 `.opencode/memory/MEMORY.md`。
+
+## Archive（2026-09-27 冻结，与 origin/main 合流 a8866a7 后整理）
+
+- `logs/` 下仅 `logs/KEEP/` 有效（scaler/bins/baseline/训练证据），其余 264 项已打包 `D:/tmp/cnn_trash_20260927.tar.gz` 并清空，编目见 `docs/archive/logs_manifest.csv`。
+- 回测唯一入口 `backtest/cnn_adapter/*`（`585a533` 确立），`backtest/legacy.py` 为历史；`../backtest-core` 为本地 editable 依赖。
+- `paper_jkx/` 全程 untracked 永不提交，结论见 `docs/archive/paper_jkx_2024-2026_seven_routes.md`；主链路冻结A见 `docs/archive/main_2015-2026_prereg_A.md`。
+- 2026-01~08 属烧掉样本，新规则不得用其验收；干净考试只认 2026-09 后新数据。

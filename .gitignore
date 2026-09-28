@@ -1,12 +1,17 @@
 data.ipynb
 *.pth
-!logs/baseline/*.pth
+!logs/KEEP/baseline/*.pth
 *.npy
 
 *.parquet
 *.pyc
-logs
-!logs/baseline/
+# 产物堆：logs/ 下仅 logs/KEEP/baseline/ 入库（编目见 docs/archive/logs_manifest.csv）；
+# paper_jkx/ 全程 untracked，其 logs 双保险忽略
+logs/*
+!logs/KEEP/
+logs/KEEP/*
+!logs/KEEP/baseline/
+paper_jkx/logs/
 .ipynb_checkpoints/
 /dataset/
 *.tgz
@@ -14,5 +19,5 @@ logs
 processed_data_train/
 processed_data_val/
 label_distribution_plots/
-.opencode/
+.opencode/*
 !.opencode/memory/

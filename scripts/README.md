@@ -1,5 +1,8 @@
 # 脚本索引
 
+> 历史快照声明：本文档部分口径（`F45/horizon=5` 等）已过时，仅作历史记录。
+> 当前权威以 `docs/archive/data_contract_F53_H10_adapter.md`（代码实情裁决）为准。
+
 当前共同契约：训练数据来自 parquet，先过滤 `is_trading=False`；默认 per-code 输出 `F=45`
 （39 个有效特征+6 个 G9 mask），`48` 是原始因子集合，`55` 不是当前默认模型输入。
 序列长度 `T=60`，horizon=5，标签为 `open[t+1+horizon]/open[t+1]-1`；51 个 BINS 边界对应
