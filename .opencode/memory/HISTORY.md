@@ -50,3 +50,4 @@
 [2026-09-23 00:00] H10 选项二叠加层（27票卖出+DD10）预注册验证：校准逐bit通过，四段最差Sharpe 0.7592 过标准一但 S2 触发标准二失败 → REJECT；A 仍唯一全过
 [2026-09-23 00:05] H10 选项一固化前验证完成：方案A四段+2026逐bit复现PASS；口径排查(静态50/50、跨腿无重复计费、合并MDD、涨跌停独立规则)与生产落地清单(engine缺口/index口径5日翻转)产出 temp\h10_opt1_verify
 [2026-09-28 00:50] 主仓整理归档完成：merge origin/main得a8866a7（adapter唯一回测路径N01/N02，解pyproject/trainer两冲突）；clone ../backtest-core补齐editable依赖；logs 340项编目后KEEP 76、264项打包D:/tmp/cnn_trash_20260927.tar.gz（15.35G/sha256 04DAAE92…）并清空；baseline改道logs/KEEP/baseline（R重命名保留入库）；冒烟通过；docs/archive四件套+STATE_FREEZE落盘，未提交
+[2026-09-28 11:30] 完成 merge origin/main (a8866a7)、backtest-core 克隆、P0-P4 大扫除（logs 340→76 项，264 项打包仓外）、docs/archive/ 四件套归档、.gitignore 收紧
