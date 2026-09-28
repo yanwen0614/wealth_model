@@ -1,0 +1,8 @@
+{
+  "venvPath": "/home/starcyan/code/cnn",
+  "venv": ".venv",
+  "extraPaths": [".", "data", "models"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "exclude": [".venv", "artifacts", "artifacts_torch", ".ruff_cache"]
+}

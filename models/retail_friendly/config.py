@@ -1,7 +1,6 @@
 """散户友好模型配置类。"""
 
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
@@ -22,7 +21,7 @@ class RetailModelConfig:
 
     # ── CNN 多尺度特征提取 ──
     cnn_out_channels: int = 128
-    cnn_kernel_sizes: List[int] = field(default_factory=lambda: [1, 3, 5, 7, 10])
+    cnn_kernel_sizes: list[int] = field(default_factory=lambda: [1, 3, 5, 7, 10])
 
     # ── Transformer 长程依赖建模 ──
     d_model: int = 256

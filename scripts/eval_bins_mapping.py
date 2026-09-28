@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader
 
 from config.defaults import DEFAULT_BINS
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
+from data.labels import rank_ic
 from data.schema import validate_prediction_cache_arrays
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
@@ -265,13 +266,8 @@ def validate_preprocessing_dimensions(
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
-    """无 scipy 依赖的 Spearman（rank 后 Pearson）。"""
-    xr = np.argsort(np.argsort(x)).astype(np.float64)
-    yr = np.argsort(np.argsort(y)).astype(np.float64)
-    xr -= xr.mean()
-    yr -= yr.mean()
-    denom = np.sqrt((xr ** 2).sum() * (yr ** 2).sum())
-    return float((xr * yr).sum() / denom) if denom > 0 else 0.0
+    """无 scipy 依赖的 Spearman（rank 后 Pearson；唯一实现见 data.labels.rank_ic）."""
+    return rank_ic(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
 
 
 def _resolve_eval_rolling_scope(preprocessing: EvalPreprocessing) -> str:

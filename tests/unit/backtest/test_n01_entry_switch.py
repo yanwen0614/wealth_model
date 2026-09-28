@@ -17,8 +17,8 @@ from backtest.legacy import LegacyBacktestDisabledError, guard_legacy_disabled
 
 def _args(**over):
     base = {"preds": ["p.npz"], "parquet": "q.parquet", "topn": [2],
-            "capital": 1000.0, "buy_rate": 0.00025, "sell_rate": 0.00025,
-            "stamp_rate": 0.00025, "min_commission": 5.0,
+            "capital": 1000.0, "buy_rate": 0.0002, "sell_rate": 0.0002,
+            "stamp_rate": 0.0005, "transfer_rate": 0.00001, "min_commission": 5.0,
             "benchmark_index": "000300.SH", "index_dir": "idx_dir",
             "model_name": "m", "checkpoint": "c", "bins_version": "b"}
     base.update(over)

@@ -21,12 +21,10 @@
 import csv
 import logging
 import os
-from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from torch import optim
 from tqdm import tqdm
 
 from models.retail_friendly.loss import RetailLoss
@@ -53,10 +51,10 @@ class RetailTrainer:
         model: RetailFriendlyModel,
         config: dict,
         train_loader: torch.utils.data.DataLoader,
-        val_loader: Optional[torch.utils.data.DataLoader] = None,
-        criterion: Optional[RetailLoss] = None,
-        optimizer: Optional[optim.Optimizer] = None,
-        scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
+        val_loader: torch.utils.data.DataLoader | None = None,
+        criterion: RetailLoss | None = None,
+        optimizer: optim.Optimizer | None = None,
+        scheduler: optim.lr_scheduler._LRScheduler | None = None,
     ):
         self.model = model
         self.config = config
@@ -86,12 +84,12 @@ class RetailTrainer:
         )
 
         # 训练历史
-        self.train_losses: List[float] = []
-        self.val_losses: List[float] = []
-        self.val_precisions: List[float] = []
-        self.val_recalls: List[float] = []
-        self.val_f1s: List[float] = []
-        self.val_avg_p_bin: List[float] = []
+        self.train_losses: list[float] = []
+        self.val_losses: list[float] = []
+        self.val_precisions: list[float] = []
+        self.val_recalls: list[float] = []
+        self.val_f1s: list[float] = []
+        self.val_avg_p_bin: list[float] = []
 
         # 决策阈值校准结果（初始取默认值，训练后校准）
         self.calibrated_threshold: float = config.get("RETAIL_DEFAULT_THRESHOLD", 0.65)
@@ -106,7 +104,7 @@ class RetailTrainer:
     @staticmethod
     def binarize_labels(
         y_cls: torch.Tensor,
-        y_ret: Optional[torch.Tensor] = None,
+        y_ret: torch.Tensor | None = None,
         half: int = 26,
     ) -> torch.Tensor:
         """将 52 类标签转为二分类标签。
@@ -136,7 +134,7 @@ class RetailTrainer:
 
     def _append_epoch_metrics(
         self, epoch: int, train_loss: float,
-        val_metrics: Optional[dict] = None
+        val_metrics: dict | None = None
     ):
         """追加当前 epoch 指标到 CSV。"""
         current_lr = self.optimizer.param_groups[0]["lr"] if self.optimizer else 0.0
@@ -220,8 +218,8 @@ class RetailTrainer:
         total_loss = 0.0
         n_samples = 0
 
-        all_p_bin: List[torch.Tensor] = []
-        all_y_bin: List[torch.Tensor] = []
+        all_p_bin: list[torch.Tensor] = []
+        all_y_bin: list[torch.Tensor] = []
 
         for batch in self.val_loader:
             data, y_cls, y_ret = _unpack_batch(batch)
@@ -304,9 +302,9 @@ class RetailTrainer:
         self.logger.info("-" * 52)
 
         # 收集验证集预测
-        all_p_bin: List[torch.Tensor] = []
-        all_y_bin: List[torch.Tensor] = []
-        all_y_ret: List[torch.Tensor] = []
+        all_p_bin: list[torch.Tensor] = []
+        all_y_bin: list[torch.Tensor] = []
+        all_y_ret: list[torch.Tensor] = []
 
         self.model.eval()
         for batch in self.val_loader:
@@ -326,7 +324,7 @@ class RetailTrainer:
 
         # 扫描
         thresholds = np.arange(min_threshold, max_threshold + step, step)
-        results: List[Tuple[float, float, float, float, int, float]] = []
+        results: list[tuple[float, float, float, float, int, float]] = []
 
         for th in thresholds:
             preds = (p_bin_all >= th).astype(np.float32)

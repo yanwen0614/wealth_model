@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import random
-from typing import Any, cast
+from typing import cast
 
 import numpy as np
 import torch
@@ -27,7 +27,7 @@ from config.defaults import make_default_config
 from data.dataset import ParquetDataConfig, ParquetDataset
 from data.feature_cache import resolve_cache_root
 from log_manager import LoggerManager
-from models.retail_friendly.config import RetailModelConfig, RetailInferenceConfig
+from models.retail_friendly.config import RetailInferenceConfig, RetailModelConfig
 from models.retail_friendly.loss import RetailLoss
 from models.retail_friendly.model import RetailFriendlyModel
 from training.factory import build_optimizer_scheduler

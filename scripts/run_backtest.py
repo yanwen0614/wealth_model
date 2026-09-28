@@ -25,11 +25,8 @@ import numpy as np
 
 from backtest.cnn_adapter.runner import run_cnn_backtest
 from backtest.engine import (
-    BUY_COMMISSION_RATE,
     DEFAULT_CAPITAL,
     MIN_COMMISSION,
-    SELL_COMMISSION_RATE,
-    STAMP_DUTY_RATE,
     benchmark_index_nav,
     nav_metrics,
 )
@@ -37,17 +34,25 @@ from data.schema import PREDICTION_CACHE_KEYS, validate_prediction_cache_arrays
 
 logger = logging.getLogger(__name__)
 
+# 统一实盘费率（A股现状：佣金万2双边min5 + 印花税卖出单边万5（2023-08-28起减半）+ 过户费万1双边；
+# 不再沿用 backtest.engine 旧常量（佣万2.5/印花万2.5半价错误，无过户费），旧引擎已冻结退役。
+UNIFIED_BUY_RATE = 0.0002
+UNIFIED_SELL_RATE = 0.0002
+UNIFIED_STAMP_RATE = 0.0005
+UNIFIED_TRANSFER_RATE = 0.00001
+
 DEFAULT_INDEX_DIR_WIN = "Z:/test/kline_index/day"
 DEFAULT_INDEX_DIR_POSIX = "data/test/kline_index/day"
 DEFAULT_BENCHMARK_INDEX = "000300.SH"
 NOTE = ("adapter 口径：parquet 直读真实 OHLC（停牌 None 语义），不走 ohlc 路径表；"
         "策略为 open-open 口径（T+1 open 买入，T+1+horizon open 卖出）。"
-        "逐笔 A 股费用（买/卖佣金 + 卖出印花税）；基准为大盘指数 close-to-close（不收费率）。")
+        "逐笔 A 股费用（买/卖佣金万2min5 + 卖出印花税万5 + 过户费万1双边）；基准为大盘指数 close-to-close（不收费率）。")
 NOTE_TARGET = ("adapter 口径 target：parquet 直读真实 OHLC（停牌 None 语义），不走 ohlc 路径表；"
                "目标持仓模式：买入带 rank<=target_size，卖出带 rank>target_size+sell_buffer"
                "（或 exit_on_nonpositive 时 exp_ret<=exit_threshold）；"
                "strong_buy_threshold>0 时买入带内 exp_ret<阈值跳过留现金不补位（0.0 关闭）；"
-               "逐笔 A 股费用（买/卖佣金 + 卖出印花税）；基准为大盘指数 close-to-close（不收费率）。")
+               "min_edge>0 时买入带尾部（默认后30%）内 exp_ret<阈值跳过留现金不补位（0.0 关闭）；"
+               "逐笔 A 股费用（买/卖佣金万2min5 + 卖出印花税万5 + 过户费万1双边）；基准为大盘指数 close-to-close（不收费率）。")
 
 # 新引擎身份：默认 rolling 路径写 adapter 口径。
 ADAPTER_ENGINE_NAME = "cnn_adapter"
@@ -104,14 +109,15 @@ def run_adapter_rolling(args, out_dir: str) -> None:
 
     为什么不用 ohlc 路径表：adapter 直接消费 train parquet 真实 OHLC（停牌 None 语义），
     与旧 t_close/open_t1/open_t6 路径表不是同一口径，不做静默桥接。
-    费用四参透传 runner（--capital→initial_capital；--buy_rate/--sell_rate/--min_commission/--stamp_rate
-    → commission_rate_buy/sell + min_commission + stamp_tax_rate）；指数基准缺文件透出 FileNotFoundError，
+    费用五参透传 runner（--capital→initial_capital；--buy_rate/--sell_rate/--min_commission/--stamp_rate/--transfer_rate
+    → commission_rate_buy/sell + min_commission + stamp_tax_rate + transfer_fee_rate）；指数基准缺文件透出 FileNotFoundError，
     无交集告警跳过，有交集则 metrics["benchmark"] + 每档 excess_annual（年化口径，键缺失跳过）。
     """
     metrics = {"engine": ADAPTER_ENGINE_NAME, "mode": "rolling-adapter", "note": NOTE,
                "eval_script_version": ADAPTER_EVAL_VERSION, "topn_list": list(args.topn),
                "capital": args.capital, "buy_rate": args.buy_rate, "sell_rate": args.sell_rate,
-               "stamp_rate": args.stamp_rate, "min_commission": args.min_commission,
+               "stamp_rate": args.stamp_rate, "transfer_rate": args.transfer_rate,
+               "min_commission": args.min_commission,
                "index": args.benchmark_index, "models": {}}
     for path in args.preds:
         preds = load_preds(path)
@@ -129,7 +135,9 @@ def run_adapter_rolling(args, out_dir: str) -> None:
             outcome = run_cnn_backtest(pred_cache=preds, parquet_path=args.parquet, top_n=n, mode="rolling",
                                        initial_capital=args.capital, commission_rate_buy=args.buy_rate,
                                        commission_rate_sell=args.sell_rate, min_commission=args.min_commission,
-                                       stamp_tax_rate=args.stamp_rate, model_name=args.model_name,
+                                       stamp_tax_rate=args.stamp_rate,
+                                       transfer_fee_rate=args.transfer_rate,
+                                       model_name=args.model_name,
                                        checkpoint=args.checkpoint, bins_version=args.bins_version,
                                        eval_script_version=ADAPTER_EVAL_VERSION)
             m = outcome.account_evaluation
@@ -154,17 +162,19 @@ def run_adapter_rolling(args, out_dir: str) -> None:
 def run_adapter_target(args, out_dir: str) -> None:
     """target 模式：preds npz → cnn_adapter target 策略 → metrics.json（adapter 口径）。
 
-    mode="target" 调 runner，target 五参透传；费用四参同 rolling；指数基准同 rolling。
+    mode="target" 调 runner，target 七参透传；费用五参同 rolling；指数基准同 rolling。
     core outcome 无 skipped 语义，不硬造 skipped，只写 account_evaluation + final_nav +
     config_hash/data_fingerprint（+ 有 bm 且有年化键时 excess_annual）。
     """
     metrics = {"engine": ADAPTER_ENGINE_NAME, "mode": "target-adapter", "note": NOTE_TARGET,
                "eval_script_version": ADAPTER_EVAL_VERSION, "capital": args.capital,
                "buy_rate": args.buy_rate, "sell_rate": args.sell_rate, "stamp_rate": args.stamp_rate,
-               "min_commission": args.min_commission, "index": args.benchmark_index,
+               "transfer_rate": args.transfer_rate, "min_commission": args.min_commission,
+               "index": args.benchmark_index,
                "target_size": args.target_size, "sell_buffer": args.sell_buffer,
                "exit_on_nonpositive": args.exit_on_nonpositive, "exit_threshold": args.exit_threshold,
-               "strong_buy_threshold": args.strong_buy_threshold, "models": {}}
+               "strong_buy_threshold": args.strong_buy_threshold, "min_edge": args.min_edge,
+               "min_edge_tail_ratio": args.min_edge_tail_ratio, "models": {}}
     for path in args.preds:
         preds = load_preds(path)
         name = os.path.splitext(os.path.basename(path))[0]
@@ -179,10 +189,14 @@ def run_adapter_target(args, out_dir: str) -> None:
         outcome = run_cnn_backtest(pred_cache=preds, parquet_path=args.parquet, mode="target",
                                    initial_capital=args.capital, commission_rate_buy=args.buy_rate,
                                    commission_rate_sell=args.sell_rate, min_commission=args.min_commission,
-                                   stamp_tax_rate=args.stamp_rate, target_size=args.target_size,
+                                   stamp_tax_rate=args.stamp_rate,
+                                   transfer_fee_rate=args.transfer_rate,
+                                   target_size=args.target_size,
                                    sell_buffer=args.sell_buffer, exit_on_nonpositive=args.exit_on_nonpositive,
                                    exit_threshold=args.exit_threshold,
                                    strong_buy_threshold=args.strong_buy_threshold,
+                                   min_edge=args.min_edge,
+                                   min_edge_tail_ratio=args.min_edge_tail_ratio,
                                    model_name=args.model_name, checkpoint=args.checkpoint,
                                    bins_version=args.bins_version, eval_script_version=ADAPTER_EVAL_VERSION)
         m = outcome.account_evaluation
@@ -195,7 +209,8 @@ def run_adapter_target(args, out_dir: str) -> None:
             excess_desc = f"{target_metrics['excess_annual']:+.4f}"
         metrics["models"][name] = {"target": target_metrics}
         print(f"[bt-adapter] === {name} === target(size={args.target_size}, buffer={args.sell_buffer}, "
-              f"strong_buy={args.strong_buy_threshold}): annual={m.get('annualized_return', 0.0):.4f} "
+              f"strong_buy={args.strong_buy_threshold}, min_edge={args.min_edge}): "
+              f"annual={m.get('annualized_return', 0.0):.4f} "
               f"sharpe={m.get('sharpe', 0.0):.3f} mdd={m.get('max_drawdown', 0.0):.4f} "
               f"final_nav={final_nav:.2f} 超额={excess_desc}")
     metrics_path = os.path.join(out_dir, "metrics.json")
@@ -212,7 +227,7 @@ def main(argv=None):
         logger.warning("--full_ohlc 已废弃并被忽略（adapter 直读 --parquet 真实 OHLC）")
     if args.cost_rate is not None:
         logger.warning("--cost_rate 已废弃并被忽略；费用改用逐笔模型 "
-                       "(--capital/--buy_rate/--sell_rate/--stamp_rate/--min_commission)")
+                       "(--capital/--buy_rate/--sell_rate/--stamp_rate/--transfer_rate/--min_commission)")
         args.cost_rate = None
     ts = time.strftime("%Y%m%d_%H%M%S")
     out_dir = args.out_dir if args.out_dir else os.path.join("logs", f"backtest_{ts}")
@@ -238,9 +253,11 @@ def parse_args(argv=None):
     p.add_argument("--mode", choices=["rolling", "target"], default="rolling",
                    help="rolling=cnn_adapter 订单引擎等权（默认）；target=adapter 目标持仓（滞后带+强买门槛）")
     p.add_argument("--capital", type=float, default=DEFAULT_CAPITAL, help="组合本金（元），用于最低佣金折算")
-    p.add_argument("--buy_rate", type=float, default=BUY_COMMISSION_RATE, help="买入佣金费率")
-    p.add_argument("--sell_rate", type=float, default=SELL_COMMISSION_RATE, help="卖出佣金费率")
-    p.add_argument("--stamp_rate", type=float, default=STAMP_DUTY_RATE, help="卖出印花税费率")
+    p.add_argument("--buy_rate", type=float, default=UNIFIED_BUY_RATE, help="买入佣金费率（统一实盘万2）")
+    p.add_argument("--sell_rate", type=float, default=UNIFIED_SELL_RATE, help="卖出佣金费率（统一实盘万2）")
+    p.add_argument("--stamp_rate", type=float, default=UNIFIED_STAMP_RATE, help="卖出印花税费率（统一实盘万5）")
+    p.add_argument("--transfer_rate", type=float, default=UNIFIED_TRANSFER_RATE,
+                   help="过户费费率（统一实盘万1双边）")
     p.add_argument("--min_commission", type=float, default=MIN_COMMISSION, help="单笔最低佣金（元）")
     p.add_argument("--index_dir", default=default_index_dir(), help="大盘指数日线 parquet 目录")
     p.add_argument("--benchmark_index", default=DEFAULT_BENCHMARK_INDEX,
@@ -254,6 +271,11 @@ def parse_args(argv=None):
     p.add_argument("--strong_buy_threshold", type=float, default=0.0,
                    help="target 模式：绝对预测收益强买门槛，买入带内 exp_ret>=阈值 才买（空槽留现金不补位）；"
                         "默认 0.0=关闭，负数由引擎 raise")
+    p.add_argument("--min_edge", type=float, default=0.0,
+                   help="target 模式：买入带尾部门槛，尾部 exp_ret>=阈值 才买（空槽留现金不补位）；"
+                        "默认 0.0=关闭；尾部比例由 --min_edge_tail_ratio 控制")
+    p.add_argument("--min_edge_tail_ratio", type=float, default=0.3,
+                   help="target 模式：min_edge 作用的买入带尾部比例（(0,1]，默认 0.3，即后30%%）")
     p.add_argument("--full_ohlc", default=None, help="[已废弃] 旧全期日频矩阵 npz；显式传入仅告警并忽略")
     p.add_argument("--ohlc", default=None, help="[已废弃] 旧 ohlc 路径表 npz；显式传入仅告警并忽略")
     p.add_argument("--out_dir", default=None, help="默认 logs/backtest_<时间戳>")

@@ -3,9 +3,10 @@
 # 输出：nav净值曲线+rec交易记录(entry/exit/code/ret_net)
 # 已验证：复刻6M基线NAV≈1.9188/n=725，误差<2% PASS(s1_replicate)
 import numpy as np
+
 BUY=0.00025;SEL=0.00025;STM=0.00025;MINC=5.0;CAP=1e6
 def _cm(n,r):
-    f=n*r;return f if f>MINC else MINC
+    f=n*r;return max(MINC, f)
 def run(exp,codes,dates,oc,od,om,cm,size=20,sb=0.02):
     e=np.asarray(exp,float);cs=np.asarray(codes).astype(str);ds=np.asarray(dates).astype("datetime64[D]")
     row={s:i for i,s in enumerate(np.asarray(oc).astype(str))}
@@ -33,7 +34,7 @@ def run(exp,codes,dates,oc,od,om,cm,size=20,sb=0.02):
                     th=1.198 if s[:3] in ("300","688") else 1.098
                     if px>=pc*th:continue
                     bg=pre/size*CAP
-                    if bg>cash*CAP:bg=cash*CAP
+                    bg = min(bg, cash*CAP)
                     if bg<=MINC:continue
                     bs=MINC*(1.0+BUY)/BUY
                     sh=bg/(px*(1.0+BUY)) if bg>=bs else (bg-MINC)/px

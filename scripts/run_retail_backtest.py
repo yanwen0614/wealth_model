@@ -26,7 +26,6 @@
 import argparse
 import json
 import os
-from typing import Optional, Tuple
 
 import numpy as np
 
@@ -65,7 +64,7 @@ def retail_strategy_daily(
     threshold: float = 0.65,
     alpha: float = 0.5,
     max_picks: int = 100,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, int]:
     """单日散户选股策略。
 
     Args:
@@ -158,7 +157,7 @@ def run_retail_backtest(
     alpha: float = 0.5,
     max_picks: int = 100,
     min_picks_for_winrate: int = 3,
-    ohlc: Optional[dict] = None,
+    ohlc: dict | None = None,
 ) -> dict:
     """执行散户策略回测。
 
@@ -334,7 +333,7 @@ def print_retail_report(results: dict, threshold: float, alpha: float, max_picks
 #  CLI
 # ══════════════════════════════════════════════════════
 
-def parse_args(argv: Optional[list] = None):
+def parse_args(argv: list | None = None):
     p = argparse.ArgumentParser(description="散户模型回测")
     p.add_argument("--preds", type=str, default=None, help="预计算预测 .npz")
     p.add_argument("--model", type=str, default=None, help="模型 checkpoint")
@@ -384,7 +383,6 @@ def main():
 
     # 保存结果
     if args.output:
-        import dataclasses
 
         # 将 NaN 转 None 以便 JSON 序列化
         def clean(v):

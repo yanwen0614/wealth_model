@@ -261,6 +261,59 @@ class TestStrongBuy(_TempDirMixin):
                                   strong_buy_threshold=-0.01)
 
 
+class TestMinEdge(_TempDirMixin):
+    def test_tail_below_edge_skipped_without_refill_and_counted(self):
+        from backtest_core.contracts import Side
+
+        codes = ["A", "B", "C", "D"]
+        strategy = _make_target_strategy(self, codes, scores=[0.05, 0.04, 0.03, 0.02],
+                                         target_size=4, sell_buffer=500,
+                                         min_edge=0.025, min_edge_tail_ratio=0.5)
+        orders = strategy.orders_for(trading_date=date(2025, 3, 3),
+                                     signal_time=strategy.signal_time_for(date(2025, 3, 3)),
+                                     account=_FakeAccount(cash=100000.0), market=_FakeMarket())
+        buys = [order for order in orders if order.side is Side.BUY]
+        self.assertEqual([order.instrument_id for order in buys], ["A", "B", "C"])
+        self.assertEqual(strategy.counters.skipped_min_edge_count, 1)
+        self.assertEqual(strategy.counters.skipped_strong_buy_count, 0)
+
+    def test_head_below_edge_not_filtered(self):
+        from backtest_core.contracts import Side
+
+        codes = ["A", "B", "C", "D"]
+        strategy = _make_target_strategy(self, codes, scores=[0.02, 0.015, 0.01, 0.005],
+                                         target_size=4, sell_buffer=500,
+                                         min_edge=0.03, min_edge_tail_ratio=0.5)
+        orders = strategy.orders_for(trading_date=date(2025, 3, 3),
+                                     signal_time=strategy.signal_time_for(date(2025, 3, 3)),
+                                     account=_FakeAccount(cash=100000.0), market=_FakeMarket())
+        buys = [order for order in orders if order.side is Side.BUY]
+        self.assertEqual([order.instrument_id for order in buys], ["A", "B"])
+        self.assertEqual(strategy.counters.skipped_min_edge_count, 2)
+
+    def test_zero_edge_disables_gate(self):
+        from backtest_core.contracts import Side
+
+        codes = ["A", "B", "C"]
+        strategy = _make_target_strategy(self, codes, scores=[0.01, 0.02, 0.03],
+                                         target_size=3, sell_buffer=500, min_edge=0.0)
+        orders = strategy.orders_for(trading_date=date(2025, 3, 3),
+                                     signal_time=strategy.signal_time_for(date(2025, 3, 3)),
+                                     account=_FakeAccount(), market=_FakeMarket())
+        buys = [order for order in orders if order.side is Side.BUY]
+        self.assertEqual(len(buys), 3)
+
+    def test_bad_edge_params_raise(self):
+        with self.assertRaises(ValueError):
+            _make_target_strategy(self, ["A", "B"], target_size=1, min_edge=-0.01)
+        with self.assertRaises(ValueError):
+            _make_target_strategy(self, ["A", "B"], target_size=1, min_edge=float("nan"))
+        with self.assertRaises(ValueError):
+            _make_target_strategy(self, ["A", "B"], target_size=1, min_edge_tail_ratio=0.0)
+        with self.assertRaises(ValueError):
+            _make_target_strategy(self, ["A", "B"], target_size=1, min_edge_tail_ratio=1.5)
+
+
 class TestParamValidation(_TempDirMixin):
     def test_bad_params_raise(self):
         with self.assertRaises(ValueError):

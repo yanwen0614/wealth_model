@@ -2,17 +2,19 @@
 # 输入：combined.npz预测+logs/ohlc_full_rolling.npz，仓库根目录运行
 # 输出：combo.npz(nav+H+days)，控制台打印NAV/ann/sharpe/mdd
 # 已验证：q3终版口径，同表对照base/vote/dd10，复跑PASS阈值内
-import sys
 import itertools
+import sys
 from pathlib import Path
+
 import numpy as np
+
 ROOT = Path(__file__).resolve().parents[2]
 P = sys.argv[1] if len(sys.argv) > 1 else r"C:\Users\yanwen\AppData\Local\Temp\opencode\h10_roll_bt\combined.npz"
 O = sys.argv[2] if len(sys.argv) > 2 else r"C:\Users\yanwen\AppData\Local\Temp\opencode\h10_final_combo\combo.npz"
 OHLC = str(ROOT / "logs" / "ohlc_full_rolling.npz")
 CAP=1e6;BC=SC=ST=0.00025;MC=5.0;LB=1.098;L20=1.198
 def comm(v,r):
-    return v*r if v*r>MC else MC
+    return max(MC, v * r)
 def close_pos(holds,pos,s,d,px):
     en=pos[s]["shares"]*pos[s]["entry_px"];ec=en+comm(en,BC)
     sn=pos[s]["shares"]*px;sf=comm(sn,SC)+sn*ST;pro=sn-sf
@@ -44,8 +46,7 @@ def gstep(st,TP,TR,MH,ol,em,day,i,OM,CM,ROW,OD):
         p=pos[s];px=OM[ROW[s],i]
         if np.isnan(px):px=p["price"]
         pk=max(p["peak"],px);p["peak"]=pk
-        if (pk/p["entry_px"]-1.0)>=TP and (pk-px)/pk>=TR:sell.add(s)
-        elif i-p["ei"]>=MH:sell.add(s)
+        if (pk/p["entry_px"]-1.0)>=TP and (pk-px)/pk>=TR or i-p["ei"]>=MH:sell.add(s)
     for s in list(sell & set(pos)):
         px=OM[ROW[s],i]
         if np.isnan(px):px=pos[s]["price"]

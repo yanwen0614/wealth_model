@@ -4,6 +4,11 @@
 逐笔 A 股费用模型（买/卖佣金万2.5 最低 5 元 + 卖出印花税万2.5，本金 capital 折算最低佣金）；
 每日新批投入 = 当前净值/horizon，批内等权；基准 = 全截面同口径等权（不筛涨停）。
 禁止前视：T 日净值只依赖 ≤T 信息。
+
+.. deprecated::
+    本模块为冻结旧逻辑（``OLD_LOGIC``，须经 ``backtest.legacy`` opt-in 才可调用），
+    其费率（佣万2.5/印花万2.5、无过户费）与统一实盘口径（佣万2min5/印花卖万5/过户万1双边）不一致，
+    新回测一律走 ``backtest.cnn_adapter`` + backtest-core 订单引擎；本模块常量保持冻结不再修正。
 """
 from __future__ import annotations
 

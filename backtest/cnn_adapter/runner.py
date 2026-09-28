@@ -82,13 +82,17 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                      st_codes=None, run_id: str | None = None,
                      methodology: MetricMethodology | None = None,
                      verify_account_metrics: bool = True, mode: str = "rolling",
-                     commission_rate_buy: float | None = None,
-                     commission_rate_sell: float | None = None,
-                     min_commission: float | None = None,
-                     stamp_tax_rate: float | None = None, target_size: int = 100,
-                     sell_buffer: int = 500, exit_on_nonpositive: bool = False,
-                     exit_threshold: float = 0.0,
-                     strong_buy_threshold: float = 0.0) -> CnnBacktestOutcome:
+                      commission_rate_buy: float | None = None,
+                      commission_rate_sell: float | None = None,
+                      min_commission: float | None = None,
+                      stamp_tax_rate: float | None = None,
+                      transfer_fee_rate: float | None = 0.00001,
+                      target_size: int = 100,
+                      sell_buffer: int = 500, exit_on_nonpositive: bool = False,
+                      exit_threshold: float = 0.0,
+                      strong_buy_threshold: float = 0.0,
+                      min_edge: float = 0.0,
+                      min_edge_tail_ratio: float = 0.3) -> CnnBacktestOutcome:
     """cnn 订单路径端到端：组装 adapter/策略 → core 引擎 → 整段核验 → 打包结果.
 
     ``dates`` 默认为缓存全部归属日；显式传入时必须为缓存子集（误传日期 fail-fast，
@@ -96,7 +100,12 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
 
     ``mode`` 选策略：``rolling``（top_n 等权）为旧行为；``target`` 走滞后带目标持仓
     （``top_n`` 被忽略，持仓规模取 ``target_size``；rolling 下 target 五参被忽略）。
-    费用四参默认 ``None`` 即 core ``CostConfig`` 默认（旧行为零变化）；显式值逐项覆盖。
+    费用前四参默认 ``None`` 即 core ``CostConfig`` 默认（旧行为零变化）；显式值逐项覆盖。
+    ``transfer_fee_rate`` 默认 ``0.00001``（过户费万1双边，A股实盘口径；2023-08-28 起印花税为卖出单边万5，
+    core 默认佣金万2/min5/印花万5与之一致）；传 ``None`` 回退 core 默认 0.0（无过户费旧口径）。
+    滑点一律走 core σ-ADV v1（``CostConfig`` 默认，不做逐项覆盖）。
+    target 模式另有两道买入门槛（均为策略层参数，不进 core）：``strong_buy_threshold`` 全带门槛、
+    ``min_edge`` + ``min_edge_tail_ratio`` 尾部门槛（默认后30%）；0.0 均为关闭。
     """
     if not isinstance(initial_capital, (int, float)) or not initial_capital > 0.0:
         raise ValueError(f"initial_capital must be positive, got {initial_capital!r}")
@@ -124,13 +133,17 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
         cost_kwargs["min_commission"] = min_commission
     if stamp_tax_rate is not None:
         cost_kwargs["stamp_tax_rate"] = stamp_tax_rate
+    if transfer_fee_rate is not None:
+        cost_kwargs["transfer_fee_rate"] = transfer_fee_rate
     cost_config = CostConfig(**cost_kwargs)
     if mode == "target":
         strategy = CnnTargetOrderStrategy(adapter, target_size=target_size,
                                           sell_buffer=sell_buffer,
                                           exit_on_nonpositive=exit_on_nonpositive,
                                           exit_threshold=exit_threshold,
-                                          strong_buy_threshold=strong_buy_threshold)
+                                          strong_buy_threshold=strong_buy_threshold,
+                                          min_edge=min_edge,
+                                          min_edge_tail_ratio=min_edge_tail_ratio)
         portfolio_top_n = target_size
     else:
         strategy = CnnOrderStrategy(adapter, top_n=top_n)
@@ -164,14 +177,17 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                 "eval_script_version": eval_script_version,
                                 "start": ordered_dates[0].isoformat(),
                                 "end": ordered_dates[-1].isoformat(), "count": len(ordered_dates),
-                                "mode": mode, "commission_rate_buy": commission_rate_buy,
-                                "commission_rate_sell": commission_rate_sell,
-                                "min_commission": min_commission,
-                                "stamp_tax_rate": stamp_tax_rate, "target_size": target_size,
-                                "sell_buffer": sell_buffer,
-                                "exit_on_nonpositive": exit_on_nonpositive,
-                                "exit_threshold": exit_threshold,
-                                "strong_buy_threshold": strong_buy_threshold})
+                                 "mode": mode, "commission_rate_buy": commission_rate_buy,
+                                 "commission_rate_sell": commission_rate_sell,
+                                 "min_commission": min_commission,
+                                 "stamp_tax_rate": stamp_tax_rate,
+                                 "transfer_fee_rate": transfer_fee_rate, "target_size": target_size,
+                                 "sell_buffer": sell_buffer,
+                                 "exit_on_nonpositive": exit_on_nonpositive,
+                                 "exit_threshold": exit_threshold,
+                                 "strong_buy_threshold": strong_buy_threshold,
+                                 "min_edge": min_edge,
+                                 "min_edge_tail_ratio": min_edge_tail_ratio})
     provenance = {key: value for key, value in adapter.provenance.items() if value.strip()}
     provenance.update({"run_id": resolved_run_id, "order_entry": ORDER_ENTRY, "top_n": str(top_n),
                        "initial_capital": str(float(initial_capital)), "config_hash": config_hash,

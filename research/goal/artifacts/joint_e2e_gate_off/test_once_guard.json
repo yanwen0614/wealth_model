@@ -1,0 +1,26 @@
+{
+  "command": [
+    "/home/starcyan/code/goal/backtest/account_engine_joint.py",
+    "--pred",
+    "artifacts/joint_e2e_corrected/test_prediction_2026.parquet",
+    "--train",
+    "/home/starcyan/code/goal/data/new/train_data_20260831.parquet",
+    "--out",
+    "artifacts/joint_e2e_corrected/test_account_2026",
+    "--capital",
+    "2000000",
+    "--topn",
+    "100",
+    "--sell-buffer",
+    "200",
+    "--min-edge",
+    "0",
+    "--final-sell-date",
+    "2026-08-06",
+    "--allow-test-once",
+    "--test-guard",
+    "artifacts/joint_e2e_corrected/test_once_guard.json"
+  ],
+  "timestamp_utc": "2026-09-05T16:09:05.193260+00:00",
+  "input_sha256": "33dd6d3d75f1d8620ce3bb21c35046008d63214db3b76167b4cd35a29362e45f"
+}

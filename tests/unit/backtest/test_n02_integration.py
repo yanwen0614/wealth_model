@@ -15,13 +15,13 @@ import scripts.run_backtest as entry
 
 def _args(**over):
     base = {"preds": ["p.npz"], "parquet": "q.parquet",
-            "capital": 1000.0, "buy_rate": 0.00025, "sell_rate": 0.00025,
-            "stamp_rate": 0.00025, "min_commission": 5.0,
+            "capital": 1000.0, "buy_rate": 0.0002, "sell_rate": 0.0002,
+            "stamp_rate": 0.0005, "transfer_rate": 0.00001, "min_commission": 5.0,
             "benchmark_index": "000300.SH", "index_dir": "idx_dir",
             "model_name": "m", "checkpoint": "c", "bins_version": "b",
             "topn": [2], "target_size": 7, "sell_buffer": 9,
             "exit_on_nonpositive": True, "exit_threshold": 0.01,
-            "strong_buy_threshold": 0.02}
+            "strong_buy_threshold": 0.02, "min_edge": 0.0, "min_edge_tail_ratio": 0.3}
     base.update(over)
     return SimpleNamespace(**base)
 
@@ -87,6 +87,8 @@ class TestN02AdapterTarget(unittest.TestCase):
         self.assertTrue(kwargs["exit_on_nonpositive"])
         self.assertEqual(kwargs["exit_threshold"], 0.01)
         self.assertEqual(kwargs["strong_buy_threshold"], 0.02)
+        self.assertEqual(kwargs["min_edge"], 0.0)
+        self.assertEqual(kwargs["min_edge_tail_ratio"], 0.3)
         self.assertEqual(saved["engine"], "cnn_adapter")
         self.assertNotIn("legacy", saved)
         tm = saved["models"]["p"]["target"]

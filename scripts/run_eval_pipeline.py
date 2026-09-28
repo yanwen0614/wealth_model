@@ -79,7 +79,9 @@ from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
 from scripts.build_ohlc_path import build_ohlc_path
 from scripts.eval_bins_mapping import (
-    DEFAULT_ROLLING_SCOPE, ROLLING_SCOPES, resolve_eval_featurenum,
+    DEFAULT_ROLLING_SCOPE,
+    ROLLING_SCOPES,
+    resolve_eval_featurenum,
 )
 
 CENTERS52 = np.linspace(-0.255, 0.255, 52)

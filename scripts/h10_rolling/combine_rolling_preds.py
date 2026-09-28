@@ -2,10 +2,10 @@
 # 输入：两段preds npz(exp_ret/true_ret/dates/codes)，argv可覆盖默认Temp路径
 # 输出：combined.npz(exp_ret/true_ret/dates/codes，去重排序后)
 # 已验证：A/B无日期重叠，total约3年滚动窗口，s2回测直接消费此口径
-import sys
 import json
-import numpy as np
+import sys
 
+import numpy as np
 
 A = sys.argv[1] if len(sys.argv) > 1 else r"C:\Users\yanwen\AppData\Local\Temp\opencode\h10_roll_A\preds_h10_roll_A.npz"
 B = sys.argv[2] if len(sys.argv) > 2 else r"C:\Users\yanwen\AppData\Local\Temp\opencode\h10_roll_B\preds_h10_roll_B.npz"

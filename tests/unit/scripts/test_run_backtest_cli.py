@@ -29,9 +29,10 @@ class TestRunBacktestCLI(unittest.TestCase):
     def test_fee_defaults(self):
         a = self._parse(["--preds", "x.npz", "--parquet", "q.parquet"])
         self.assertEqual(a.capital, 1_000_000.0)
-        self.assertEqual(a.buy_rate, 0.00025)
-        self.assertEqual(a.sell_rate, 0.00025)
-        self.assertEqual(a.stamp_rate, 0.00025)
+        self.assertEqual(a.buy_rate, 0.0002)
+        self.assertEqual(a.sell_rate, 0.0002)
+        self.assertEqual(a.stamp_rate, 0.0005)
+        self.assertEqual(a.transfer_rate, 0.00001)
         self.assertEqual(a.min_commission, 5.0)
         self.assertIsNone(a.cost_rate)
 

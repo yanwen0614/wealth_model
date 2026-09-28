@@ -1,8 +1,6 @@
-import csv
-import json
 import logging
 import os
-from typing import Any, List, cast
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -79,9 +77,9 @@ class Trainer:
         # ── 零售模式 ──
         self._is_retail = config.get("MODEL") == "retail_friendly"
         if self._is_retail:
-            self.val_precisions: List[float] = []
-            self.val_recalls: List[float] = []
-            self.val_f1s: List[float] = []
+            self.val_precisions: list[float] = []
+            self.val_recalls: list[float] = []
+            self.val_f1s: list[float] = []
             self.calibrated_threshold: float = config.get("RETAIL_DEFAULT_THRESHOLD", 0.5)
             self.calibration_report: dict = {}
         
@@ -244,9 +242,9 @@ class Trainer:
         # --- 这里简化实现：重新跑一次 val 收集 p_bin ---
         # 在零售模式下，validate_epoch 已经存了概率在 all_preds，但 train() 中
         # 最后一次 validate_epoch 的数据还在内存。更稳妥：重新收集
-        all_p_bin: List[torch.Tensor] = []
-        all_y_bin: List[torch.Tensor] = []
-        all_y_ret: List[torch.Tensor] = []
+        all_p_bin: list[torch.Tensor] = []
+        all_y_bin: list[torch.Tensor] = []
+        all_y_ret: list[torch.Tensor] = []
 
         self.model.eval()
         for batch in self.val_loader:

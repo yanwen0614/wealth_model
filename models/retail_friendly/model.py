@@ -18,7 +18,7 @@
 """
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from models.cnn_transformer.config import ModelConfig as _CNNModelConfig
 from models.cnn_transformer.inception_blocks import MultiWindowInceptionCNN

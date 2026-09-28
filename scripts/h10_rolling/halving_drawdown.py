@@ -4,14 +4,16 @@
 # 已验证：与run_risk同口径dd10行可复现，相对base显著降mdd(ann≈0.24/mdd≈0.20)
 import sys
 from pathlib import Path
+
 import numpy as np
+
 ROOT = Path(__file__).resolve().parents[2]
 P = sys.argv[1] if len(sys.argv) > 1 else r"C:\Users\yanwen\AppData\Local\Temp\opencode\h10_roll_bt\combined.npz"
 O = sys.argv[2] if len(sys.argv) > 2 else r"C:\Users\yanwen\AppData\Local\Temp\opencode\h10_risk1\dd10.npz"
 OHLC = str(ROOT / "logs" / "ohlc_full_rolling.npz")
 BR=SR=TR=0.00025;MC=5.0;CAP=1e6
 def _c(v,r):
-    return v*r if v*r>MC else MC
+    return max(MC, v * r)
 def _x(H,p,s,d,px,cap,w):
     sh,_,ex,ed,ei,pk,am,sg=p[s]
     ec=sh*ex+_c(sh*ex,BR);sn=sh*px

@@ -1,9 +1,6 @@
 """深度分析 52 类 CNNTransformer 预测缓存，寻找 precision ≥ 75% 的子集."""
 from __future__ import annotations
 
-import sys
-from collections import defaultdict
-
 import numpy as np
 
 # ── 加载数据 ──────────────────────────────────────────────────────────────
@@ -87,7 +84,7 @@ for code in np.unique(codes):
 # 按 precision 排序
 sorted_codes = sorted(code_prec.keys(), key=lambda c: code_prec[c], reverse=True)
 print(f"共有 {len(code_prec):,} 只股票（样本≥10）")
-print(f"\nPrecision ≥ 70% 的股票:")
+print("\nPrecision ≥ 70% 的股票:")
 hit_70 = [(c, code_prec[c], code_cnt[c], code_avg_ret[c]) for c in sorted_codes if code_prec[c] >= 0.70]
 print(f"  数量: {len(hit_70)}")
 if hit_70:
@@ -97,13 +94,13 @@ if hit_70:
         print(f"  {c:>12s}  {cnt:>8,d}  {prec:>10.4%}  {aret:>10.6f}")
 
 # 精度 vs 样本数散点统计
-print(f"\nPrecision 分布:")
+print("\nPrecision 分布:")
 for th in [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]:
     n = sum(1 for c in sorted_codes if code_prec[c] >= th)
     print(f"  ≥{th:.0%}: {n:>5d} 只股票")
 
 # 看最好的几只股票
-print(f"\nTop 10 个股（按 precision 排序）：")
+print("\nTop 10 个股（按 precision 排序）：")
 print(f"  {'股票代码':>12s}  {'样本数':>8s}  {'Precision':>10s}  {'AvgTrueRet':>10s}")
 print("  " + "-" * 44)
 for c in sorted_codes[:10]:
@@ -317,7 +314,7 @@ for exp_th in [0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.05, 0.06]:
 
 if best_combos:
     best_combos.sort(key=lambda x: -x[0])
-    print(f"\n  Top 3 组合（按 precision 排序）：")
+    print("\n  Top 3 组合（按 precision 排序）：")
     for prec, cnt, exp_th, cp_th, avg_ret in best_combos[:3]:
         print(f"    exp≥{exp_th:.1%}, 个股prec≥{cp_th:.0%}: "
               f"样本={cnt:,}, precision={prec:.4%}, avg_true_ret={avg_ret:.6f}")
@@ -382,6 +379,7 @@ for i in range(10):
 
 # IC 分析
 from scipy.stats import spearmanr
+
 # 按天计算 Rank IC
 daily_ic = []
 for d in unique_dates:
@@ -423,7 +421,7 @@ for exp_th in np.arange(0.005, 0.101, 0.005):
 
 all_combo_results.sort(key=lambda x: -x[0])
 
-print(f"\n所有组合中最佳 achievable precision:")
+print("\n所有组合中最佳 achievable precision:")
 seen = set()
 for prec, cnt, avg_ret, exp_th, cp_th in all_combo_results:
     if cnt >= 50 and prec >= 0.75:

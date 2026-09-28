@@ -5,6 +5,8 @@
 ``exit_on_nonpositive`` 时持仓 exp_ret <= exit_threshold 也卖出（忽略 rank
 buffer，缺预测不卖）；买入带 rank <= target_size 内 exp_ret < 门槛
 （仅当 ``strong_buy_threshold > 0``，0.0 = 关闭）跳过留现金、不补位；
+``min_edge > 0`` 时买入带尾部（默认后 30%，``min_edge_tail_ratio`` 可调）内
+exp_ret < ``min_edge`` 同样跳过留现金、不补位（0.0 = 关闭；goal v6 同语义的 cnn 侧等价参数）；
 买入按预算等权现金单，已持有目标不动。
 
 口径声明：
@@ -38,6 +40,7 @@ class CnnTargetOrderCounters:
     buy_order_count: int = 0
     sell_order_count: int = 0
     skipped_strong_buy_count: int = 0
+    skipped_min_edge_count: int = 0
 
 
 def _ranked_predictions(adapter: CnnPredictionAdapter, trading_date: date) -> tuple:
@@ -51,7 +54,8 @@ class CnnTargetOrderStrategy:
 
     def __init__(self, prediction_adapter: CnnPredictionAdapter, *, target_size: int = 100,
                  sell_buffer: int = 500, exit_on_nonpositive: bool = False,
-                 exit_threshold: float = 0.0, strong_buy_threshold: float = 0.0) -> None:
+                 exit_threshold: float = 0.0, strong_buy_threshold: float = 0.0,
+                 min_edge: float = 0.0, min_edge_tail_ratio: float = 0.3) -> None:
         if not isinstance(prediction_adapter, CnnPredictionAdapter):
             raise ValueError(  # noqa: TRY004
                 f"prediction_adapter must be a CnnPredictionAdapter, got {prediction_adapter!r}"
@@ -66,15 +70,27 @@ class CnnTargetOrderStrategy:
         strong_buy_threshold = self._checked_threshold(strong_buy_threshold, "strong_buy_threshold")
         if strong_buy_threshold < 0.0:
             raise ValueError(f"strong_buy_threshold must be >= 0, got {strong_buy_threshold!r}")
+        min_edge = self._checked_threshold(min_edge, "min_edge")
+        if min_edge < 0.0:
+            raise ValueError(f"min_edge must be >= 0, got {min_edge!r}")
+        if (isinstance(min_edge_tail_ratio, bool)
+                or not isinstance(min_edge_tail_ratio, (int, float))
+                or not math.isfinite(float(min_edge_tail_ratio))
+                or not 0.0 < float(min_edge_tail_ratio) <= 1.0):
+            raise ValueError(
+                f"min_edge_tail_ratio must be in (0, 1], got {min_edge_tail_ratio!r}")
         self._adapter = prediction_adapter
         self._target_size = target_size
         self._sell_buffer = sell_buffer
         self._exit_on_nonpositive = exit_on_nonpositive
         self._exit_threshold = exit_threshold
         self._strong_buy_threshold = strong_buy_threshold
+        self._min_edge = min_edge
+        self._min_edge_tail_ratio = float(min_edge_tail_ratio)
         self._buy_order_count = 0
         self._sell_order_count = 0
         self._skipped_strong_buy_count = 0
+        self._skipped_min_edge_count = 0
 
     @staticmethod
     def _checked_threshold(value: object, name: str) -> float:
@@ -107,16 +123,25 @@ class CnnTargetOrderStrategy:
         return self._strong_buy_threshold
 
     @property
+    def min_edge(self) -> float:
+        return self._min_edge
+
+    @property
+    def min_edge_tail_ratio(self) -> float:
+        return self._min_edge_tail_ratio
+
+    @property
     def available_dates(self) -> tuple:
         """B03 谱系日期直通：策略/Runner 共用同一 fail-fast 边界."""
         return self._adapter.available_dates
 
     @property
     def counters(self) -> CnnTargetOrderCounters:
-        """计数快照（含 strong_buy 跳过数，供回测 skipped 口径对账）."""
+        """计数快照（含 strong_buy/min_edge 跳过数，供回测 skipped 口径对账）."""
         return CnnTargetOrderCounters(buy_order_count=self._buy_order_count,
                                       sell_order_count=self._sell_order_count,
-                                      skipped_strong_buy_count=self._skipped_strong_buy_count)
+                                      skipped_strong_buy_count=self._skipped_strong_buy_count,
+                                      skipped_min_edge_count=self._skipped_min_edge_count)
 
     @staticmethod
     def signal_time_for(trading_date: date) -> datetime:
@@ -128,7 +153,8 @@ class CnnTargetOrderStrategy:
         counters = self.counters
         return {"buy_order_count": str(counters.buy_order_count),
                 "sell_order_count": str(counters.sell_order_count),
-                "skipped_strong_buy_count": str(counters.skipped_strong_buy_count)}
+                "skipped_strong_buy_count": str(counters.skipped_strong_buy_count),
+                "skipped_min_edge_count": str(counters.skipped_min_edge_count)}
 
     def orders_for(self, *, trading_date: date, signal_time: datetime, account: AccountView,
                    market: MarketView) -> tuple:
@@ -150,10 +176,11 @@ class CnnTargetOrderStrategy:
         exp_map = {pred.instrument_id: pred.value for pred in ranked}
         buy_band = order_list[:self._target_size]
         sells = self._sell_orders(account, rank_map, exp_map)
-        buys, skipped = self._buy_orders(account, buy_band, exp_map)
+        buys, skipped_strong_buy, skipped_min_edge = self._buy_orders(account, buy_band, exp_map)
         self._sell_order_count += len(sells)
         self._buy_order_count += len(buys)
-        self._skipped_strong_buy_count += skipped
+        self._skipped_strong_buy_count += skipped_strong_buy
+        self._skipped_min_edge_count += skipped_min_edge
         return (*sells, *buys)
 
     def _sell_orders(self, account: AccountView, rank_map: dict, exp_map: dict) -> list[OrderIntent]:
@@ -174,24 +201,35 @@ class CnnTargetOrderStrategy:
         return orders
 
     def _buy_orders(self, account: AccountView, buy_band: Sequence[str],
-                    exp_map: dict) -> tuple[list[OrderIntent], int]:
-        """买入带等权现金单：已持有不动；门槛开启（>0）时带内低于门槛跳过留现金、不补位."""
+                    exp_map: dict) -> tuple[list[OrderIntent], int, int]:
+        """买入带等权现金单：已持有不动；两道买入门槛（均跳过留现金、不补位）.
+
+        全带门槛 ``strong_buy_threshold``（>0 开启）；尾部门槛 ``min_edge``（>0 开启，
+        仅作用于买入带后 ``min_edge_tail_ratio`` 部分，按带内名次划分）。
+        """
         candidates: list[str] = []
-        skipped = 0
-        for code in buy_band:
+        skipped_strong_buy = 0
+        skipped_min_edge = 0
+        tail_size = math.ceil(len(buy_band) * self._min_edge_tail_ratio)
+        tail_start = len(buy_band) - tail_size
+        for pos, code in enumerate(buy_band):
             if code in account.positions:
                 continue
             if self._strong_buy_threshold > 0.0 and exp_map[code] < self._strong_buy_threshold:
-                skipped += 1
+                skipped_strong_buy += 1
+                continue
+            if (self._min_edge > 0.0 and pos >= tail_start
+                    and exp_map[code] < self._min_edge):
+                skipped_min_edge += 1
                 continue
             candidates.append(code)
         if not candidates:
-            return [], skipped
+            return [], skipped_strong_buy, skipped_min_edge
         usable = float(account.available_cash)
         if usable <= 0.0 or not math.isfinite(usable):
-            return [], skipped
+            return [], skipped_strong_buy, skipped_min_edge
         # 预算按实际买入家数等分（跳过/已持有不占槽，core 引擎按成交价+费用折算整手）。
         budget = usable / len(candidates)
         orders = [OrderIntent(instrument_id=code, side=Side.BUY, cash_amount=budget)
                   for code in candidates]
-        return orders, skipped
+        return orders, skipped_strong_buy, skipped_min_edge

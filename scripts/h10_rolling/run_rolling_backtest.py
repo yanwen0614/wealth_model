@@ -4,6 +4,7 @@
 # 已验证：s2原稿直跑通；s2b补丁200f改strong_buy=1e-12，已并入下文kw2
 import sys
 from pathlib import Path
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]

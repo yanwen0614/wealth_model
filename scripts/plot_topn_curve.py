@@ -28,13 +28,10 @@ plt.rcParams["axes.unicode_minus"] = False
 
 
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
-    """无 scipy 依赖的 Spearman（rank 后 Pearson），与 eval_bins_mapping.py 实现一致."""
-    xr = np.argsort(np.argsort(x)).astype(np.float64)
-    yr = np.argsort(np.argsort(y)).astype(np.float64)
-    xr -= xr.mean()
-    yr -= yr.mean()
-    denom = np.sqrt((xr ** 2).sum() * (yr ** 2).sum())
-    return float((xr * yr).sum() / denom) if denom > 0 else 0.0
+    """无 scipy 依赖的 Spearman（rank 后 Pearson；唯一实现见 data.labels.rank_ic）."""
+    from data.labels import rank_ic
+
+    return rank_ic(np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
 
 
 def topn_stats(exp_ret: np.ndarray, true_ret: np.ndarray, dates: np.ndarray,
