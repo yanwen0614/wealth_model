@@ -75,5 +75,5 @@ uv run ruff check .   # line-length 120, pyproject.toml
 
 - `logs/` 下仅 `logs/KEEP/` 有效（scaler/bins/baseline/训练证据），其余 264 项已打包 `D:/tmp/cnn_trash_20260927.tar.gz` 并清空，编目见 `docs/archive/logs_manifest.csv`。
 - 回测唯一入口 `backtest/cnn_adapter/*`（`585a533` 确立），`backtest/legacy.py` 为历史；`../backtest-core` 为本地 editable 依赖。
-- `paper_jkx/` 全程 untracked 永不提交，结论见 `docs/archive/paper_jkx_2024-2026_seven_routes.md`；主链路冻结A见 `docs/archive/main_2015-2026_prereg_A.md`。
+- `paper_jkx/` 2026-09-28 起源码入库（`logs/` 产物仍忽略），结论见 `docs/archive/paper_jkx_2024-2026_seven_routes.md`；主链路冻结A见 `docs/archive/main_2015-2026_prereg_A.md`。
 - 2026-01~08 属烧掉样本，新规则不得用其验收；干净考试只认 2026-09 后新数据。

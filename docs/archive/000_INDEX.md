@@ -7,7 +7,7 @@
 | 生产训练 | `train.py + data/ + models/cnn_transformer/ + training/ + criterion/` | 冻结可用，`F53/H10/relative` |
 | 生产回测 | `backtest/cnn_adapter/*`唯一路径，`backtest/legacy.py`为历史 | `585a533`确立，勿绕行 |
 | 研究脚本 | `scripts/h10_rolling/*, wf_xgb_cs.py, run_retail_backtest.py` | 冻结存档，不再扩展 |
-| 论文隔离轨 | `paper_jkx/`（全程 untracked，永不提交） | 已收口，见 `STATE_FREEZE.md` |
+| 论文轨 | `paper_jkx/`（2026-09-28 起源码入库，`logs/` 产物仍忽略） | 已收口，见 `STATE_FREEZE.md` |
 
 ## 结论文档
 
