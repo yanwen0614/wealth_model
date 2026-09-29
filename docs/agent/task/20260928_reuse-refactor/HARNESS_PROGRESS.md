@@ -1,4 +1,4 @@
-# 进度跟踪 — 20260928_reuse-refactor
+# 进度跟踪 — 20260928_reuse-refactor（已完成并归档，commit aa3e867）
 
 > 生成时间：2026-09-28 14:00
 > 需求：整体 review 优化重构（Phase0 立规矩 / Phase1 收敛重复 / Phase2 解 God Object / Phase3 工程 hygiene），零行为变更
