@@ -29,14 +29,13 @@ from config.defaults import make_default_config
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
 from data.feature_cache import resolve_cache_root
 from log_manager import LoggerManager
-from training import Trainer
+from training import Trainer, load_model_state
 from training.factory import build_criterion, build_model, build_optimizer_scheduler
+from training.preprocessing import ROLLING_SCOPES
+from training.preprocessing import configure_preprocessing as _configure_preprocessing
 from visualization import Visualizer
 
 config = make_default_config()
-
-
-ROLLING_SCOPES = ("e0", "e1", "e2", "e3", "e4", "e5")
 
 
 def set_all_seeds(seed: int):
@@ -50,22 +49,12 @@ def set_all_seeds(seed: int):
 
 
 def configure_preprocessing(config: dict, normalize: str, rolling_scope: str = "e5") -> None:
-    """Apply the explicit preprocessing choice and isolate its artifacts."""
-    if normalize not in {"per_code", "rolling", "relative"}:
-        raise ValueError(f"未知 normalize: {normalize}")
-    config["NORMALIZE"] = normalize
-    if normalize == "per_code":
-        config["SCALER_PATH"] = "logs/scaler_per_code.pkl"
-        config["LOG_DIR"] = "./logs"
-    elif normalize == "rolling":
-        if rolling_scope not in ROLLING_SCOPES:
-            raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
-        config["ROLLING_SCOPE"] = rolling_scope
-        config["SCALER_PATH"] = f"logs/rolling_{rolling_scope}/scaler_rolling_{rolling_scope}.pkl"
-        config["LOG_DIR"] = f"./logs/rolling_{rolling_scope}"
-    else:  # relative：无统计 state，列规则确定性重建
-        config["SCALER_PATH"] = None
-        config["LOG_DIR"] = "./logs/relative"
+    """Apply the explicit preprocessing choice and isolate its artifacts.
+
+    唯一实现见 `training.preprocessing.configure_preprocessing`（T08 收敛）；
+    本函数为兼容 thin wrapper（主链路 `retail=False`），旧导入路径可用。
+    """
+    _configure_preprocessing(config, normalize, rolling_scope)
 
 
 def resolve_featurenum(requested: int | None, actual: int) -> int:
@@ -128,7 +117,8 @@ def build_preprocessing_metadata(
     return metadata
 
 
-def parse_args(argv: list[str] | None = None):
+def parse_args(argv: list[str] | None = None, *, retail: bool = False):
+    """CLI 解析；retail=True 取零售默认值（供 train_retail thin wrapper 复用，零行为漂移）。"""
     p = argparse.ArgumentParser(description="Parquet 直通训练")
     p.add_argument("--parquet", type=str, default=config['PARQUET_PATH'], help="parquet 路径")
     p.add_argument("--train_start", type=str, default=config['TRAIN_START'])
@@ -150,7 +140,8 @@ def parse_args(argv: list[str] | None = None):
     p.add_argument("--smoke", action="store_true", help="冒烟测试：max_codes=20, epochs=1, batch 256")
     p.add_argument("--dual_head", action="store_true", help="双头回归：DualLoss=EMD+λHuber，默认关保 baseline")
     p.add_argument("--pure_reg", action="store_true", help="纯回归消融：仅 Huber(ret_pred)，分类头无梯度")
-    p.add_argument("--lambda_reg", type=float, default=config['LAMBDA_REG'], help="双头回归项权重 λ")
+    p.add_argument("--lambda_reg", type=float, default=(0.3 if retail else config['LAMBDA_REG']),
+                   help="双头回归项权重 λ（主链路 0.2；retail wrapper 0.3）")
     p.add_argument("--huber_delta", type=float, default=config['HUBER_DELTA'], help="Huber delta")
     p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=config["NORMALIZE"])
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=config["ROLLING_SCOPE"],
@@ -175,15 +166,88 @@ def parse_args(argv: list[str] | None = None):
     p.add_argument("--rebuild_cache", action="store_true", help="跳过缓存命中，强制重建并写新 generation")
     # 模型选择
     p.add_argument("--model", choices=["cnn_transformer", "retail_friendly"],
-                   default="cnn_transformer", help="模型架构（默认 cnn_transformer）")
+                   default=("retail_friendly" if retail else "cnn_transformer"),
+                   help="模型架构（默认 cnn_transformer；retail wrapper 缺省 retail_friendly）")
     # 零售模型专属参数
     p.add_argument("--pos_weight", type=float, default=2.0,
                    help="零售模型 BCEWithLogitsLoss 正类权重（>1 → FP 惩罚更大 → 更高 precision）")
-    p.add_argument("--default_threshold", type=float, default=0.5,
-                   help="零售模型初始决策阈值")
+    p.add_argument("--gamma_neg", type=float, default=4.0,
+                   help="兼容保留（ASL 遗留，已弃用，实际损失以 pos_weight 为准）")
+    p.add_argument("--default_threshold", type=float, default=(0.65 if retail else 0.5),
+                   help="零售模型初始决策阈值（主链路 0.5；retail wrapper 0.65）")
     p.add_argument("--target_precision", type=float, default=0.75,
                    help="零售模型阈值校准目标 precision")
     return p.parse_args(argv)
+
+
+def apply_args_to_config(cfg: dict, args, *, retail: bool = False) -> None:
+    """CLI→config 单一装配（T13 复用出口；主/零售共享，零行为漂移）。
+
+    retail=True 走 retail_* 命名空间隔离（training.preprocessing），并兼容
+    gamma_neg 遗留键（实际损失以 pos_weight 为准）；其余键与 train.main 内联一致。
+    """
+    cfg['PARQUET_PATH'] = args.parquet
+    cfg['SEQ_LEN'] = args.seq_len
+    cfg['HORIZON'] = args.horizon
+    cfg['BATCH_SIZE'] = args.batch_size
+    cfg['NUM_WORKERS'] = args.num_workers
+    cfg['TRAIN_START'] = args.train_start
+    cfg['TRAIN_END'] = args.train_end
+    cfg['VAL_START'] = args.val_start
+    cfg['VAL_END'] = args.val_end
+    cfg['TEST_START'] = args.test_start
+    cfg['TEST_END'] = args.test_end
+    cfg['EPOCHS'] = args.epochs
+    cfg['PATIENCE'] = args.patience
+    cfg['LEARNING_RATE'] = args.lr
+    cfg['MAX_CODES'] = args.max_codes
+    cfg['MAX_WINDOWS_PER_CODE'] = args.max_windows_per_code
+    cfg['DUAL_HEAD'] = args.dual_head
+    cfg['PURE_REG'] = args.pure_reg
+    cfg['LAMBDA_REG'] = args.lambda_reg
+    cfg['HUBER_DELTA'] = args.huber_delta
+    cfg['SEED'] = args.seed
+    cfg['ROLLING_SCOPE'] = args.rolling_scope
+    cfg['FEATURE_COLS'] = args.feature_cols
+    cfg['LABEL_MODE'] = args.label_mode
+    cfg['CS_RANK'] = args.cs_rank
+    cfg['CS_RANK_FEATURES'] = args.cs_rank_features
+    cfg['MKT_FACTORS'] = args.mkt_factors
+    cfg['MKT_FACTOR_LIST'] = args.mkt_factor_list
+    cfg.update(build_cache_settings(args))
+    cfg['MODEL'] = args.model
+    cfg['RETAIL_POS_WEIGHT'] = args.pos_weight
+    cfg['RETAIL_GAMMA_NEG'] = getattr(args, 'gamma_neg', 4.0)
+    cfg['RETAIL_LAMBDA_REG'] = args.lambda_reg
+    cfg['RETAIL_DEFAULT_THRESHOLD'] = args.default_threshold
+    cfg['RETAIL_TARGET_PRECISION'] = args.target_precision
+    _configure_preprocessing(cfg, args.normalize, args.rolling_scope, retail=retail)
+
+
+def build_parquet_data_config(cfg: dict) -> ParquetDataConfig:
+    """由运行时 config 派生 ParquetDataConfig（T13 复用出口；含 label/cs/mkt 透传）。"""
+    return ParquetDataConfig(
+        parquet_path=cfg['PARQUET_PATH'],
+        seq_len=cfg['SEQ_LEN'],
+        horizon=cfg['HORIZON'],
+        bins=cfg['BINS'],
+        batch_size=cfg['BATCH_SIZE'],
+        num_workers=cfg['NUM_WORKERS'],
+        normalize=cfg['NORMALIZE'],
+        rolling_scope=cfg['ROLLING_SCOPE'],
+        label_mode=cfg.get('LABEL_MODE', 'absolute'),
+        feature_cols=cfg.get('FEATURE_COLS'),
+        cs_rank=cfg.get('CS_RANK', False),
+        cs_rank_features=cfg.get('CS_RANK_FEATURES'),
+        mkt_factors=cfg.get('MKT_FACTORS', False),
+        mkt_factor_list=cfg.get('MKT_FACTOR_LIST'),
+        scaler_path=cfg.get('SCALER_PATH'),
+        max_codes=cfg.get('MAX_CODES'),
+        max_windows_per_code=cfg.get('MAX_WINDOWS_PER_CODE'),
+        cache_enabled=cfg.get('CACHE_ENABLED', False),
+        cache_dir=cfg.get('CACHE_DIR'),
+        rebuild_cache=cfg.get('REBUILD_CACHE', False),
+    )
 
 
 def build_cache_settings(args) -> dict:
@@ -207,43 +271,8 @@ def main():
         args.batch_size = 256
         print(">>> SMOKE 模式：max_codes=20, epochs=1")
 
-    # 覆盖 config
-    config['PARQUET_PATH'] = args.parquet
-    config['SEQ_LEN'] = args.seq_len
-    config['HORIZON'] = args.horizon
-    config['BATCH_SIZE'] = args.batch_size
-    config['NUM_WORKERS'] = args.num_workers
-    config['TRAIN_START'] = args.train_start
-    config['TRAIN_END'] = args.train_end
-    config['VAL_START'] = args.val_start
-    config['VAL_END'] = args.val_end
-    config['TEST_START'] = args.test_start
-    config['TEST_END'] = args.test_end
-    config['EPOCHS'] = args.epochs
-    config['PATIENCE'] = args.patience
-    config['LEARNING_RATE'] = args.lr
-    config['MAX_CODES'] = args.max_codes
-    config['MAX_WINDOWS_PER_CODE'] = args.max_windows_per_code
-    config['DUAL_HEAD'] = args.dual_head
-    config['PURE_REG'] = args.pure_reg
-    config['LAMBDA_REG'] = args.lambda_reg
-    config['HUBER_DELTA'] = args.huber_delta
-    config['SEED'] = args.seed
-    config['ROLLING_SCOPE'] = args.rolling_scope
-    config['FEATURE_COLS'] = args.feature_cols
-    config['LABEL_MODE'] = args.label_mode
-    config['CS_RANK'] = args.cs_rank
-    config['CS_RANK_FEATURES'] = args.cs_rank_features
-    config['MKT_FACTORS'] = args.mkt_factors
-    config['MKT_FACTOR_LIST'] = args.mkt_factor_list
-    config.update(build_cache_settings(args))
-    # 零售模型配置
-    config['MODEL'] = args.model
-    config['RETAIL_POS_WEIGHT'] = args.pos_weight
-    config['RETAIL_LAMBDA_REG'] = args.lambda_reg
-    config['RETAIL_DEFAULT_THRESHOLD'] = args.default_threshold
-    config['RETAIL_TARGET_PRECISION'] = args.target_precision
-    configure_preprocessing(config, args.normalize, args.rolling_scope)
+    # 覆盖 config（T13：经 apply_args_to_config 单一装配，主/零售共享）
+    apply_args_to_config(config, args)
     if args.smoke and args.max_codes is None:
         config['MAX_CODES'] = 20
     config["CNNTransformerConfig"]['seq_len'] = config['SEQ_LEN']
@@ -262,38 +291,17 @@ def main():
         print("  CACHE: disabled (原内存路径)")
     print("=" * 60)
 
-    # 日志
+    # 日志（config.json 单次发布：featurenum 回填后经 save_config 原子写，避免多写/半写）
     # LoggerManager 会将 config 持久化到 logs/run_xxx/config.json，需确保可序列化
     log_config = {k: (v if not isinstance(v, np.ndarray) else v.tolist()) for k, v in config.items()}
-    logger_manager = LoggerManager(log_dir=config['LOG_DIR'], config=log_config)
+    logger_manager = LoggerManager(log_dir=config['LOG_DIR'])
     logger = logging.getLogger(__name__)
     logger.info("=== Parquet 训练开始 ===")
     config["run_log_dir"] = logger_manager.run_log_dir
 
-    # 数据集
+    # 数据集（T13：经 build_parquet_data_config 单一派生）
     logger.info("=== 初始化数据集 ===")
-    parquet_cfg = ParquetDataConfig(
-        parquet_path=config['PARQUET_PATH'],
-        seq_len=config['SEQ_LEN'],
-        horizon=config['HORIZON'],
-        bins=config['BINS'],
-        batch_size=config['BATCH_SIZE'],
-        num_workers=config['NUM_WORKERS'],
-        normalize=config['NORMALIZE'],
-        rolling_scope=config['ROLLING_SCOPE'],
-        label_mode=config['LABEL_MODE'],
-        feature_cols=config['FEATURE_COLS'],
-        cs_rank=config['CS_RANK'],
-        cs_rank_features=config['CS_RANK_FEATURES'],
-        mkt_factors=config['MKT_FACTORS'],
-        mkt_factor_list=config['MKT_FACTOR_LIST'],
-        scaler_path=config['SCALER_PATH'],
-        max_codes=config['MAX_CODES'],
-        max_windows_per_code=config['MAX_WINDOWS_PER_CODE'],
-        cache_enabled=config['CACHE_ENABLED'],
-        cache_dir=config['CACHE_DIR'],
-        rebuild_cache=config['REBUILD_CACHE'],
-    )
+    parquet_cfg = build_parquet_data_config(config)
 
     # 若 smoke 模式，使用更小的时间范围以加速
     if args.smoke:
@@ -355,8 +363,6 @@ def main():
         preprocessing_metadata["mkt_factor_list"] = list(train_dataset.mkt_factor_features)
     log_config["preprocessing"] = preprocessing_metadata
     config["preprocessing"] = preprocessing_metadata
-    with open(os.path.join(config["run_log_dir"], "config.json"), "w", encoding="utf-8") as f:
-        json.dump(log_config, f, indent=2, ensure_ascii=False)
     logger.info(f"训练集样本数: {len(train_dataset):,}")
     if val_loader is not None:
         val_dataset = cast(ParquetDataset, val_loader.dataset)
@@ -374,9 +380,9 @@ def main():
         logger.warning(f"特征数不匹配: config={config['CNNTransformerConfig']['featurenum']} vs 实际={actual_featurenum}，已自动校正")
         config["CNNTransformerConfig"]['featurenum'] = actual_featurenum
         log_config["CNNTransformerConfig"]['featurenum'] = actual_featurenum
-        with open(os.path.join(config["run_log_dir"], "config.json"), "w") as f:
-            json.dump(log_config, f, indent=2, ensure_ascii=False)
-        logger.info(f"已重写 config.json: featurenum={actual_featurenum}")
+    # 单次原子发布（含 preprocessing 与 featurenum 回填），半写由 tmp+os.replace 拦截
+    logger_manager.save_config(log_config)
+    logger.info(f"config.json 已发布: featurenum={actual_featurenum}")
 
     # 模型
     logger.info("=== 初始化模型 ===")
@@ -390,7 +396,7 @@ def main():
         logger.info(f"模型: RetailFriendlyModel 输入 [B, F={model_cfg.featurenum}, T={model_cfg.seq_len}] → bin_logits[B] + ret_pred[B]")
         logger.info(f"损失: RetailLoss(BCEWithLogits pos_weight={args.pos_weight} + {args.lambda_reg}×Huber)")
     else:
-        logger.info(f"模型输入: [batch, featurenum={model_cfg.featurenum}, seq_len={model_cfg.seq_len}] -> {model_cfg.num_classes} 类")
+        logger.info(f"模型输入: [batch, featurenum={model_cfg.featurenum}, seq_len={model_cfg.seq_len}] -> {cast(Any, model_cfg).num_classes} 类")
 
     # 损失 & 优化器
     logger.info("=== 初始化损失与优化器 ===")
@@ -440,11 +446,12 @@ def main():
         except (OSError, RuntimeError, TypeError, ValueError) as e:
             logger.warning(f"可视化失败: {e}")
 
-    # 加载最佳模型
+    # 加载最佳模型（T14：新 dict / 旧裸 state_dict 均兼容，map_location 到 DEVICE）
     best_path = os.path.join(config["run_log_dir"], "best_model.pth")
     if os.path.exists(best_path):
-        model.load_state_dict(torch.load(best_path, map_location=config['DEVICE']))
-        logger.info(f"已加载最佳模型: {best_path}")
+        meta = load_model_state(best_path, model, map_location=config['DEVICE'])
+        logger.info(f"已加载最佳模型: {best_path}"
+                    + (f" (epoch={meta['epoch']})" if meta["epoch"] is not None else ""))
     else:
         logger.warning(f"未找到最佳模型: {best_path}")
 

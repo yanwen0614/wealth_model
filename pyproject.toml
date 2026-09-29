@@ -69,15 +69,6 @@ rl = [
     "stable-baselines3>=2.7",
     "gymnasium>=1.2",
 ]
-# 开发
-dev = [
-    "ruff>=0.15",
-    "ipython>=9.8",
-    "ipykernel>=7.1",
-    "debugpy>=1.8",
-    "jupyter-client>=8.7",
-    "pyright>=1.1.411",
-]
 
 # PyTorch CUDA 源配置（与 quant 完全一致，跨平台）
 [[tool.uv.index]]
@@ -115,3 +106,60 @@ dev = [
 
 [tool.ruff]
 line-length = 120
+target-version = "py312"
+# T15: research/goal 为 READ ONLY 快照、scripts/frozen 为冻结归档（READ ONLY），
+# 二者不改源码，ruff 直接跳过；生产代码零告警口径。
+exclude = [
+    "research/goal/**",
+    "scripts/frozen/**",
+]
+
+[tool.ruff.lint]
+# T15 锁定：窄名单 select（仅当前全仓干净、或已有 noqa 约定的规则）。
+# 家族级 B/SIM/C4/RUF/PL/TRY/S 不整选：B905(zip strict)/RUF001-003(中文标点)/
+# TRY003(长异常消息)/S101(断言)/PLR0913(多参)/E501(长行)等与现有风格冲突，见 ignore。
+select = [
+    "E9",        # 语法错误（E4/E7 风格类不选：E402 守卫导入位 / E712 pandas 按元比较是预期写法）
+    "F",         # pyflakes（F401 重导出 / F841 未用变量；既有 F401 noqa 锁定）
+    "I",         # isort 排序
+    "UP",        # pyupgrade（UP017 datetime.UTC；快照侧已 exclude）
+    "B023",      # 循环变量闭包绑定（analyze_preds 5 处已修；B007/B905 不选）
+    "SIM115",    # open 上下文管理（冻结侧已 exclude；SIM108 三元改写不选）
+    "SIM201",    # 否定比较简化（冻结侧已 exclude）
+    "C401",      # 生成器改集合推导（冻结侧已 exclude；C420 不选）
+    "C408",      # dict() 改字面量（冻结侧已 exclude）
+    "RUF059",    # 未用解包变量（冻结侧已 exclude；RUF001/002/003 中文标点不选）
+    "RUF034",    # 无用 if-else（eval_retail_predict 已修）
+    "PLR0124",   # 自身比较（冻结侧已 exclude；PLR0913 等复杂度类不选）
+    "PLC0206",   # 字典取值缺 .items()（冻结侧已 exclude；PLC0415 函数内导入不选）
+    "BLE001",    # 宽捕获：退化保底路径预期写法，既有 noqa 锁定，只加不删
+    "TRY004",    # ValueError 对外契约口径，既有 noqa 锁定，只加不删
+    "DTZ005",    # 本地 wall time / run 目录时间戳，既有 noqa 锁定，只加不删
+    "DTZ001",    # 测试侧本地时间契约，既有 noqa 锁定
+    "S110",      # try-except-pass 可选依赖跳过，既有 noqa 锁定
+    "S112",      # try-except-continue 退化截面跳过，既有 noqa 锁定
+]
+ignore = [
+    # 文档化排除（当前 select 未覆盖对应家族，留作将来放宽时的显式决议）：
+    "E501",      # 行长 120 仅 formatter 参考；存量中文日志长行不强制
+    "B905",      # zip(strict=) 不强制；时序对齐依赖宽松 zip
+    "RUF001",    # 中文标点在字符串中是项目既定风格，不强制 ASCII
+    "RUF002",    # 中文标点在 docstring 中是项目既定风格，不强制 ASCII
+    "RUF003",    # 中文标点在注释中是项目既定风格，不强制 ASCII
+    "TRY003",    # 长异常消息是现有风格（ckpt/scaler 路径提示），不强制收敛到异常类
+    "S101",      # assert 在训练守卫/测试中是现有风格，不强制 ban
+]
+
+# T16: pytest/CI 最小闭环（本地无 pytest 时用 `python -m unittest` 同路径替代；
+# 不新增依赖：CI 内按需 `pip install ruff pytest coverage`，`uv sync --offline` 不受影响）。
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+python_files = ["test_*.py"]
+
+[tool.coverage.run]
+source = ["data.identity", "data.transform_kernel", "training.preprocessing"]
+
+[tool.coverage.report]
+fail_under = 50
+show_missing = true
+exclude_lines = ["if __name__ == .__main__.:"]

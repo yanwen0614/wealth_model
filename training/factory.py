@@ -9,10 +9,19 @@ from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
 
 
-def build_model(config: dict, actual_featurenum: int | None = None):
-    """按配置构建模型，并在数据集提供维度时校正输入特征数。"""
-    model_type = config.get("MODEL", "cnn_transformer")
-    if model_type == "retail_friendly":
+def _resolve_mode(config: dict, mode: str | None) -> str:
+    """mode 显式参数优先，回退 config["MODEL"]，缺省 cnn_transformer。"""
+    return mode or config.get("MODEL", "cnn_transformer")
+
+
+def build_model(config: dict, actual_featurenum: int | None = None,
+                *, mode: str | None = None):
+    """按配置构建模型，并在数据集提供维度时校正输入特征数。
+
+    mode 显式覆盖 config["MODEL"]（T12 收敛：零售分支经 mode 参数收敛，
+    不直接读 config 分支；旧调用面不变）。
+    """
+    if _resolve_mode(config, mode) == "retail_friendly":
         return _build_retail_model(config, actual_featurenum)
     # 原 CNNTransformer
     model_cfg_dict = dict(config["CNNTransformerConfig"])
@@ -38,12 +47,14 @@ def _build_retail_model(config: dict, actual_featurenum: int | None = None):
     return model, model_cfg
 
 
-def build_criterion(config: dict, *, lambda_reg: float | None = None):
+def build_criterion(config: dict, *, mode: str | None = None,
+                    lambda_reg: float | None = None):
     """构建纯分类、双头或纯回归损失。
 
     零售模型使用 RetailLoss（AsymmetricLoss + λ*Huber）。
+    mode 显式覆盖 config["MODEL"]（T12 收敛；旧调用面不变）。
     """
-    if config.get("MODEL") == "retail_friendly":
+    if _resolve_mode(config, mode) == "retail_friendly":
         return _build_retail_criterion(config)
     if config["PURE_REG"]:
         return PureRegLoss(num_classes=config["num_classes"], huber_delta=config["HUBER_DELTA"])

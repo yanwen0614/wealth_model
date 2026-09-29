@@ -1,7 +1,8 @@
 """52->11 零重训映射评估（T03 Step1，只读评估，不改训练链路）.
 
 链路：best_model.pth(52类) -> 验证集推理 logits -> softmax ->
-  exp_ret=(probs*centers52).sum(-1), centers52=linspace(-0.255,0.255,52) ->
+  exp_ret=(probs*centers52).sum(-1), centers52=config.defaults.DEFAULT_CENTERS
+  （bins_to_centers(BINS) 派生，T09 方案A；旧 linspace(-0.255,0.255,52)已删） ->
   np.digitize(exp_ret, bins11), bins11 默认百分制
   [-15,-10,-6,-3,-1,1,3,6,10,15]（内部 /100 化为小数，与 exp_ret 同单位；
   可经 --bins11_pct 传入 T02 冻结 bins 覆盖） ->
@@ -21,42 +22,39 @@ import glob
 import json
 import os
 import random
-from dataclasses import dataclass
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from config.defaults import DEFAULT_BINS
+from backtest.cnn_adapter.cache import save_prediction_cache
+from config.defaults import DEFAULT_BINS, DEFAULT_CENTERS
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
 from data.labels import rank_ic
-from data.schema import validate_prediction_cache_arrays
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
+from training.checkpoint import load_model_state
 from training.metrics import calculate_latter_half_metrics
+from training.preprocessing import (
+    DEFAULT_ROLLING_SCOPE,
+    ROLLING_SCOPES,
+    EvalPreprocessing,
+)
+from training.preprocessing import default_scaler_path as _default_scaler_path_canonical
+from training.preprocessing import load_run_config as _load_run_config_canonical
+from training.preprocessing import resolve_eval_featurenum as _resolve_eval_featurenum_canonical
+from training.preprocessing import resolve_eval_mode_scope as _resolve_eval_mode_scope_canonical
+from training.preprocessing import resolve_eval_scaler_path as _resolve_eval_scaler_path_canonical
 
-CENTERS52 = np.linspace(-0.255, 0.255, 52)  # 52 类中心（小数单位）
+# T09 方案A：CENTERS 由 BINS 经 bins_to_centers 派生（旧 linspace(-0.255,0.255,52)
+# 已删；1.52 倍漂移/排序不变声明见 config/defaults.bins_to_centers）。
+CENTERS52 = np.asarray(DEFAULT_CENTERS, dtype=np.float64)
 DEFAULT_BINS11_PCT = [-15, -10, -6, -3, -1, 1, 3, 6, 10, 15]  # 百分制，内部/100
 DEFAULT_BINS13_PCT = [-15, -10, -7, -4, -2, -0.5, 0.5, 2, 4, 7, 10, 15]  # 百分制，内部/100
 DEFAULT_BINS52 = DEFAULT_BINS
 NUM_CLASSES52 = 52
-ROLLING_SCOPES = ("e0", "e1", "e2", "e3", "e4", "e5")
-DEFAULT_ROLLING_SCOPE = "e5"
-EVAL_MODES = frozenset({"relative", "per_code", "rolling"})
-# eval scaler 回退默认：scope e0..e5 按 checkpoint metadata 解析，缺省回退 e5。
-ROLLING_DEFAULT_SCALER_PATH = "logs/rolling_e5/scaler_rolling_e5.pkl"
-PER_CODE_DEFAULT_SCALER_PATH = "logs/scaler_per_code.pkl"
-
-
-@dataclass(frozen=True)
-class EvalPreprocessing:
-    mode: str
-    scaler_stats: object | None
-    feature_cols: list[str] | None
-    schema_identity: str | None
-    run_config: dict
-    scaler_path: str | None
-    feature_cols_out: list[str] | None = None
+# ROLLING_SCOPES / DEFAULT_ROLLING_SCOPE / EVAL_MODES / 默认 scaler 路径唯一源见
+# training.preprocessing（T08 收敛）；本模块保留同名兼容 re-export。
 
 
 def set_seed(seed: int = 42) -> None:
@@ -77,54 +75,26 @@ def resolve_checkpoint(path: str | None) -> str:
 
 
 def _load_run_config(ckpt_path: str) -> dict:
-    cfg_path = os.path.join(os.path.dirname(ckpt_path), "config.json")
-    if not os.path.exists(cfg_path):
-        return {}
-    with open(cfg_path, encoding="utf-8") as file:
-        return json.load(file)
+    """读 checkpoint 同目录 config.json（唯一实现见 training.preprocessing）。"""
+    return _load_run_config_canonical(ckpt_path)
 
 
 def default_scaler_path(mode: str) -> str | None:
-    """各 mode 的 scaler 回退路径：relative 无持久 state，rolling 缺省 e5，per_code 沿用旧默认。"""
-    if mode == "relative":
-        return None
-    return ROLLING_DEFAULT_SCALER_PATH if mode == "rolling" else PER_CODE_DEFAULT_SCALER_PATH
+    """各 mode 的 scaler 回退路径（唯一实现见 training.preprocessing）。"""
+    return _default_scaler_path_canonical(mode)
 
 
 def resolve_scaler_path(run_cfg: dict, mode: str, cli_override: str | None = None) -> str | None:
-    """scaler 路径优先级：CLI > preprocessing state/scaler/SCALER_PATH > 顶层 SCALER_PATH > 默认。"""
-    if cli_override:
-        return cli_override
-    metadata = run_cfg.get("preprocessing") or {}
-    return (
-        metadata.get("state_path") or metadata.get("scaler_path") or metadata.get("SCALER_PATH")
-        or run_cfg.get("SCALER_PATH")
-        or default_scaler_path(mode)
-    )
+    """scaler 路径优先级（唯一实现见 training.preprocessing，保持旧 (run_cfg, mode) 签名）。"""
+    return _resolve_eval_scaler_path_canonical(run_cfg, mode, cli_override)
 
 
 def resolve_eval_featurenum(run_cfg: dict, cli_featurenum: int | None = None) -> int:
-    """featurenum 实测派生：CLI 显式 > metadata.featurenum > len(feature_cols_out)；否则明确报错。
+    """featurenum 实测派生（唯一实现见 training.preprocessing）。
 
     绝不静默回退到历史 45；无 metadata 且未显式给出时直接抛错提示所需信息。
     """
-    metadata = run_cfg.get("preprocessing") or {}
-    metadata_featurenum = metadata.get("featurenum")
-    if cli_featurenum is not None:
-        if metadata_featurenum is not None and int(metadata_featurenum) != int(cli_featurenum):
-            raise ValueError(
-                f"--featurenum 与 checkpoint metadata 不符: cli={cli_featurenum} metadata={metadata_featurenum}"
-            )
-        return int(cli_featurenum)
-    if metadata_featurenum is not None:
-        return int(metadata_featurenum)
-    feature_cols_out = metadata.get("feature_cols_out")
-    if feature_cols_out:
-        return len(feature_cols_out)
-    raise ValueError(
-        "checkpoint 缺少 preprocessing.featurenum/feature_cols_out，无法派生模型 featurenum；"
-        "请提供 metadata 或用 --featurenum 显式指定"
-    )
+    return _resolve_eval_featurenum_canonical(run_cfg, cli_featurenum)
 
 
 def load_eval_preprocessing(
@@ -139,15 +109,13 @@ def load_eval_preprocessing(
     COLUMN_RULES 重建并校验 feature_cols_out 与 checkpoint 一致。
     """
     run_cfg = _load_run_config(ckpt_path)
+    # T08 收敛+T09 保留旧签名：mode/scope 校验唯一实现见
+    # training.preprocessing.resolve_eval_mode_scope。
+    mode, _ = _resolve_eval_mode_scope_canonical(run_cfg, scope_override)
     metadata = run_cfg.get("preprocessing") or {}
-    mode = metadata.get("mode", "per_code")
-    if mode not in EVAL_MODES:
-        raise ValueError(f"checkpoint preprocessing mode 不支持: {mode}")
     feature_cols = metadata.get("feature_cols")
     if feature_cols is not None:
         feature_cols = list(feature_cols)
-    if scope_override is not None and scope_override not in ROLLING_SCOPES:
-        raise ValueError(f"rolling scope 非法: {scope_override!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
     if mode == "relative":
         from data.scaler import RelativeScaler
 
@@ -341,7 +309,7 @@ def evaluate(args) -> dict:
     )
     device = args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
     model = CNNTransformer(model_cfg).to(device)
-    model.load_state_dict(torch.load(ckpt_path, map_location=device), strict=True)
+    load_model_state(ckpt_path, model, map_location=device, strict=True)  # T14：新 dict/旧裸均兼容
     model.eval()
 
     bins11 = np.array(args.bins11_pct if args.bins11_pct else DEFAULT_BINS11_PCT,
@@ -529,8 +497,12 @@ def evaluate(args) -> dict:
             "dates": dates,
             "codes": np.concatenate(all_codes) if all_codes else np.asarray([], dtype="U1"),
         }
-        validate_prediction_cache_arrays(cache, args.preds_cache)
-        np.savez(args.preds_cache, **cache)
+        # T10 统一写盘：经 adapter cache.save 落盘（内部走
+        # data.schema.validate_prediction_cache_arrays 锁 4 字段），
+        # 与 run_eval_pipeline 产出互相可读。
+        os.makedirs(os.path.dirname(os.path.abspath(args.preds_cache)), exist_ok=True)
+        save_prediction_cache(args.preds_cache, cache["exp_ret"], cache["true_ret"],
+                              cache["dates"], cache["codes"])
         print(f"[eval] 逐样本预测已缓存: {args.preds_cache} (exp_ret/true_ret/dates/codes, 后续统计免推理)")
     if args.out:
         with open(args.out, "w") as f:

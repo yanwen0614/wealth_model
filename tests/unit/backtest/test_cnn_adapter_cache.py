@@ -71,7 +71,8 @@ class TestSaveLoadRoundTrip(_TempDirMixin):
 
 class TestMissingKeys(_TempDirMixin):
     def test_each_missing_key_raises(self):
-        for missing in PREDICTION_CACHE_KEYS:
+        # T10 兼容：缺 true_ret 不再 raise（warning + None），其余三键仍拒绝。
+        for missing in ("exp_ret", "dates", "codes"):
             with self.subTest(missing=missing):
                 src = {k: v for k, v in _synth_cache().items() if k != missing}
                 path = self.tmp_path(f"miss_{missing}.npz")
@@ -79,6 +80,20 @@ class TestMissingKeys(_TempDirMixin):
                 with self.assertRaises(ValueError) as ctx:
                     load_prediction_cache(path)
                 self.assertIn(missing, str(ctx.exception))
+
+    def test_missing_true_ret_compat_warns_none(self):
+        import warnings
+
+        src = _synth_cache()
+        path = self.tmp_path("legacy_no_true.npz")
+        np.savez(path, exp_ret=src["exp_ret"], dates=src["dates"], codes=src["codes"])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            got = load_prediction_cache(path)
+        self.assertTrue(any("true_ret" in str(w.message) for w in caught))
+        self.assertIsNone(got["true_ret"])
+        # 不静默补零：None 不是全零数组
+        self.assertNotIsInstance(got["true_ret"], np.ndarray)
 
     def test_legacy_cache_missing_codes_hints_rebuild(self):
         src = _synth_cache()

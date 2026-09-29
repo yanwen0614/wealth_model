@@ -206,7 +206,7 @@ for code in np.unique(codes):
 for exp_thresh in [0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05]:
     for code_prec_thresh in [0.50, 0.55, 0.60]:
         mask = (exp_ret >= exp_thresh) & np.vectorize(
-            lambda c: code_overall_prec.get(c, 0) >= code_prec_thresh
+            lambda c, _thresh=code_prec_thresh: code_overall_prec.get(c, 0) >= _thresh
         )(codes)
         cnt = mask.sum()
         if cnt < 20:
@@ -259,7 +259,7 @@ for exp_top_pct in [0.05, 0.02, 0.01]:
     thresh_exp = np.percentile(exp_ret, 100 * (1 - exp_top_pct))
     for code_prec_thresh in [0.55, 0.60, 0.65, 0.70]:
         mask = (exp_ret >= thresh_exp) & np.vectorize(
-            lambda c: code_overall_prec.get(c, 0) >= code_prec_thresh
+            lambda c, _thresh=code_prec_thresh: code_overall_prec.get(c, 0) >= _thresh
         )(codes)
         cnt = mask.sum()
         if cnt < 10:
@@ -299,7 +299,7 @@ for exp_th in [0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.05, 0.06]:
             mask_codes = np.array([code_overall_prec.get(c, 0) >= cp_th for c in codes])
         else:
             mask_codes = np.vectorize(
-                lambda c: code_overall_prec.get(c, 0) >= cp_th
+                lambda c, _thresh=cp_th: code_overall_prec.get(c, 0) >= _thresh
             )(codes)
         mask = (exp_ret >= exp_th) & mask_codes
         cnt = mask.sum()
@@ -331,7 +331,7 @@ for prec_th in [0.65, 0.70, 0.75, 0.80]:
     for exp_th in np.arange(0.005, 0.101, 0.005):
         for cp_th in [0.50, 0.55, 0.60, 0.65, 0.70]:
             mask = (exp_ret >= exp_th) & np.vectorize(
-                lambda c: code_overall_prec.get(c, 0) >= cp_th
+                lambda c, _thresh=cp_th: code_overall_prec.get(c, 0) >= _thresh
             )(codes)
             cnt = mask.sum()
             if cnt < 10:
@@ -410,7 +410,7 @@ all_combo_results = []
 for exp_th in np.arange(0.005, 0.101, 0.005):
     for cp_th in [x / 100 for x in range(50, 80, 5)]:
         mask = (exp_ret >= exp_th) & np.vectorize(
-            lambda c: code_overall_prec.get(c, 0) >= cp_th
+            lambda c, _thresh=cp_th: code_overall_prec.get(c, 0) >= _thresh
         )(codes)
         cnt = mask.sum()
         if cnt < 10:

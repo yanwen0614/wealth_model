@@ -1,7 +1,6 @@
 """Standalone causal rolling normalization for one sorted code sequence."""
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -9,8 +8,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from data.scaler import IQR_TO_SIGMA, ColumnRule, column_rule
+from data.identity import canonical_hash
+from data.scaler import ColumnRule, column_rule
 from data.schema import FEATURE_GROUPS, G9_MASK_COLUMNS, G9_OBSERVATION_SOURCE
+from data.transform_kernel import IQR_TO_SIGMA, append_shared_mask, apply_column_rule, relative_transform
 
 ROLLING_MODE = "rolling"
 ROLLING_VERSION = "v2_rolling_scope_e0_e5"
@@ -86,8 +87,8 @@ class RollingNormalizer:
 
     @staticmethod
     def _canonical_hash(payload: dict[str, Any]) -> str:
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-        return hashlib.sha256(encoded).hexdigest()
+        """旧入口保留：委托 data.identity.canonical_hash（digest 逐位一致）。"""
+        return canonical_hash(payload)
 
     def scope_features(self) -> tuple[str, ...]:
         return ROLLING_SCOPE_FEATURES[self.config.scope]
@@ -183,40 +184,18 @@ class RollingNormalizer:
 
     @staticmethod
     def _relative(values: np.ndarray, close: np.ndarray) -> np.ndarray:
-        previous_close = np.roll(close, 1)
-        previous_close[0] = np.nan
-        valid_denominator = np.isfinite(previous_close) & (previous_close != 0)
-        return np.divide(
-            values,
-            previous_close,
-            out=np.full(values.shape, np.nan, dtype=np.float64),
-            where=valid_denominator,
-        ) - 1.0
+        """历史入口：委托 kernel（P relative 语义逐位一致）。"""
+        return relative_transform(values, close)
 
     @staticmethod
     def _apply_column_rule(
         values: np.ndarray, missing: np.ndarray, rule: ColumnRule, close: np.ndarray | None
     ) -> np.ndarray:
-        """非 scope 列按 COLUMN_RULES 变换（P relative / R asinh / N clip01 / G fixed_clip）。"""
-        if rule.transform == "relative":
-            if close is None:
-                raise ValueError("非 scope 的 P 组列需要 close 上下文")
-            transformed = RollingNormalizer._relative(values, close)
-            transformed = np.where(np.isfinite(transformed), transformed, 0.0)
-            transformed = np.where(missing, 0.0, transformed)
-            if rule.clip is not None:
-                transformed = np.clip(transformed, rule.clip[0], rule.clip[1])
-            return transformed
-        if rule.transform == "asinh":
-            transformed = np.arcsinh(values * rule.scale)
-        elif rule.transform in ("clip01", "fixed_clip", "passthrough"):
-            transformed = values
-        else:
-            raise ValueError(f"未知 transform: {rule.transform!r}")
-        if rule.clip is not None:
-            transformed = np.clip(transformed, rule.clip[0], rule.clip[1])
-        transformed = np.where(missing, 0.0, transformed)
-        return np.where(np.isfinite(transformed), transformed, 0.0)
+        """非 scope 列按 COLUMN_RULES 变换；逐元素语义委托 kernel。"""
+        if rule.transform == "relative" and close is None:
+            raise ValueError("非 scope 的 P 组列需要 close 上下文")
+        finite = ~np.asarray(missing, dtype=bool)
+        return apply_column_rule(values, finite, rule, close=close)
 
     def _transform_scoped_column(
         self,
@@ -275,8 +254,7 @@ class RollingNormalizer:
 
         output = np.stack(output_columns, axis=1)
         if self.config.add_g9_masks and has_g9_source:
-            shared_mask = observed.astype(np.float32).reshape(-1, 1)
-            output = np.concatenate([output, shared_mask], axis=1)
+            output = append_shared_mask(output, observed)
         output = np.where(np.isfinite(output), output, 0.0).astype(np.float32)
         return RollingTransformResult(output, fallback_mask, audit)
 

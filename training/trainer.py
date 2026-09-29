@@ -1,3 +1,4 @@
+import csv
 import logging
 import os
 from typing import Any, cast
@@ -9,9 +10,28 @@ from torch import nn, optim
 from tqdm import tqdm
 
 from .batch import _compute_loss, _unpack_batch, _unpack_outputs
+from .checkpoint import load_model_state
 from .early_stopping import EarlyStopping
 from .metrics import calculate_latter_half_metrics
 from .reporting import save_confusion_matrix
+
+
+class ValidationResult(dict):
+    """validate_epoch 统一返回：dict 访问 + 旧 tuple 解包兼容。
+
+    新代码走 ``res["loss"]`` / ``res["precision"]``（零售）；
+    旧调用 ``loss, acc, labels, preds = validate_epoch()`` 经 __iter__ 仍可用。
+    """
+
+    def __init__(self, loss: float, accuracy: float,
+                 labels: torch.Tensor, preds: torch.Tensor, **extra):
+        super().__init__(loss=loss, accuracy=accuracy, labels=labels, preds=preds, **extra)
+
+    def __iter__(self):
+        yield self["loss"]
+        yield self["accuracy"]
+        yield self["labels"]
+        yield self["preds"]
 
 
 class Trainer:
@@ -80,8 +100,62 @@ class Trainer:
             self.val_precisions: list[float] = []
             self.val_recalls: list[float] = []
             self.val_f1s: list[float] = []
+            self.val_avg_p_bin: list[float] = []
             self.calibrated_threshold: float = config.get("RETAIL_DEFAULT_THRESHOLD", 0.5)
             self.calibration_report: dict = {}
+            self._metrics_csv_path = os.path.join(config["run_log_dir"], "epoch_metrics.csv")
+            self._init_metrics_csv()
+
+    # ── 标签二值化（零售；原 RetailTrainer.binarize_labels）──
+
+    @staticmethod
+    def binarize_labels(
+        y_cls: torch.Tensor,
+        y_ret: torch.Tensor | None = None,
+        half: int = 26,
+    ) -> torch.Tensor:
+        """52 类标签转二分类：优先 y_ret > 0，回退 y_cls >= half。"""
+        if y_ret is not None:
+            return (y_ret > 0.0).float()
+        return (y_cls >= half).float()
+
+    # ── CSV 指标追踪（零售；原 RetailTrainer._init/_append_epoch_metrics）──
+
+    def _init_metrics_csv(self):
+        """初始化 epoch 指标 CSV（写入表头；失败只告警）。"""
+        os.makedirs(os.path.dirname(self._metrics_csv_path), exist_ok=True)
+        try:
+            with open(self._metrics_csv_path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow([
+                    "epoch", "train_loss", "val_loss", "val_precision",
+                    "val_recall", "val_f1", "val_avg_p_bin", "lr"
+                ])
+            self.logger.info(f"指标 CSV 已创建: {self._metrics_csv_path}")
+        except OSError as e:
+            self.logger.warning(f"无法创建指标 CSV: {e}")
+
+    def _append_epoch_metrics(
+        self, epoch: int, train_loss: float,
+        val_metrics: dict | None = None
+    ):
+        """追加当前 epoch 指标到 CSV。"""
+        current_lr = self.optimizer.param_groups[0]["lr"] if self.optimizer else 0.0
+        try:
+            with open(self._metrics_csv_path, "a", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow([
+                    epoch + 1,
+                    f"{train_loss:.6f}",
+                    f"{val_metrics['loss']:.6f}" if val_metrics else "",
+                    f"{val_metrics['precision']:.6f}" if val_metrics else "",
+                    f"{val_metrics['recall']:.6f}" if val_metrics else "",
+                    f"{val_metrics['f1']:.6f}" if val_metrics else "",
+                    f"{val_metrics['avg_p_bin']:.6f}" if val_metrics else "",
+                    f"{current_lr:.8f}",
+                ])
+        except OSError as e:
+            self.logger.warning(f"无法写入指标 CSV: {e}")
         
     def train_epoch(self, epoch: int) -> tuple[float, float]:
         """
@@ -118,7 +192,7 @@ class Trainer:
             if self._is_retail:
                 p_bin = torch.sigmoid(logits)
                 preds_bin = (p_bin > 0.5).long()
-                y_bin = (y_ret > 0.0).float() if y_ret is not None else (labels >= 26).float()
+                y_bin = self.binarize_labels(labels, y_ret)
                 train_correct += (preds_bin == y_bin.long()).sum().item()
             else:
                 _, preds = torch.max(logits, 1)
@@ -132,15 +206,13 @@ class Trainer:
         avg_train_acc = train_correct / train_total
         return avg_train_loss, avg_train_acc
     
-    def validate_epoch(self) -> tuple[float, float, torch.Tensor, torch.Tensor]:
+    def validate_epoch(self) -> ValidationResult:
         """
         验证一个epoch（普通模式：52类；零售模式：二分类+precision/recall/F1）
-         
-        返回:
-            avg_val_loss: 平均验证损失
-            avg_val_acc: 平均验证准确率（零售模式为二分类准确率@0.5）
-            all_labels: 所有真实标签
-            all_preds: 所有预测标签
+
+        返回 ValidationResult（dict）：``loss/accuracy/labels/preds`` 通用键，
+        零售模式追加 ``precision/recall/f1/avg_p_bin/pos_ratio/n_val``；
+        支持旧式 ``loss, acc, labels, preds = validate_epoch()`` 解包。
         """
         assert self.val_loader is not None, "验证需要 val_loader"
         self.model.eval()
@@ -162,7 +234,7 @@ class Trainer:
                 if self._is_retail:
                     p_bin = torch.sigmoid(logits)
                     preds_bin = (p_bin >= self.calibrated_threshold).long()
-                    y_bin = (y_ret > 0.0).float() if y_ret is not None else (labels >= 26).float()
+                    y_bin = self.binarize_labels(labels, y_ret)
                     val_correct += (preds_bin == y_bin.long()).sum().item()
                     all_labels.append(y_bin.cpu())
                     all_preds.append(p_bin.cpu())  # 存概率用于校准
@@ -192,12 +264,20 @@ class Trainer:
             self.val_precisions.append(prec)
             self.val_recalls.append(rec)
             self.val_f1s.append(f1)
+            self.val_avg_p_bin.append(float(p_bin_all.mean()))
             self.logger.info(
                 f'  Val Precision: {prec:.2%}  Recall: {rec:.2%}  '
                 f'F1: {f1:.3f}  p_bin avg: {float(p_bin_all.mean()):.3f}'
             )
-        
-        return avg_val_loss, avg_val_acc, all_labels, all_preds
+            return ValidationResult(
+                avg_val_loss, avg_val_acc, all_labels, all_preds,
+                precision=prec, recall=rec, f1=f1,
+                avg_p_bin=float(p_bin_all.mean()),
+                pos_ratio=float(y_bin_all.float().mean()),
+                n_val=val_total,
+            )
+
+        return ValidationResult(avg_val_loss, avg_val_acc, all_labels, all_preds)
     
     def print_confusion_matrix(self, labels: torch.Tensor, preds: torch.Tensor, epoch: int | None = None):
         """打印并保存混淆矩阵。"""
@@ -250,7 +330,7 @@ class Trainer:
         for batch in self.val_loader:
             data, labels, y_ret = _unpack_batch(batch)
             data = data.to(self.device)
-            y_bin = (y_ret > 0.0).float() if y_ret is not None else (labels >= 26).float()
+            y_bin = self.binarize_labels(labels, y_ret)
             logits, _ = _unpack_outputs(self.model(data))
             p_bin = torch.sigmoid(logits)
             all_p_bin.append(p_bin.cpu())
@@ -343,11 +423,18 @@ class Trainer:
             current_lr = self.optimizer.param_groups[0]['lr']
             self.logger.info(f"Epoch [{epoch+1}/{epochs}], 当前学习率: {current_lr:.6f}")
             
-            # 验证阶段
+            # 验证阶段（dict 访问；ValidationResult 仍兼容旧 tuple 解包）
             if has_val:
-                avg_val_loss, avg_val_acc, all_labels, all_preds = self.validate_epoch()
+                val_res = self.validate_epoch()
+                avg_val_loss = val_res["loss"]
+                avg_val_acc = val_res["accuracy"]
+                all_labels = val_res["labels"]
+                all_preds = val_res["preds"]
                 self.val_losses.append(avg_val_loss)
                 self.val_accs.append(avg_val_acc)
+
+                if self._is_retail:
+                    self._append_epoch_metrics(epoch, avg_train_loss, val_res)
                 
                 # 更新最佳验证结果
                 best_val_loss = min(best_val_loss, avg_val_loss)
@@ -375,8 +462,10 @@ class Trainer:
                       f'Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}, '
                       f'Best Val Loss: {best_val_loss:.4f}, Best Val Acc: {best_val_acc:.4f}')
                 
-                # 早停检查
-                self.early_stopping(avg_val_loss, self.model)
+                # 早停检查（T14：best ckpt 存 optimizer/scheduler/epoch/config，中断后续训连续）
+                self.early_stopping(avg_val_loss, self.model, optimizer=self.optimizer,
+                                    scheduler=self.scheduler, epoch=epoch,
+                                    config=dict(self.config))
                 if self.early_stopping.early_stop:
                     self.logger.info("早停触发，停止训练")
                     break
@@ -385,10 +474,12 @@ class Trainer:
                 self.update_scheduler_epoch()
 
             
-        # 训练结束，加载最佳模型
+        # 训练结束，加载最佳模型（T14：新 dict / 旧裸 state_dict 均兼容）
         if has_val:
-            self.model.load_state_dict(torch.load(self.early_stopping.path, map_location=self.device))
-            self.logger.info(f"训练结束，已加载最佳模型: {self.early_stopping.path}")
+            meta = load_model_state(self.early_stopping.path, self.model,
+                                    map_location=self.device)
+            self.logger.info(f"训练结束，已加载最佳模型: {self.early_stopping.path}"
+                             + (f" (epoch={meta['epoch']})" if meta["epoch"] is not None else ""))
             # 零售模式：阈值校准
             if self._is_retail:
                 self.logger.info("")
@@ -435,6 +526,7 @@ class Trainer:
                 "val_precisions": self.val_precisions,
                 "val_recalls": self.val_recalls,
                 "val_f1s": self.val_f1s,
+                "val_avg_p_bin": self.val_avg_p_bin,
                 "calibrated_threshold": self.calibrated_threshold,
                 "calibration_report": self.calibration_report,
             }

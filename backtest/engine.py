@@ -9,6 +9,9 @@
     本模块为冻结旧逻辑（``OLD_LOGIC``，须经 ``backtest.legacy`` opt-in 才可调用），
     其费率（佣万2.5/印花万2.5、无过户费）与统一实盘口径（佣万2min5/印花卖万5/过户万1双边）不一致，
     新回测一律走 ``backtest.cnn_adapter`` + backtest-core 订单引擎；本模块常量保持冻结不再修正。
+    显式 opt-in：置环境变量 ``CNN_ALLOW_LEGACY=1`` 后方可调用 ``run_backtest`` /
+    ``run_backtest_target``（入口首行经 ``guard_legacy_disabled`` 校验，未置则 raise
+    ``LegacyBacktestDisabledError``）；opt-in 后会计逻辑逐 bit 一致，不做任何口径修正。
 """
 from __future__ import annotations
 
@@ -20,6 +23,8 @@ from typing import NamedTuple
 OLD_LOGIC = True
 
 import numpy as np
+
+from backtest.legacy import guard_legacy_disabled
 
 LIMIT_BASE = 1.098
 LIMIT_20PCT = 1.198
@@ -135,6 +140,7 @@ def run_backtest(exp_ret, codes, dates, ohlc: Mapping, *, topn: int, horizon: in
                  sell_rate: float = SELL_COMMISSION_RATE, stamp_rate: float = STAMP_DUTY_RATE,
                  min_commission: float = MIN_COMMISSION) -> BacktestResult:
     """滚动模式：每日按 nav/horizon 满仓滚动，无闲置现金，故 avg_cash_ratio 恒为 0.0."""
+    guard_legacy_disabled("backtest.engine.run_backtest")
     exp_ret = np.asarray(exp_ret, dtype=np.float64)
     codes_arr = np.asarray(codes)
     dates_n = _norm_dates(dates)
@@ -316,6 +322,7 @@ def run_backtest_target(exp_ret, codes, dates, full_ohlc: Mapping, *, target_siz
     nav = cash + Σ 股数×当日 open / capital；数据尾部最后交易日强制按 open 平仓（计费用）。
     avg_cash_ratio = 逐日 cash/nav[i]（nav[i]>0）的均值，用于观测平均闲置现金仓位。
     """
+    guard_legacy_disabled("backtest.engine.run_backtest_target")
     exp_ret = np.asarray(exp_ret, dtype=np.float64)
     codes_arr = np.asarray(codes)
     dates_n = _norm_dates(dates)

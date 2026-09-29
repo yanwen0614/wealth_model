@@ -188,3 +188,10 @@ uv run --project . python scripts/run_backtest.py \
 基准为大盘指数 close-to-close 涨跌幅（不收费率），超额 = 策略 annual − 指数 annual；
 指数文件缺失显式报错，区间无数据则告警并跳过基准。输出：`metrics.json`（含 benchmark、
 各模型各档位指标与 `avg_cash_ratio`）、持仓 CSV、净值 PNG。
+
+---
+
+## 冻结归档（`scripts/frozen/`，READ ONLY）
+
+`h10_rolling/*`（7 文件）+ `wf_xgb_cs.py` 已 `git mv` 迁入 `scripts/frozen/`（历史保留可查），
+生产代码禁 import。复现命令与冻结声明见 `scripts/frozen/README.md`。

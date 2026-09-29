@@ -23,6 +23,7 @@ from config.defaults import DEFAULT_BINS
 from data.dataset import ParquetDataConfig, ParquetDataset
 from models.retail_friendly.config import RetailModelConfig
 from models.retail_friendly.model import RetailFriendlyModel
+from training.checkpoint import extract_state_dict, load_checkpoint
 
 EVAL_MODES = frozenset({"relative", "per_code", "rolling"})
 
@@ -94,9 +95,9 @@ def main():
     run_cfg = load_run_config(ckpt_path)
     infer_cfg = load_infer_cfg(args.infer_cfg)
 
-    # 从 state_dict 自动推断维度
+    # 从 state_dict 自动推断维度（T14：新 dict/旧裸均兼容）
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    state = torch.load(ckpt_path, map_location=device, weights_only=True)
+    state = extract_state_dict(load_checkpoint(ckpt_path, map_location=device))
     d_model = state["fc_bin.0.weight"].shape[0]
     featurenum = state["multi_window_cnn.stem.0.weight"].shape[1]
     print(f"加载模型: {ckpt_path}")
@@ -171,8 +172,7 @@ def main():
             g = ds.groups[grp_idx]
             # 标签所在日期 = pos + seq_len - 1
             label_pos = pos + ds.config.seq_len - 1
-            dt = g["kline_time"][label_pos] if "kline_time" in g.dtype.names else g["kline_time"][label_pos]
-            code = g["code"] if "code" in g.dtype.names else grp_idx
+            dt = g["kline_time"][label_pos]
             all_dates.append(dt)
             all_codes.append(str(ds.groups[grp_idx]["code"]) if isinstance(ds.groups[grp_idx], np.void) else str(grp_idx))
         offset += n

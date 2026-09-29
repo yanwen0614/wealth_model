@@ -14,7 +14,6 @@
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import pickle
@@ -24,12 +23,18 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 
+from data.identity import canonical_hash
 from data.schema import FEATURE_GROUPS, G9_MASK_COLUMNS, G9_OBSERVATION_SOURCE
+from data.transform_kernel import (
+    KERNEL_EPS,
+    append_shared_mask,
+    apply_column_rule,
+    relative_transform,
+)
 
-EPS = 1e-8
+EPS = KERNEL_EPS  # 历史别名：robust 分母保护（正典定义见 data.transform_kernel）
 SCALER_VERSION = "v4_per_code"
 TRANSFORM_VERSION = "per_code_transform_v4"
-IQR_TO_SIGMA = 1.349  # 正态下 IQR → σ 的换算系数（robust 标准化分母）
 REQUIRED_STAT_KEYS = frozenset({"group", "transform", "median", "iqr"})
 
 
@@ -55,8 +60,8 @@ class PerCodeGroupedScaler:
 
     @staticmethod
     def identity_hash_for(manifest: dict) -> str:
-        encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-        return hashlib.sha256(encoded).hexdigest()
+        """旧入口保留：委托 data.identity.canonical_hash（digest 逐位一致）。"""
+        return canonical_hash(manifest)
 
     @staticmethod
     def transform_config_digest() -> str:
@@ -192,8 +197,7 @@ class PerCodeGroupedScaler:
                 observed = row_observed if observed is None else (observed | row_observed)
         out = np.stack(out_cols, axis=1) if out_cols else np.zeros((len(values), 0), dtype=np.float64)
         if self.mask_cols:
-            mask = np.zeros(len(values), dtype=bool) if observed is None else observed
-            out = np.concatenate([out, mask.astype(np.float32).reshape(-1, 1)], axis=1)
+            out = append_shared_mask(out, observed)
         return out.astype(np.float32)
 
     def _apply_rule(
@@ -206,21 +210,12 @@ class PerCodeGroupedScaler:
         use_global: bool,
         close: np.ndarray | None,
     ) -> np.ndarray:
-        transform = rule.transform
-        if transform == "relative":
-            transformed = _relative_transform(vals, close)
+        """统计量装配（P-robust median/iqr，未见 code 回退 global）+ 逐元素委托 kernel。"""
+        stat: dict | None = None
+        if rule.transform == "relative" and rule.robust:
             stat = self._stat_for(column, code_stats, use_global)
-            transformed = (transformed - stat["median"]) / (stat["iqr"] / IQR_TO_SIGMA + EPS)
-        elif transform == "asinh":
-            transformed = np.arcsinh(vals * rule.scale)
-        elif transform in ("clip01", "fixed_clip", "passthrough"):
-            transformed = vals
-        else:
-            raise ValueError(f"未知 transform: {transform!r}")
-        if rule.clip is not None:
-            transformed = np.clip(transformed, rule.clip[0], rule.clip[1])
-        transformed = np.where(missing, 0.0, transformed)
-        return np.where(np.isfinite(transformed), transformed, 0.0)
+        finite = ~np.asarray(missing, dtype=bool)
+        return apply_column_rule(vals, finite, rule, close=close, stat=stat)
 
     # ---------- 持久化 ----------
     def save(self, path: str):
@@ -354,14 +349,8 @@ def column_rule(column: str) -> ColumnRule:
         raise ValueError(f"未知特征列: {column!r}，无 ColumnRule") from None
 
 
-def _relative_transform(vals: np.ndarray, close: np.ndarray | None) -> np.ndarray:
-    """P 组相对变换 val/close[t-1]-1；close 缺失或分母非有限/为 0 时该点置 NaN。"""
-    if close is None:
-        return vals
-    prev_close = np.roll(close, 1)
-    prev_close[0] = np.nan
-    safe_prev = np.where(np.isfinite(prev_close) & (prev_close != 0.0), prev_close, np.nan)
-    return vals / safe_prev - 1.0
+# 历史入口：委托 data.transform_kernel（数值逐位一致，close 为空透传）。
+_relative_transform = relative_transform
 
 
 class RelativeScaler:
@@ -387,16 +376,6 @@ class RelativeScaler:
         }
         return PerCodeGroupedScaler.identity_hash_for(payload)
 
-    @staticmethod
-    def _apply_rule(vals: np.ndarray, rule: ColumnRule, close: np.ndarray | None) -> np.ndarray:
-        if rule.transform == "relative":
-            return _relative_transform(vals, close)
-        if rule.transform == "asinh":
-            return np.arcsinh(vals * rule.scale)
-        if rule.transform in ("clip01", "fixed_clip", "passthrough"):
-            return vals
-        raise ValueError(f"未知 transform: {rule.transform!r}")
-
     def transform_code(
         self, code: str, features: np.ndarray, feature_cols: list[str], close: np.ndarray | None = None
     ) -> np.ndarray:
@@ -408,17 +387,11 @@ class RelativeScaler:
             rule = column_rule(column)
             vals = values[:, index]
             missing = ~np.isfinite(vals)
-            vals_t = self._apply_rule(vals, rule, close)
-            if rule.clip is not None:
-                vals_t = np.clip(vals_t, rule.clip[0], rule.clip[1])
-            vals_t = np.where(missing, 0.0, vals_t)
-            vals_t = np.where(np.isfinite(vals_t), vals_t, 0.0)
-            out_cols.append(vals_t)
+            out_cols.append(apply_column_rule(vals, ~missing, rule, close=close))
             if column in _G9_OBSERVATION_SOURCE_SET:
                 row_observed = ~missing
                 observed = row_observed if observed is None else (observed | row_observed)
         out = np.stack(out_cols, axis=1) if out_cols else np.zeros((len(values), 0), dtype=np.float64)
         if self.mask_cols:
-            mask = np.zeros(len(values), dtype=bool) if observed is None else observed
-            out = np.concatenate([out, mask.astype(np.float32).reshape(-1, 1)], axis=1)
+            out = append_shared_mask(out, observed)
         return out.astype(np.float32)

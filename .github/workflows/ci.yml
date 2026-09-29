@@ -1,0 +1,30 @@
+# T16: pytest/CI 最小闭环（cpu + --num_workers 0；--smoke 需本地 parquet，仅本地跑）。
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (ci-only)
+        run: pip install "ruff>=0.15" pytest coverage
+      - name: Ruff (T15 零告警口径)
+        run: ruff check .
+      - name: Pytest 最小门
+        run: >-
+          python -m pytest -q tests/unit/test_ci_gate.py
+          tests/unit/data/test_identity.py tests/unit/data/test_transform_kernel.py
+          tests/unit/training/test_training_preprocessing.py tests/unit/data/test_dataset_cache.py
+      - name: Coverage 下限 50%（收敛三模块）
+        run: >-
+          coverage run -m pytest -q tests/unit/test_ci_gate.py
+          tests/unit/data/test_identity.py tests/unit/data/test_transform_kernel.py
+          tests/unit/training/test_training_preprocessing.py tests/unit/data/test_dataset_cache.py
+          && coverage report --fail-under=50

@@ -2,7 +2,9 @@
 
 谱系（只读依据，不跑训练）：
 - ``exp_ret`` 来自 ``scripts/eval_bins_mapping.py``：``(probs * centers52).sum(-1)``
-  （``centers52 = linspace(-0.255, 0.255, 52)``，pure_reg 模式直接取回归头输出）；
+  （``centers52 = config.defaults.bins_to_centers(BINS)`` 派生，T09 方案A；
+  旧 ``linspace(-0.255,0.255,52)`` 已删，漂移声明见 ``config/defaults.py``；
+  pure_reg 模式直接取回归头输出）；
 - ``true_ret`` 口径为训练标签 ``future_ret``（``data/labels.py``）：
   ``open[t+1+horizon] / open[t+1] - 1``，``horizon = 5`` 与训练 ``HORIZON`` 一致；
 - ``dates``/``codes`` 为逐样本对齐的信号归属日与标的代码。
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import math
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -38,8 +41,9 @@ __all__ = ["LABEL_FORMULA", "PREDICTED_HORIZON", "CnnPredictionAdapter", "Predic
 PREDICTED_HORIZON = 5
 # 标签公式谱系（data.labels._future_ret_open_open 口径，horizon=5）。
 LABEL_FORMULA = "future_ret[t]=open[t+1+horizon]/open[t+1]-1,horizon=5"
-# exp_ret 映射谱系（scripts/eval_bins_mapping.py 口径，可注入字段另见 provenance）。
-EXP_RET_MAPPING = "exp_ret=(probs*centers52).sum(-1),centers52=linspace(-0.255,0.255,52)"
+# exp_ret 映射谱系（T09 方案A：config.defaults.bins_to_centers(BINS) 派生；
+# 旧 linspace(-0.255,0.255,52)已删，新中心为旧向量 1.52 倍线性缩放，排序不变）。
+EXP_RET_MAPPING = "exp_ret=(probs*centers52).sum(-1),centers52=bins_to_centers(BINS),BINS=linspace(-0.38,0.38,51)"
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +75,25 @@ class CnnPredictionAdapter:
         ensure_non_empty_str(eval_script_version, "eval_script_version")
         if epoch is not None and not isinstance(epoch, (int, str)):
             raise TypeError(f"epoch must be an int, str or None, got {epoch!r}")
-        validate_prediction_cache_arrays(dict(cache), "预测缓存")
+        # T10 兼容：历史缓存缺 true_ret（None/缺键）时 warning + None，
+        # 成交路径仍可用；actuals 唯一出口返回空映射，不静默补零。
+        if cache.get("true_ret") is None:
+            for key in ("exp_ret", "dates", "codes"):
+                if key not in cache:
+                    raise ValueError(f"预测缓存 缺少必需键 {[key]}")
+            lengths = {key: len(cache[key]) for key in ("exp_ret", "dates", "codes")}
+            if len(set(lengths.values())) != 1:
+                raise ValueError(f"预测缓存 字段长度不一致: {lengths}")
+            warnings.warn(
+                "预测缓存缺少 'true_ret'（历史缓存），actuals 将返回空映射；"
+                "请用新版 eval 脚本重建以补全真值",
+                UserWarning,
+                stacklevel=2,
+            )
+            true_arr = None
+        else:
+            validate_prediction_cache_arrays(dict(cache), "预测缓存")
+            true_arr = np.asarray(cache["true_ret"], dtype=np.float64)
         self._model_name = model_name
         self._checkpoint = checkpoint
         self._epoch = epoch
@@ -79,7 +101,7 @@ class CnnPredictionAdapter:
         self._eval_script_version = eval_script_version
         self._run_id = checkpoint if epoch is None else f"{checkpoint}#epoch={epoch}"
         self._exp = np.asarray(cache["exp_ret"], dtype=np.float64)
-        self._true = np.asarray(cache["true_ret"], dtype=np.float64)
+        self._true = None if true_arr is None else np.asarray(true_arr, dtype=np.float64)
         self._dates = tuple(pd.Timestamp(day).date() for day in np.asarray(cache["dates"]).tolist())
         self._codes = tuple(self._checked_code(code) for code in np.asarray(cache["codes"]).tolist())
         self._index = self._build_index(self._dates, self._codes)
@@ -174,9 +196,14 @@ class CnnPredictionAdapter:
 
         口径为训练标签 ``future_ret``（``LABEL_FORMULA``，horizon=5）；
         非有限 true_ret 按 ``invalid_true_count`` 计数后剔除。
+        T10 兼容：历史缓存无 true_ret（None）时返回空映射并一次性告警。
         本方法是 true_ret 的唯一出口。
         """
         ensure_calendar_date(trading_date, "trading_date")
+        if self._true is None:
+            self._warn_once("missing_true_ret",
+                            "历史缓存无 true_ret，actuals 返回空映射（不补零）；请重建缓存")
+            return {}
         actuals: dict[str, float] = {}
         for pos in self._index.get(trading_date, ()):
             try:

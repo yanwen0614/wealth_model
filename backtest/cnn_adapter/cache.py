@@ -1,7 +1,13 @@
-"""cnn 预测缓存读写（B01）：校验复用 data.schema，不自立第二套口径。"""
+"""cnn 预测缓存读写（B01）：校验复用 data.schema，不自立第二套口径。
+
+T10 契约：4 字段 {exp_ret,true_ret,dates,codes} 经
+``data.schema.validate_prediction_cache_arrays`` 锁死；历史 npz 缺
+``true_ret`` 兼容读（warning + None，不静默补零）。
+"""
 from __future__ import annotations
 
 import hashlib
+import warnings
 from collections.abc import Mapping
 
 import numpy as np
@@ -31,9 +37,29 @@ def save_prediction_cache(path, exp_ret, true_ret, dates, codes) -> None:
 
 
 def load_prediction_cache(path) -> dict:
-    """读预测缓存 npz；缺键/长度不一致显式 ValueError（旧缓存缺 codes 会提示重建）。"""
+    """读预测缓存 npz；缺键/长度不一致显式 ValueError（旧缓存缺 codes 会提示重建）。
+
+    T10 兼容：历史 npz 缺 ``true_ret`` 时 warning + ``true_ret=None`` 返回
+    （不静默补零；成交路径仍可用，截面评估 actuals 为空）；缺其余三键或
+    三字段长度不一致仍显式 ValueError。
+    """
     with np.load(path, allow_pickle=False) as z:
         arrays = {key: z[key] for key in z.files}
+    if "true_ret" not in arrays:
+        for key in ("exp_ret", "dates", "codes"):
+            if key not in arrays:
+                validate_prediction_cache_arrays(arrays, str(path))
+        lengths = {key: len(arrays[key]) for key in ("exp_ret", "dates", "codes")}
+        if len(set(lengths.values())) != 1:
+            raise ValueError(f"{path} 字段长度不一致: {lengths}")
+        warnings.warn(
+            f"{path} 缺少 'true_ret'（历史缓存），默认 None；"
+            "请用新版 eval_bins_mapping.py 重建以补全真值",
+            UserWarning,
+            stacklevel=2,
+        )
+        return {"exp_ret": arrays["exp_ret"], "true_ret": None,
+                "dates": arrays["dates"], "codes": arrays["codes"]}
     validate_prediction_cache_arrays(arrays, str(path))
     return {key: arrays[key] for key in PREDICTION_CACHE_KEYS}
 

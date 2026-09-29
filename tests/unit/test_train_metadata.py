@@ -15,14 +15,16 @@ from train import build_preprocessing_metadata, configure_preprocessing, parse_a
 
 
 class TestTrainMetadata(unittest.TestCase):
-    def test_default_normalization_is_per_code(self):
+    def test_default_normalization_is_relative(self):
+        # 默认已在 d79c569 切为 relative（E0）；per_code 需显式 --normalize。
         with patch.object(sys, "argv", ["train.py"]):
             args = parse_args()
-        self.assertEqual(args.normalize, "per_code")
+        self.assertEqual(args.normalize, "relative")
         config = make_default_config()
         configure_preprocessing(config, args.normalize)
-        self.assertEqual(config["NORMALIZE"], "per_code")
-        self.assertEqual(config["SCALER_PATH"], "logs/scaler_per_code.pkl")
+        self.assertEqual(config["NORMALIZE"], "relative")
+        self.assertIsNone(config["SCALER_PATH"])
+        self.assertEqual(config["LOG_DIR"], "./logs/relative")
 
     def test_rolling_is_explicit_and_isolated(self):
         with patch.object(sys, "argv", ["train.py", "--normalize", "rolling"]):

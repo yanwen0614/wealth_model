@@ -2,6 +2,10 @@
 
 为什么做：阶段 3 直接切换要求旧引擎默认不可达（沿 quant Q01 模式）；
 历史结果只加标记不删除，报告层可据此拒绝新旧口径静默混合。
+
+显式 opt-in：默认 ``CNN_ALLOW_LEGACY`` 未置时 ``guard_legacy_disabled`` 一律 raise
+``LegacyBacktestDisabledError``；仅当 ``CNN_ALLOW_LEGACY=1`` 时放行旧逻辑回归
+（如 frozen 复现 / 历史报告链），opt-in 后旧引擎会计逻辑逐 bit 一致。
 """
 
 import os
@@ -22,11 +26,21 @@ _LEGACY_OPT_IN_ENV = "CNN_ALLOW_LEGACY"
 
 
 class LegacyBacktestDisabledError(RuntimeError):
-    """旧回测逻辑已被入口切换禁用后仍被调用时抛出。"""
+    """旧回测逻辑已被入口切换禁用后仍被调用时抛出。
+
+    显式 opt-in 通道：置环境变量 ``CNN_ALLOW_LEGACY=1`` 后守卫放行；
+    未置时调用 ``backtest.engine.run_backtest`` / ``run_backtest_target``
+    即抛本异常（caller 透传便于追踪回归出口）。
+    """
 
 
 def guard_legacy_disabled(caller: str) -> None:
-    """旧逻辑入口守卫：无显式 opt-in 时一律拒绝，防回归出口静默执行旧逻辑。"""
+    """旧逻辑入口守卫：无显式 opt-in 时一律拒绝，防回归出口静默执行旧逻辑。
+
+    ``CNN_ALLOW_LEGACY=1`` 时直接返回（放行）；否则 raise
+    ``LegacyBacktestDisabledError``（含 caller 与 opt-in 指引）。
+    旧引擎入口须在参数校验之前首行调用本守卫。
+    """
     if os.environ.get(_LEGACY_OPT_IN_ENV) == "1":
         return
     raise LegacyBacktestDisabledError(

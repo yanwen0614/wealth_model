@@ -8,8 +8,8 @@
 ## 1. 数据与环境
 
 ### 1.1 当前数据契约
-- **源文件**：`/home/starcyan/code/quant/data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet` (3.5G, 11413377 行 × 58 列, 5166 股, 2013-01-04~2025-12-31)
-- **已复制**：`cnn/data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet`（同构，避免跨项目依赖）
+- **源文件**：`data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet`（默认，见 `config/defaults.py:12`；旧 `train_data_v1_20130101-20251231_0faaf8c69c89.parquet` 为历史）(11.4M行 × 58 列, 5166 股)
+- **已复制**：`cnn/data/test/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet`（同构，避免跨项目依赖；`.gitignore` 忽略大 parquet，不入库）
 - **Schema**：`code, kline_time, open/high/low/close/volume/amount/TOT_SHARE, is_trading` + 48 因子（见 `quant/scripts/export_training_data.py:EXPORT_FACTORS`）
   - 29 live(技术/量价) + 19 keep(估值/成长/质量/两融)，含 `gross_margin` 结构性缺席
    - 契约：`is_trading=False` 为合成行（OHLC/因子=NaN, volume/amount=0），训练侧必须过滤。
@@ -27,20 +27,20 @@
 | 旧链路 | 新链路 |
 |--------|--------|
 | `processed_data_train/*.npz`（需手工多进程 `data_processor.py` 生成）| `data/test/train_data/*.parquet` 单文件直读 |
-| 特征 8 维（历史 NPZ 实验）| parquet 原始集合含 48 因子；当前默认输出 `F=53`（52 raw feature `P18+R16+N12+G6` + 1 共享 `g9_observed_mask`），`F=69`（51+18 mask）与 `F=45`（39+6 mask）为历史 schema |
-| 历史 close-close 标签 | 当前 open-open：`open[t+1+horizon]/open[t+1]-1`，horizon=5 |
+| 特征 8 维（历史 NPZ 实验）| parquet 原始集合含 48 因子；当前默认输出 `F=53`（52 raw feature `P18+R16+N12+G6` + 1 共享 `g9_observed_mask`），历史 `F=69`（51+18 mask）与 `F=45`（39+6 mask）为旧 schema——**注意一号两用**：`--cs_rank` 开启时默认输出亦为 `52+1+16=F=69`（16 个 `cs_*` 列旁路归一化追加末尾），与历史 `F=69` 同数不同义；`--mkt_factors` 全开再 `+11=F=80` |
+| 历史 close-close 标签 | 当前 open-open：`open[t+1+horizon]/open[t+1]-1`，horizon=10 |
 | `NPZSequentialDataset` 历史缓存块 | `ParquetDataset` 按 code 分组、滑动窗口、per-code 归一化 |
 
 > 旧 NPZ 训练链路和 close-close 实验只用于历史追溯，不得与当前 parquet/open-open 结果混用。
 
 ### 2.2 核心模块
 - **`data/dataset.py`**：
-  - `ParquetDataConfig`：`seq_len=60, horizon=5, bins=51边界/52类, normalize=per_code（默认，frozen 基线）, scaler_path=logs/scaler_per_code.pkl`；另支持 `--normalize relative`（E0，无状态）与 `--normalize rolling`（E2–E5，`--rolling_scope e0..e5`）
-  - `ParquetDataset`：读取 parquet → 过滤 `is_trading=False` → 按 code 排序 → 计算 open-open future return → per-code 归一化 → 构建窗口索引
+  - `ParquetDataConfig`：`seq_len=60, horizon=10, bins=51边界/52类（linspace(-0.38,0.38,51)）, normalize=relative（默认）, scaler_path=None`；另支持 `--normalize per_code`（E1，落盘 `logs/scaler_per_code.pkl`）与 `--normalize rolling`（E2–E5，`--rolling_scope e0..e5` 默认 `e5`）
+  - `ParquetDataset`：读取 parquet → 过滤 `is_trading=False` → 按 code 排序 → 计算 open-open future return（`open[t+1+horizon]/open[t+1]-1`，horizon=10）→ relative 归一化 → 构建窗口索引
   - `create_dataloaders`：仅训练集 fit scaler 并落盘，验证集复用 `logs/scaler_per_code.pkl`（防泄露），支持时序切分
   - 默认输出：`x [53,60]`，其中 52 个 raw feature（`P→R→N→G` 顺序）加 1 个共享 `g9_observed_mask`；原始 48 因子集合不等于模型输入维度，`close` 已解禁进 P 组（relative 分母 `close[t-1]`）
 - **`train.py`**：新训练入口，兼容 `Trainer` / `EMDLoss` / `LoggerManager`
-  - 时序切分默认：训练 `2013-01-01~2023-12-31` (865万行) / 验证 `2024-01-01~2025-12-31` (245万行)
+  - 时序切分默认：训练 `2013-01-01~2025-06-30` / 验证 `2025-07-01~2025-12-31` / 测试 `2026-01-01~`（见 `config/defaults.py:21-23`）
   - 模型默认：`CNNTransformer(featurenum=53, seq_len=60, num_classes=52, cnn_out_channels=128, d_model=256, nhead=8, layers=4)`；`featurenum` 以 `ParquetDataset.num_features=len(feature_cols_out)` 实测派生为权威
   - 训练：`AdamW(lr=3e-4, wd=1e-5)` + `EMDLoss(p=2, smooth)` + `ReduceLROnPlateau`
 
@@ -80,7 +80,7 @@ frozen/relative 与 rolling 的 state/schema/checkpoint identity 隔离。
 ### 3.1 命令
 ```bash
 uv run --project . python train.py --smoke --num_workers 0
-# 等价于：--max_codes 20 --epochs 1 --batch_size 256 --train 2013-2023 --val 2024-2025
+# 等价于：--max_codes 20 --epochs 1 --batch_size 256（时序切分沿用默认 2013-01-01~2025-06-30 / 2025-07-01~2025-12-31）
 ```
 
 ### 3.2 日志
@@ -103,14 +103,15 @@ print(m(torch.randn(2,53,60)).shape)  # => torch.Size([2,52])
 ### 3.4 标签与回测时序
 
 - 窗口长度为 `T=60`，窗口末日为 T 日决策日。
-- 标签收益为 `open[t+1+horizon]/open[t+1]-1`，默认 `horizon=5`，即 T+1 open 到 T+6 open。
-- `BINS` 有 51 个边界，`np.digitize` 产生 `C=52` 类。
-- 回测使用 T 日预测排序，T+1 open 买入，T+6 open 卖出；标签收益和持仓收益必须保持同一 open-open 口径。
-- **回测费用模型**（rolling 与 target 统一，`backtest/engine.py`）：买入佣金 `max(买额×0.00025, 5 元)`；卖出佣金 `max(卖额×0.00025, 5 元)` + 印花税 `卖额×0.00025`；单笔净收益 `(卖额−卖佣−印花税−买额−买佣)/(买额+买佣)`。`--capital`（默认 100 万）用于折算最低 5 元佣金。旧 `--cost_rate` 已废弃（显式传入仅告警并忽略）。
+- 标签收益为 `open[t+1+horizon]/open[t+1]-1`，默认 `horizon=10`，即 T+1 open 到 T+11 open。
+- `BINS` 有 51 个边界（`linspace(-0.38,0.38,51)`，见 `config/defaults.py:15`），`np.digitize` 产生 `C=52` 类。
+- 回测使用 T 日预测排序，T+1 open 买入，T+11 open 卖出；标签收益和持仓收益必须保持同一 open-open 口径（horizon=10）。
+- **回测费用模型**（adapter 唯一入口 `backtest/cnn_adapter/*`，`backtest/legacy.py` 为历史）：买入佣金 `max(买额×0.00025, 5 元)`；卖出佣金 `max(卖额×0.00025, 5 元)` + 印花税 `卖额×0.00025`；单笔净收益 `(卖额−卖佣−印花税−买额−买佣)/(买额+买佣)`。`--capital`（默认 100 万）用于折算最低 5 元佣金。旧 `--cost_rate` 已废弃（显式传入仅告警并忽略）。
+- `scripts/frozen/*` 为冻结归档（自 `scripts/h10_rolling/*` + `scripts/wf_xgb_cs.py` 迁入，READ ONLY）：生产代码禁 import，复现命令见 `scripts/frozen/README.md`。
 - **回测基准**：大盘指数 close-to-close（`--benchmark_index` 默认 `000300.SH` 沪深300，`--index_dir` 默认 `Z:/test/kline_index/day`）；超额 = 策略 annual − 指数 annual。旧「全截面等权」基准已弃用（`benchmark_nav` 仅测试保留）。
 - **评估范围**：`--topn` 默认 `5 10 20`；target 模式默认 `sell_buffer=500`，可选 `--exit-on-nonpositive`（预测 exp_ret ≤ 0 即卖）。`metrics.json`/打印输出 `avg_cash_ratio`（rolling 恒 0；target 实测）。
 - **target 强买门槛**：`--strong_buy_threshold F`（target 模式）为**绝对预测收益强买门槛**，仅当买入带（`rank <= target_size`）候选 `exp_ret >= F` 才买入；不满足者跳过该槽、**留现金、不补位**。默认 `0.0` = 关闭该规则（行为与不启用前逐位一致），负值由引擎 `raise ValueError`。执行顺序 `strong_buy → 涨停检查`。
-- 训练 scaler fit 后保存为 `logs/scaler_per_code.pkl`，验证集复用该文件，禁止在验证集重新 fit。
+- 训练 scaler fit 后保存为 `logs/scaler_per_code.pkl`（仅 `per_code` 模式；默认 `relative` 无 scaler/state），验证集复用该文件，禁止在验证集重新 fit。
 
 ## 4. 如何运行全量训练
 
@@ -123,7 +124,7 @@ uv run --project . python train.py --max_codes 100 --epochs 5 --batch_size 512 -
 ```bash
 uv run --project . python train.py --epochs 50 --batch_size 256 --num_workers 4
 # 或自定义时序切分
-uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31 --epochs 50
+uv run --project . python train.py --train_start 2013-01-01 --train_end 2025-06-30 --val_start 2025-07-01 --val_end 2025-12-31 --epochs 50
 ```
 
 ### 4.3 仅训练集（无验证集，快速吞吐）
@@ -145,20 +146,20 @@ cnn/
   .python-version # 3.12
   data/
     test/train_data/train_data_v1_*.parquet  # 3.5G 已复制
-    dataset.py  # 新增，核心数据集
+    dataset.py  # 新增，核心数据集（默认 `normalize=relative`，horizon=10）
   train.py  # 新增，直通训练入口
   training/early_stopping.py  # 修复 np.inf
   data/npz_data_load.py  # 修复 dataclass
   logs/
-    scaler_per_code.pkl  # per-code 统计（训练集拟合，验证集复用）
-    run_20260901_012401/  # 冒烟产物
+    scaler_per_code.pkl  # per-code 统计（仅 per_code 模式：训练集拟合，验证集复用；relative 默认无此文件）
+    run_20260901_012401/  # 冒烟产物（历史）
   README_TRAINING_CHAIN.md  # 本文件
 ```
 
 ## 6. 后续建议
 - **全量压测**：明日可跑 `max_codes 500` 进一步验证内存与速度，再切全量
-- **特征选择**：48 是原始因子集合；当前默认输出 `F=53`（52 raw feature `P18+R16+N12+G6` + 1 共享 `g9_observed_mask`），`F=69`（51+18 mask）与 `F=45`（39+6 mask）仅用于历史记录，显式特征选择需单独记录维度
-- **标签 horizon**：默认 5 日，可尝试 10/20 日对比
+- **特征选择**：48 是原始因子集合；当前默认输出 `F=53`（52 raw feature `P18+R16+N12+G6` + 1 共享 `g9_observed_mask`），历史 `F=69`（51+18 mask）与 `F=45`（39+6 mask）仅用于旧记录——**注意一号两用**：`--cs_rank` 开启时默认输出亦为 `52+1+16=F=69`（旁路归一化追加末尾），`--mkt_factors` 全开再 `+11=F=80`，显式特征选择需单独记录维度
+- **标签 horizon**：默认 10 日（`config/defaults.py:20` `HORIZON=10`），可尝试 20 日对比（旧 5 日记录均为历史）
 - **不平衡**：当前 52 类极不均衡（头部类占 <0.1%），可考虑 `class_weights` 或 `HalfClassWeightedCrossEntropy`
-- **scaler 复用**：训练集 fit 后保存 `logs/scaler_per_code.pkl`，验证/推理侧务必复用同一文件
+- **scaler 复用**：`per_code` 模式训练集 fit 后保存 `logs/scaler_per_code.pkl`，验证/推理侧务必复用同一文件（默认 `relative` 无 scaler）
 ```

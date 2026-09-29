@@ -21,30 +21,21 @@ from data.dataset import ParquetDataConfig, ParquetDataset
 from log_manager import LoggerManager
 from training import Trainer
 from training.factory import build_criterion, build_model, build_optimizer_scheduler
+from training.preprocessing import ROLLING_SCOPES
+from training.preprocessing import configure_preprocessing as _configure_preprocessing
 from visualization import Visualizer
 
 BASE_CONFIG = make_default_config(dual_head=True)
 BASE_CONFIG["LAMBDA_JITTER"] = 0.005
-ROLLING_SCOPES = ("e0", "e1", "e2", "e3", "e4", "e5")
 
 
 def configure_preprocessing(cfg: dict, normalize: str, rolling_scope: str) -> None:
-    """镜像 train.py：按 mode/scope 隔离 SCALER_PATH/LOG_DIR（relative 无持久 state）。"""
-    if normalize not in {"per_code", "rolling", "relative"}:
-        raise ValueError(f"未知 normalize: {normalize}")
-    if normalize == "rolling" and rolling_scope not in ROLLING_SCOPES:
-        raise ValueError(f"未知 rolling_scope: {rolling_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
-    cfg["NORMALIZE"] = normalize
-    if normalize == "per_code":
-        cfg["SCALER_PATH"] = "logs/scaler_per_code.pkl"
-        cfg["LOG_DIR"] = "./logs"
-    elif normalize == "rolling":
-        cfg["ROLLING_SCOPE"] = rolling_scope
-        cfg["SCALER_PATH"] = f"logs/rolling_{rolling_scope}/scaler_rolling_{rolling_scope}.pkl"
-        cfg["LOG_DIR"] = f"./logs/rolling_{rolling_scope}"
-    else:  # relative：无统计 state，列规则确定性重建
-        cfg["SCALER_PATH"] = None
-        cfg["LOG_DIR"] = "./logs/relative"
+    """镜像 train.py：按 mode/scope 隔离 SCALER_PATH/LOG_DIR（relative 无持久 state）。
+
+    唯一实现见 `training.preprocessing.configure_preprocessing`；本函数为兼容
+    wrapper，有意保留 `rolling_scope` 必填（禁静默默认，历史 e4 残留显式对齐 e5）。
+    """
+    _configure_preprocessing(cfg, normalize, rolling_scope)
 
 
 
@@ -80,7 +71,7 @@ def parse_args():
     p.add_argument("--no_val", action="store_true", help="不使用验证集")
     p.add_argument("--smoke", action="store_true", help="冒烟模式：max_codes=20, epochs=1")
     p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=BASE_CONFIG["NORMALIZE"],
-                   help="归一化模式；relative 无持久 state，rolling 按 scope 分目录（默认 per_code）")
+                   help="归一化模式；relative 无持久 state，rolling 按 scope 分目录（默认 relative）")
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=BASE_CONFIG["ROLLING_SCOPE"],
                    help="rolling 子集范围 e0..e5（默认 e5；非 rolling 时忽略）")
     p.add_argument("--dual_head", action="store_true", default=True, help=argparse.SUPPRESS)

@@ -2,11 +2,17 @@
 
 数据源无 DB（parquet 直读，cnn 无触库问题）；OHLC 为后复权价、volume/amount
 已是真实股/真实元（导出侧已 ÷100/÷100000 还原，见单位实证注释）。
+
+T10 统一：成交路径唯一生产口径为 parquet 直读（``get_bar``/``get_history``）；
+``ohlc_path`` npz（t_close/open_t1/open_t6）仅历史兼容（``get_ohlc_path`` 查询用），
+传入即 DeprecationWarning；路径表构建单事实源见 ``build_ohlc_path_table``
+（``scripts/build_ohlc_path.py`` 为薄包装转调）。
 """
 from __future__ import annotations
 
 import math
 import os
+import warnings
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -21,7 +27,8 @@ from backtest_core.engine.market_state import MarketState
 
 from backtest.cnn_adapter.cache import validate_ohlc_path_arrays
 
-__all__ = ["AMOUNT_UNIT", "VOLUME_UNIT", "CnnMarketDataProvider", "MarketDataCounters"]
+__all__ = ["AMOUNT_UNIT", "VOLUME_UNIT", "CnnMarketDataProvider", "MarketDataCounters",
+           "build_ohlc_path_table"]
 
 # 单位实证（2026-09-11，train_data_v1_F60_20130101-20260831_26c3db036a26.parquet）：
 # 000001.SZ 2026-08-31 volume=90885655.0 amount=1063281431.47 → amount/volume≈11.7 元，
@@ -134,6 +141,38 @@ def _build_ohlc_index(ohlc_path: str | os.PathLike[str] | Mapping | None,
                    arrays["open_t1"].tolist(), arrays["open_t6"].tolist())}
 
 
+_BUILD_OHLC_COLS = ["code", "kline_time", "open", "close", "is_trading"]
+
+
+def build_ohlc_path_table(parquet: str, val_start: str, val_end: str, horizon: int = 5) -> dict:
+    """从 parquet 直读构建 (code,标签日)->open 路径表（T10 单事实源）。
+
+    与训练标签 open-open 口径一致：``t_close`` 为 T 日 close，
+    ``open_t1`` 为 T+1 open（买入价），``open_t6`` 为 T+1+horizon open
+    （卖出价；horizon=5 即 T+6）；code 内不足 horizon+1 个后续交易日的
+    尾部标签日标 NaN。输出经 ``validate_ohlc_path_arrays`` 校验，
+    行数/日期与 parquet 交易行一致（``is_trading`` 过滤 + 时间裁剪）。
+    """
+    df = pq.read_table(parquet, columns=_BUILD_OHLC_COLS).to_pandas()
+    df = df[df["is_trading"]]
+    df["kline_time"] = pd.to_datetime(df["kline_time"])
+    cal = np.sort(df["kline_time"].unique())
+    end_idx = int(np.searchsorted(cal, np.datetime64(pd.to_datetime(val_end)), side="right"))
+    cutoff = cal[min(end_idx + horizon + 1, len(cal) - 1)]
+    df = df[(df["kline_time"] >= pd.to_datetime(val_start)) & (df["kline_time"] <= pd.Timestamp(cutoff))]
+    df = df.sort_values(["code", "kline_time"]).reset_index(drop=True)
+    grouped = df.groupby("code", sort=False)
+    open_t1 = grouped["open"].shift(-1)
+    open_t6 = grouped["open"].shift(-(1 + horizon))
+    arrays = {"codes": df["code"].to_numpy().astype("U16"),
+              "dates": df["kline_time"].to_numpy().astype("datetime64[D]"),
+              "t_close": df["close"].to_numpy(dtype=np.float64),
+              "open_t1": open_t1.to_numpy(dtype=np.float64),
+              "open_t6": open_t6.to_numpy(dtype=np.float64)}
+    validate_ohlc_path_arrays(arrays, "OHLC 路径表")
+    return arrays
+
+
 def _optional_float(value: Any) -> float | None:
     """标量 → float | None：None/NaN/bool/非数值一律 None。"""
     if value is None or isinstance(value, bool):
@@ -197,6 +236,13 @@ class CnnMarketDataProvider:
         self._end = end
         # cnn 无 history_status 源：ST 名单由调用方注入（默认空，即全部非 ST）
         self._st_codes = frozenset(st_codes) if st_codes is not None else frozenset()
+        if ohlc_path is not None:
+            warnings.warn(
+                "ohlc_path npz 为历史兼容（仅 get_ohlc_path 查询用）；"
+                "成交路径已统一直读 parquet 真实 OHLC，不走路径表",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         # ohlc 路径表构造期即校验（坏表 fail-fast，不等首次查询才暴露）
         self._ohlc_index = _build_ohlc_index(ohlc_path)
         self._codes: dict[str, _CodeCache] = {}

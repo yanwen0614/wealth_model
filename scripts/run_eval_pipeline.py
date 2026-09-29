@@ -71,57 +71,39 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from config.defaults import DEFAULT_BINS, DEFAULT_PARQUET
+from backtest.cnn_adapter.cache import save_prediction_cache, validate_ohlc_path_arrays
+from config.defaults import DEFAULT_BINS, DEFAULT_CENTERS, DEFAULT_PARQUET
 from data.dataset import ParquetDataConfig, ParquetDataset, _RollingDatasetState
 from data.scaler import PerCodeGroupedScaler, RelativeScaler
-from data.schema import validate_prediction_cache_keys
 from models.cnn_transformer.config import ModelConfig
 from models.cnn_transformer.model import CNNTransformer
 from scripts.build_ohlc_path import build_ohlc_path
-from scripts.eval_bins_mapping import (
-    DEFAULT_ROLLING_SCOPE,
-    ROLLING_SCOPES,
-    resolve_eval_featurenum,
-)
+from training.checkpoint import load_model_state
+from training.preprocessing import DEFAULT_ROLLING_SCOPE, ROLLING_SCOPES
+from training.preprocessing import resolve_eval_featurenum as _resolve_eval_featurenum_canonical
+from training.preprocessing import resolve_eval_mode_scope as _resolve_eval_mode_scope_canonical
+from training.preprocessing import resolve_eval_scaler_path as _resolve_eval_scaler_path_canonical
 
-CENTERS52 = np.linspace(-0.255, 0.255, 52)
+# T09 方案A：CENTERS 由 BINS 经 bins_to_centers 派生（旧 linspace(-0.255,0.255,52)
+# 已删；1.52 倍漂移/排序不变声明见 config/defaults.bins_to_centers）。
+CENTERS52 = np.asarray(DEFAULT_CENTERS, dtype=np.float64)
 
-ROLLING_DEFAULT_SCALER_PATH = "logs/rolling_e5/scaler_rolling_e5.pkl"
-PER_CODE_DEFAULT_SCALER_PATH = "logs/scaler_per_code.pkl"
+# ROLLING_DEFAULT/PER_CODE 默认路径唯一源见 training.preprocessing（T08 收敛）。
 
 
 def resolve_eval_mode_scope(run_cfg: dict, cli_scope: str | None = None) -> tuple[str, str | None]:
-    """评估 mode/scope：优先 checkpoint preprocessing，CLI --rolling_scope 仅做一致性校验（异 scope 抛错）。"""
-    metadata = run_cfg.get("preprocessing") or {}
-    mode = metadata.get("mode", "per_code")
-    if mode not in {"relative", "per_code", "rolling"}:
-        raise ValueError(f"checkpoint preprocessing mode 不支持: {mode}")
-    scope = metadata.get("scope")
-    if cli_scope is not None:
-        if cli_scope not in ROLLING_SCOPES:
-            raise ValueError(f"rolling scope 非法: {cli_scope!r}，仅支持 {'/'.join(ROLLING_SCOPES)}")
-        if mode == "rolling" and scope is not None and cli_scope != scope:
-            raise ValueError(f"rolling scope 不匹配：checkpoint={scope!r} vs 请求={cli_scope!r}")
-        if mode == "rolling":
-            scope = cli_scope
-    if mode == "rolling" and scope is None:
-        scope = DEFAULT_ROLLING_SCOPE
-    return mode, scope
+    """评估 mode/scope（唯一实现见 training.preprocessing，保持旧签名兼容）。"""
+    return _resolve_eval_mode_scope_canonical(run_cfg, cli_scope)
 
 
 def resolve_eval_scaler_path(run_cfg: dict, cli_override: str | None = None) -> str | None:
-    """scaler 路径优先级：CLI > preprocessing.state_path/scaler_path/SCALER_PATH > 顶层 SCALER_PATH > 默认。"""
-    if cli_override:
-        return cli_override
-    metadata = run_cfg.get("preprocessing") or {}
-    mode = metadata.get("mode", "per_code")
-    if mode == "relative":
-        return None
-    return (
-        metadata.get("state_path") or metadata.get("scaler_path") or metadata.get("SCALER_PATH")
-        or run_cfg.get("SCALER_PATH")
-        or (ROLLING_DEFAULT_SCALER_PATH if mode == "rolling" else PER_CODE_DEFAULT_SCALER_PATH)
-    )
+    """scaler 路径优先级（唯一实现见 training.preprocessing，保持旧 (run_cfg, cli) 签名）。"""
+    return _resolve_eval_scaler_path_canonical(run_cfg, None, cli_override)
+
+
+def resolve_eval_featurenum(run_cfg: dict, cli_featurenum: int | None = None) -> int:
+    """featurenum 实测派生（唯一实现见 training.preprocessing，保持旧签名兼容）。"""
+    return _resolve_eval_featurenum_canonical(run_cfg, cli_featurenum)
 
 
 def resolve_latest_checkpoint() -> str:
@@ -242,7 +224,7 @@ def run_inference(
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = CNNTransformer(model_cfg).to(device)
-    model.load_state_dict(torch.load(ckpt_path, map_location=device), strict=True)
+    load_model_state(ckpt_path, model, map_location=device, strict=True)  # T14：新 dict/旧裸均兼容
     model.eval()
     print(f"[pipeline] model loaded: {ckpt_path}, featurenum={featurenum}, device={device}")
 
@@ -310,9 +292,12 @@ def run_inference(
     codes = np.concatenate(all_codes)
 
     cache = {"exp_ret": exp_ret, "true_ret": true_ret, "dates": dates, "codes": codes}
-    validate_prediction_cache_keys(cache.keys(), "run_eval_pipeline")
+    # T10 统一写盘：经 adapter cache.save 落盘（内部走
+    # data.schema.validate_prediction_cache_arrays 锁 4 字段），
+    # 与 eval_bins_mapping 产出互相可读。
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    np.savez(out_path, **cache)
+    save_prediction_cache(out_path, cache["exp_ret"], cache["true_ret"],
+                          cache["dates"], cache["codes"])
     print(f"[pipeline] preds cache saved: {out_path} ({len(exp_ret):,} samples)")
 
 
@@ -367,7 +352,11 @@ def main():
         )
 
     if not args.preds_only:
+        # T10 统一：OHLC 经 adapter market 单事实源直读 parquet 构建
+        #（build_ohlc_path 为 market.build_ohlc_path_table 薄包装），
+        # 落盘前经 validate_ohlc_path_arrays 校验，行数/日期与 parquet 一致。
         ohlc = build_ohlc_path(parquet, start, end, horizon=5)
+        validate_ohlc_path_arrays(ohlc, ohlc_out)
         os.makedirs(os.path.dirname(os.path.abspath(ohlc_out)), exist_ok=True)
         np.savez(ohlc_out, **ohlc)
         print(f"[pipeline] ohlc path saved: {ohlc_out} ({len(ohlc['codes']):,} rows)")

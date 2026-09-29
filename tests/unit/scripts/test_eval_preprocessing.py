@@ -64,7 +64,9 @@ class _EvalStateMixin:
 class TestLoadEvalPreprocessing(_EvalStateMixin, unittest.TestCase):
     def test_old_config_defaults_to_per_code(self):
         checkpoint = _checkpoint({"CNNTransformerConfig": {"featurenum": 53}})
-        result = evaluation.load_eval_preprocessing(checkpoint)
+        # hermetic：不依赖工作区真实 logs/scaler_per_code.pkl（v3 旧产物 v4 拒绝加载）
+        with patch.object(evaluation, "resolve_scaler_path", return_value=None):
+            result = evaluation.load_eval_preprocessing(checkpoint)
         self.assertEqual(result.mode, "per_code")
 
     def test_invalid_mode_raises(self):

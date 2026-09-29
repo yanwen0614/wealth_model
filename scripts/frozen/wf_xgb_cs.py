@@ -1,7 +1,7 @@
 """Walk-forward XGB截面回归：年频 × 固定近5年窗口（用户定稿）。
 每折只用决策日前5年拟合X3（device=cuda），预测下一年；
 防泄露断言max(train)<min(pred)；产物落logs/wf_annual_fixed5y/。
-用法：python -m scripts.wf_xgb_cs --dry_run / （实跑）--out_dir logs/wf_annual_fixed5y
+用法：python -m scripts.frozen.wf_xgb_cs --dry_run / （实跑）--out_dir logs/wf_annual_fixed5y
 """
 from __future__ import annotations
 

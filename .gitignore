@@ -6,11 +6,17 @@ data.ipynb
 *.parquet
 *.pyc
 # 产物堆：logs/ 下仅 logs/KEEP/baseline/ 入库（编目见 docs/archive/logs_manifest.csv）；
+# T18 立约：scaler 运行期产物（logs/scaler*.pkl、logs/*.pkl/json）一律忽略不入库，
+# 冒烟/训练 run_* 默认忽略，需留存手动归位 logs/KEEP/baseline/；KEEP 永不自动删。
 # paper_jkx/ 全程 untracked，其 logs 双保险忽略
 logs/*
 !logs/KEEP/
 logs/KEEP/*
 !logs/KEEP/baseline/
+!logs/KEEP/baseline/*.pth
+!logs/KEEP/baseline/*.json
+logs/scaler*.pkl
+logs/*.pkl
 paper_jkx/logs/
 .ipynb_checkpoints/
 /dataset/

@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import gc
-import hashlib
 import json
 import os
 import shutil
@@ -26,6 +25,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from data.identity import canonical_hash
 
 CACHE_FORMAT_VERSION = "v3_relative_groups"
 
@@ -53,10 +54,8 @@ def _open_shared_mmap(path: str) -> np.ndarray:
 
 
 def _canonical_digest(payload: Any) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    """旧入口保留：委托 data.identity.canonical_hash（digest 逐位一致）。"""
+    return canonical_hash(payload)
 
 
 def resolve_cache_root(cache_dir: str | None = None) -> Path:

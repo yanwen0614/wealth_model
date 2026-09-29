@@ -1,8 +1,9 @@
 import logging
 
 import numpy as np
-import torch
-from torch import nn
+from torch import nn, optim
+
+from .checkpoint import save_checkpoint as _save_checkpoint_dict
 
 
 class EarlyStopping:
@@ -27,18 +28,23 @@ class EarlyStopping:
         self.delta = delta
         self.path = path
 
-    def __call__(self, val_loss: float, model: nn.Module):
+    def __call__(self, val_loss: float, model: nn.Module,
+                 optimizer: optim.Optimizer | None = None,
+                 scheduler: object | None = None,
+                 epoch: int | None = None,
+                 config: dict | None = None):
         """
         检查是否需要早停
         
         参数:
             val_loss: 当前验证损失
             model: 待保存的模型
+            optimizer/scheduler/epoch/config: T14 续训字段（全可选，缺省只存模型）
         """
         score = -val_loss
         if self.best_score is None:
             self.best_score = score
-            self.save_checkpoint(val_loss, model)
+            self.save_checkpoint(val_loss, model, optimizer, scheduler, epoch, config)
         elif score < self.best_score + self.delta:
             self.counter += 1
             if self.verbose:
@@ -50,12 +56,16 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model)
+            self.save_checkpoint(val_loss, model, optimizer, scheduler, epoch, config)
             self.counter = 0
 
-    def save_checkpoint(self, val_loss: float, model: nn.Module):
+    def save_checkpoint(self, val_loss: float, model: nn.Module,
+                        optimizer: optim.Optimizer | None = None,
+                        scheduler: object | None = None,
+                        epoch: int | None = None,
+                        config: dict | None = None):
         """
-        保存模型检查点
+        保存模型检查点（T14 dict 格式；旧调用 ``save_checkpoint(loss, model)`` 仍可用）
         
         参数:
             val_loss: 当前验证损失
@@ -64,7 +74,7 @@ class EarlyStopping:
         if self.verbose:
             logger = logging.getLogger(__name__)
             logger.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}). Saving model...')
-        torch.save(model.state_dict(), self.path)
+        _save_checkpoint_dict(self.path, model, optimizer, scheduler, epoch, config)
         self.val_loss_min = val_loss
 
 
