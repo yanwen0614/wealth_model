@@ -232,8 +232,8 @@ class TestCacheKeyIsolation(_DatasetCacheTestCase):
 class TestValidationScalerRedLine(_DatasetCacheTestCase):
     def test_cache_hit_still_requires_and_validates_scaler(self):
         root = Path(self._cache_dir("val_redline"))
-        train = ParquetDataset(self._config(cache_enabled=True, cache_dir=str(root)))
-        val_cfg = self._config(role="validation", cache_enabled=True, cache_dir=str(root))
+        train = ParquetDataset(self._config(normalize="per_code", cache_enabled=True, cache_dir=str(root)))
+        val_cfg = self._config(role="validation", normalize="per_code", cache_enabled=True, cache_dir=str(root))
         # 首次构造 validation 走 miss 并落盘
         val_first = ParquetDataset(val_cfg, train.scaler_stats)
         self.assertGreater(len(val_first), 0)
@@ -255,7 +255,7 @@ class TestValidationScalerRedLine(_DatasetCacheTestCase):
 
 class TestTrainingHitRequiresScaler(_DatasetCacheTestCase):
     def test_training_hit_without_scaler_raises(self):
-        cfg = self._config(cache_enabled=True, cache_dir=self._cache_dir("train_no_scaler"))
+        cfg = self._config(normalize="per_code", cache_enabled=True, cache_dir=self._cache_dir("train_no_scaler"))
         ParquetDataset(cfg)  # 首次 miss 现场拟合并落盘
         with self.assertRaisesRegex(ValueError, "scaler_path"):
             ParquetDataset(cfg)  # 二次命中但没有可用 scaler，必须显式失败
@@ -263,7 +263,7 @@ class TestTrainingHitRequiresScaler(_DatasetCacheTestCase):
     def test_training_hit_with_scaler_path_loads(self):
         scaler_path = os.path.join(self.tmpdir, "hit_scaler.pkl")
         cfg = self._config(
-            cache_enabled=True, cache_dir=self._cache_dir("train_with_scaler"), scaler_path=scaler_path
+            normalize="per_code", cache_enabled=True, cache_dir=self._cache_dir("train_with_scaler"), scaler_path=scaler_path
         )
         first = ParquetDataset(cfg)  # miss：拟合后保存 scaler
         self.assertTrue(os.path.exists(scaler_path))

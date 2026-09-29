@@ -1,6 +1,6 @@
 # data/ — Parquet 入口与 Per-Code 归一化
 
-- `ParquetDataConfig.normalize` 默认 `"per_code"`；归一化事实源：`data/schema.py` `FEATURE_GROUPS{P:18,R:16,N:12,G:6}` + `data/scaler.py` `COLUMN_RULES`/`RelativeScaler`（E0）/`PerCodeGroupedScaler`（E1）+ `data/rolling_scaler.py` `RollingNormalizer`（E2–E5）。`relative`/`rolling` 需显式 `--normalize`，rolling scope `e0..e5`（默认 `e5`）。
+- `ParquetDataConfig.normalize` 默认 `"relative"`；归一化事实源：`data/schema.py` `FEATURE_GROUPS{P:18,R:16,N:12,G:6}` + `data/scaler.py` `COLUMN_RULES`/`RelativeScaler`（E0）/`PerCodeGroupedScaler`（E1）+ `data/rolling_scaler.py` `RollingNormalizer`（E2–E5）。`per_code`/`rolling` 需显式 `--normalize`，rolling scope `e0..e5`（默认 `e5`）。
 - 当前默认输出为 **52 个 raw feature（`P18+R16+N12+G6`）+ 1 个共享 `g9_observed_mask` = `F=53`**（列序 `[P→R→N→G→mask]`）；`F=69`（51+18 mask）与 `F=45`（39+6 mask）是**历史** schema。`close` 已解禁进 P 组（relative 分母 `close[t-1]`）；改特征时传 `feature_cols` 显式列表，别改 `EXPORT_FACTORS`。
 - 归一化必须时序防泄露：训练集 `fit` 并 `save logs/scaler_per_code.pkl`（`SCALER_VERSION="v4_per_code"`，仅 P 组有统计量），验证集传 `scaler_stats` 复用、严禁重 fit；`relative` 无状态、`rolling` 复用训练 rolling state。`is_trading=False` 必须过滤。
 - 调试：`uv run --project . python -m data.dataset --max_codes 10 --normalize per_code` 会打标签分布并校验 `save/load` 一致性。

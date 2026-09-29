@@ -205,7 +205,7 @@ class TestRollingNormalization(unittest.TestCase):
                 ), scaler_stats=train.scaler_stats)
 
     def test_default_normalize_remains_frozen(self):
-        self.assertEqual(ParquetDataConfig().normalize, "per_code")
+        self.assertEqual(ParquetDataConfig().normalize, "relative")
 
     def test_default_dataset_uses_frozen_scaler_path(self):
         frame = _dataset_frame(150)
@@ -214,7 +214,7 @@ class TestRollingNormalization(unittest.TestCase):
                 parquet_path=path, seq_len=10, horizon=2,
                 feature_cols=["open", "high", "low"], num_workers=0,
             ))
-        self.assertEqual(ds.config.normalize, "per_code")
+        self.assertEqual(ds.config.normalize, "relative")
         rolling.assert_not_called()
 
     def test_training_fits_one_fallback_and_validation_reuses_it(self):
@@ -432,7 +432,7 @@ class TestDatasetScope(unittest.TestCase):
         frame = _dataset_frame(150)
         with _parquet(frame) as path:
             ds = ParquetDataset(ParquetDataConfig(
-                parquet_path=path, seq_len=10, horizon=2,
+                parquet_path=path, seq_len=10, horizon=2, normalize="per_code",
                 rolling_scope="e2", feature_cols=["open", "high", "low"], num_workers=0,
             ))
         self.assertEqual(ds.config.normalize, "per_code")
