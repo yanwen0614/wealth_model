@@ -28,7 +28,7 @@ def main():
         a.max_codes = None
     df = pd.read_parquet(a.parquet, columns=["code", "kline_time", "open",
                                               "high", "low", "close", "volume",
-                                              "is_trading", "ma_20", "ma_60",
+                                              "is_trading", "ma_5", "ma_20", "ma_60",
                                               "volume_ratio_5d", "macd"])
     index = build_index(df, a.n_days, a.horizon, a.max_codes,
                         start_date=a.test_start, end_date=a.test_end,

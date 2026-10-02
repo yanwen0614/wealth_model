@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from .imaging import render_plus
+from .imaging import SHAPES, render_plus
 
 # 成图 v2 叠加特征:长均线进价格区,量比+macd 进振荡器条(缺列时填 NaN 留空)
 EXTRA_COLS = ("ma_20", "ma_60", "volume_ratio_5d", "macd")
@@ -90,11 +90,14 @@ def build_index(df, n_days=5, horizon=5, max_codes=None, end_date=None,
         o = g["open"].to_numpy(np.float64)
         close = g["close"].to_numpy(np.float64)
         man = pd.Series(close).rolling(n_days, min_periods=1).mean().to_numpy()
+        # 列序: 0 open/1 high/2 low/3 close/4 vol/5 ma_n/6 ma_20/7 ma_60/
+        #       8 vol_ratio/9 macd/10 ma_5(新增, I30-color 用)
         arr = np.stack([o, g["high"].to_numpy(np.float64),
                         g["low"].to_numpy(np.float64), close,
                         g["volume"].to_numpy(np.float64), man,
                         _f64(g, "ma_20"), _f64(g, "ma_60"),
                         _f64(g, "volume_ratio_5d"), _f64(g, "macd"),
+                        _f64(g, "ma_5"),
                         ], axis=1).astype(np.float32)
         store[code], cpos[code] = arr, pos
         ds = g["kline_time"].to_numpy()
@@ -110,7 +113,8 @@ def build_index(df, n_days=5, horizon=5, max_codes=None, end_date=None,
     return {"store": store, "codes": codes_out, "idx": np.array(idx, dtype=np.int64),
             "y": np.array(y, dtype=np.int64),
             "rets": np.array(rets, dtype=np.float64),
-            "dates": np.array(dates), "n_days": n_days}
+            "dates": np.array(dates), "n_days": n_days,
+            "rgb": SHAPES[n_days][2] == 3}
 
 
 class LazyImageDataset:
@@ -126,6 +130,7 @@ class LazyImageDataset:
         return len(self.index["idx"])
 
     def __getitem__(self, i):
+        import numpy as np
         import torch
 
         pos, t = (int(x) for x in self.index["idx"][i])
@@ -133,6 +138,15 @@ class LazyImageDataset:
         n = self.index["n_days"]
         s = t - n + 1
         arr = self.index["store"][code][s:t + 1]
+        if self.index.get("rgb"):
+            from .imaging import render_i30_rgb
+
+            img = render_i30_rgb(arr[:, 0], arr[:, 1], arr[:, 2], arr[:, 3],
+                                 arr[:, 4], arr[:, 10], arr[:, 6], arr[:, 7],
+                                 arr[:, 8], arr[:, 9])
+            x = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1)))
+            return x.float() / 255.0, torch.tensor(int(self.index["y"][i]),
+                                                   dtype=torch.long)
         img = render_plus(arr[:, 0], arr[:, 1], arr[:, 2], arr[:, 3], arr[:, 4],
                           [arr[:, 5], arr[:, 6], arr[:, 7]], arr[:, 8], arr[:, 9],
                           n_days=n)
