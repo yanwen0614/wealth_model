@@ -14,6 +14,7 @@
 * `data_contract_F53_H10_adapter.md`：数据契约代码实情裁决。
 * `main_2015-2026_prereg_A.md`：主链路冻结A（`ses_f43d`）。
 * `paper_jkx_2024-2026_seven_routes.md`：论文轨七路收口（`ses_f388`）。
+* `prediction_target_and_tree_2026.md`：预测目标（α/m、损失对照、RankIC 早停、择时否定）+ 树模型重建与同口径验证（2026-10）。
 * `logs_manifest.csv`：`logs/`340项编目（KEEP 76 / DELETE 264）。
 
 ## 红线

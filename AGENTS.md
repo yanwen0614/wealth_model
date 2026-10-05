@@ -79,4 +79,5 @@ uv run ruff check .   # 零告警；规则见 pyproject.toml [tool.ruff.lint] se
 - 回测唯一入口 `backtest/cnn_adapter/*`（`585a533` 确立），`backtest/legacy.py` 为历史；`../backtest-core` 为本地 editable 依赖。
 - `scripts/frozen/*` 为冻结归档（自 `scripts/h10_rolling/*` + `scripts/wf_xgb_cs.py` 经 `git mv` 迁入，READ ONLY）：生产代码禁 import，复现命令见 `scripts/frozen/README.md`。
 - `paper_jkx/` 2026-09-28 起源码入库（`logs/` 产物仍忽略），结论见 `docs/archive/paper_jkx_2024-2026_seven_routes.md`；主链路冻结A见 `docs/archive/main_2015-2026_prereg_A.md`。
+- 预测目标与树模型收口（2026-10）见 `docs/archive/prediction_target_and_tree_2026.md`：信号为 α（截面相对），损失对照证明截面目标只提 IC 不提 top-N 绝对收益，早停应用 RankIC，择时样本外无效；树模型（16 截面 rank GBDT）同口径排序领先主模型 +25~55% 但 rolling 更差、不宜直接转产。
 - 2026-01~08 属烧掉样本，新规则不得用其验收；干净考试只认 2026-09 后新数据。
