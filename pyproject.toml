@@ -21,7 +21,7 @@ dependencies = [
     # 工具
     "tqdm>=4.67",
     "xgboost>=3.4.1",
-    # 回测核心（本地路径依赖，见 [tool.uv.sources]；quant/cnn/goal 共享）
+    # 回测核心（wheels/ 内 committed wheel，对标 quant-dev；升级需 bump+build+lock，见 backtest-core AGENTS.md）
     "backtest-core",
 ]
 
@@ -90,9 +90,9 @@ torchvision = [
     { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
     { index = "pytorch-cu126", marker = "sys_platform == 'linux'" },
 ]
-amazingdata = { path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" }
-tgw = { path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" }
-backtest-core = { path = "../backtest-core", editable = true }
+amazingdata = { path = "wheels/AmazingData-1.1.8-cp312-none-any.whl" }
+tgw = { path = "wheels/tgw-1.0.8.7-py3-none-any.whl" }
+backtest-core = { path = "wheels/backtest_core-0.1.0-py3-none-any.whl" }
 
 [dependency-groups]
 dev = [
