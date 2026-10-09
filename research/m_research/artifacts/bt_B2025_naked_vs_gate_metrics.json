@@ -1,0 +1,60 @@
+{
+  "engine": "cnn_adapter",
+  "mode": "target-adapter",
+  "note": "adapter 口径 target：parquet 直读真实 OHLC（停牌 None 语义），不走 ohlc 路径表；目标持仓模式：买入带 rank<=target_size，卖出带 rank>target_size+sell_buffer（或 exit_on_nonpositive 时 exp_ret<=exit_threshold）；strong_buy_threshold>0 时买入带内 exp_ret<阈值跳过留现金不补位（0.0 关闭）；min_edge>0 时买入带尾部（默认后30%）内 exp_ret<阈值跳过留现金不补位（0.0 关闭）；逐笔 A 股费用（买/卖佣金万2min5 + 卖出印花税万5 + 过户费万1双边）；基准为大盘指数 close-to-close（不收费率）。",
+  "eval_script_version": "scripts/run_backtest@n01",
+  "capital": 1000000.0,
+  "buy_rate": 0.0002,
+  "sell_rate": 0.0002,
+  "stamp_rate": 0.0005,
+  "transfer_rate": 1e-05,
+  "min_commission": 5.0,
+  "index": "EQW.PROXY",
+  "target_size": 200,
+  "sell_buffer": 500,
+  "exit_on_nonpositive": true,
+  "exit_threshold": 0.0,
+  "strong_buy_threshold": 0.0,
+  "min_edge": 0.0,
+  "min_edge_tail_ratio": 0.3,
+  "models": {
+    "preds_fullB_2025": {
+      "target": {
+        "total_return": 0.40514707318499843,
+        "annualized_return": 0.42590010620419716,
+        "volatility": 0.16364369534041626,
+        "sharpe": 2.13146881267832,
+        "max_drawdown": 0.12391442947077425,
+        "win_rate": 0.5905172413793104,
+        "turnover": 9.491028657989855,
+        "final_nav": 1405147.0731849985,
+        "config_hash": "505b87089e97fd5f471c411d65e7c5855286dca4",
+        "data_fingerprint": "e9e7bc8a5d6ec25fad440a8e0fab51644f5143b8",
+        "excess_annual": 0.032805982830679925
+      }
+    },
+    "preds_B2025_xgbgate": {
+      "target": {
+        "total_return": 0.06920810866500116,
+        "annualized_return": 0.0722965942575926,
+        "volatility": 0.1606826868338414,
+        "sharpe": 0.3939521662023878,
+        "max_drawdown": 0.12251067893351414,
+        "win_rate": 0.46120689655172414,
+        "turnover": 40.13820871457965,
+        "final_nav": 1069208.108665001,
+        "config_hash": "505b87089e97fd5f471c411d65e7c5855286dca4",
+        "data_fingerprint": "31812fbd64a5a27bb5f4e655eddb2b2e76bd448f",
+        "excess_annual": -0.32079752911592463
+      }
+    }
+  },
+  "benchmark": {
+    "index": "EQW.PROXY",
+    "annual": 0.39309412337351723,
+    "sharpe": 1.637588040070187,
+    "mdd": 0.16355610097179263,
+    "win_rate": 0.6060606060606061,
+    "final_nav": 1.3551335218151053
+  }
+}
