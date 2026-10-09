@@ -1,0 +1,53 @@
+{
+  "meta": "paper-only:long-short topN-bottomN等权,true_ret计价,m_t剥离;不计费;不是回测收益;run_backtest仅long-only故无空头引擎对照;波动IC显著不 reinterpret为方向可用",
+  "rows": {
+    "hgb_open": {
+      "n_days": 154,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.02708297394788898,
+      "mean_xs_std": 0.07213787290872511
+    },
+    "hgb_open_v": {
+      "n_days": 243,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.02159541937931323,
+      "mean_xs_std": 0.061373905559935334
+    },
+    "xgb_open": {
+      "n_days": 154,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.02708297394788898,
+      "mean_xs_std": 0.07213787290872511
+    },
+    "xgb_open_v": {
+      "n_days": 243,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.02159541937931323,
+      "mean_xs_std": 0.061373905559935334
+    },
+    "A": {
+      "n_days": 149,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.03786443911382792,
+      "mean_xs_std": 0.10403073354292344
+    },
+    "A_v": {
+      "n_days": 232,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.031650887927767365,
+      "mean_xs_std": 0.08770261699246137
+    },
+    "B": {
+      "n_days": 149,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.03786443911382792,
+      "mean_xs_std": 0.10403073354292344
+    },
+    "B_v": {
+      "n_days": 232,
+      "ic_identity_maxdiff": 0.0,
+      "mean_abs_mt": 0.031650887927767365,
+      "mean_xs_std": 0.08770261699246137
+    }
+  }
+}
