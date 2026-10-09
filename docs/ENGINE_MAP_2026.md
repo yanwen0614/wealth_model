@@ -39,20 +39,12 @@
   IC+0.18显著、双塔证伪+预注册§5）、`logs/tree_verify/REPORT.md`、
   `logs/tree_rebuild/SUMMARY.md`、`paper_jkx/{README,STATE_FREEZE}`（已停止）。
 
-## 4. 实验治理（2026-10-09，本次落定）
+## 4. 实验治理（注册表为准，此处只留规则）
 
-| 实验 | 入库位置 | TEMP源 | 大产物去向 |
-|---|---|---|---|
-| m_t可预测+双塔 | `research/m_research/`（已在`7329176`） | `%TEMP%/m_research/m*.py,dt_*.py` | npz~206MB留TEMP+`logs/m_research/` |
-| 涨精确第一批 | `research/precision/` | `precision_batch1.py` | `precision_*.json`入库，大npz不入库 |
-| α/m归因 | `research/alpha_attribution/` | `alpha_m.py`+`alpha_m_summary.py` | `alpha_m_*.json`入库 |
-| 统一重算+bootstrap | `research/unified_recalc/` | `s1_unified.py,s2_boot.py` | `unified_ic,boot_*.json/csv`入库 |
-| 市场中性纸面 | `research/market_neutral/` | `s3_neutral.py` | `ls_spread,alpha_attr.json`入库 |
-
-规则：脚本+小json/csv入库；`*.npz/parquet/pth`一律不入库（`.gitignore`
-已忽略`*.parquet/*.npy/logs/*`，npz大文件同样禁止）；`research/goal`、
-`research/precision`、`research/alpha_attribution`、`research/unified_recalc`、
-`research/market_neutral`与`scripts/frozen`为只读快照（ruff exclude），生产禁import；`__pycache__`不入库。
+> 明细（总表/结论/待验收队列/TEMP草稿政策）见 `research/README.md`，
+> 此处不重复贴表，结论以注册表为准。
+> 规则：脚本+小json/csv入库；`*.npz/parquet/pth`一律不入库；各研究目录与
+> `scripts/frozen`为只读快照（ruff exclude），生产禁import；`__pycache__`不入库。
 
 ## 5. 产物资产（`logs/`不入库，指针在此）
 
@@ -65,10 +57,8 @@
   树-B不显著，spread全不显著；IC恒等maxdiff 0）。
 - KEEP：`logs/KEEP/`唯一有效存档，`run_*`轮转（保留10/2GiB，dry-run先列清单）。
 
-## 6. 最终结论（深审收窄后）
+## 6. 最终结论
 
-排序树胜A显著、与B相当；收益排序优势变不了钱（spread CI全含0，
-NAV 1.002~1.015噪声）；m方向/幅度关门（AUC 0.50~0.55 CI含0.5，
-引擎-35pp，双塔-42pp），只留波动风控气窗（IC+0.18显著【未验证引擎】）。
-精确VAL 0.59→0.63~0.64可买（容量6~13%），2026全塌不跨regime。
-下一步：市场中性纸面已验证开口，波动预注册等2026-09后干净样本一次性验收。
+> 结论只写 `research/README.md` 总表一份，此处只留一句话：
+> 排序树胜A显著、与B相当但变不了钱；m方向/幅度关门，只留波动风控气窗；
+> 精确VAL可买、2026不跨regime；下一步等2026-09后干净样本一次性验收。
