@@ -1,69 +1,12 @@
-[2026-09-03 11:13] 归一化总基调定为 per-code（推翻全局z-score）；剔除 G6估值/G7成长 入训特征为 39+6mask=45；标签沿用 close[t+5]/close[t]-1 原逻辑
-[2026-09-08 17:20] Hardened per-code feature pipeline with v3 scaler identity and feature lists
-[2026-09-12 23:18] E1-E4 对照实验在 RTX3070 以 psmux 会话 cnn_e1e4 后台串行启动，实测 ~12.8 it/s
-[2026-09-13 10:18] T05 修复 _FeatureView 重复 mmap(1455) 并启动 E1-E4 实验链(num_workers=2, patience=5)
-[2026-09-13 10:31] 诊断 GPU 未打满：每步 ~868 kernel launch 造成 ~62ms 固定 CPU 开销，放大 batch 线性加速；torch.compile 因缺 functorch/triton 不可用
-[2026-09-13 10:39] 采用 batch=1024 加速（GPU 91%、epoch 12:40、≈3.4x），重启 E1-E4 链；compile/channels_last/batch_first 均判定不可用或无收益
-[2026-09-13 14:04] 向量化 rolling _rolling_column（commit 0a22d1f，69-72x）；E2 建缓存从估算 4.4h 降到 ~15min，多进程不需要
-[2026-09-13 18:39] E1-E4 全部完成：per_code vs rolling e2/e3/e4，val loss E4 最低(0.0563)，所有臂均在 epoch1 达最优并早停
-[2026-09-13 19:14] E1-E4 截面分析与 rolling 回测完成：截面 IC E2/E4 弱正，回测仅 E1 Top5 正超额
-[2026-09-13 20:52] 实现 context warmup（标签日 95→154）；重跑 E1-E4 评估与回测，E1 Top5 由 +18% 翻转为 -43%，全部跑输基准
-[2026-09-14 00:05] T01 redsign: data/schema.py 引入 FEATURE_GROUPS(P/R/N/G)+52列+shared g9_observed_mask，新增 test_schema_groups.py 并同步旧测试为 52/1
-[2026-09-14 00:14] T02 redesign: ColumnRule registry + RelativeScaler (E0) 纯增量落地 data/scaler.py，16 项单测绿
-[2026-09-14 00:27] T03 完成：PerCodeGroupedScaler 重构为 v4（ColumnRule 路由 + P 静态 robust + 1 shared mask + 未知列 raise），18+6 测试绿，dataset/rolling 未动
-[2026-09-14 00:51] T04（redesign）rolling 重构：scope e0..e5 + G9 shared mask 修复 + close 解禁，39 单测全绿
-[2026-09-14 01:17] T06（redesign）train/CLI+metadata 落地：scope e0..e5、relative 分支、feature_cols/featurenum 实测派生、config.json 含 feature_cols_out；config/defaults e5/53；测试全绿
-[2026-09-14 02:01] T07 评估脚本层适配完成（relative / scope e0..e5 / featurenum 实测派生），test_eval_preprocessing 28 项全绿
-[2026-09-14 02:41] 整体 review 修复：dataset 默认 parquet 改 F60、relative digest 纳入 mask、_relative_transform inf 边界、默认 LR 3e-4
-[2026-09-14 21:54] redesign T01-T09 + 整体 review 完成并提交 178f24e；E0/E1/E2 训练与评估完成（E2 RankIC 0.0415 最优），E3-E5 后台训练中
-[2026-09-14 21:56] E0-E5 redesign 六臂训练+评估完成：E3 最优（RankIC 0.0441, top100 +16.61%）；提交 475391c
-[2026-09-14 22:46] 完成三种评估口径（rolling/target/逐日TopN）对账，确认无bug，根因为涨停不可买样本+尾部未到期样本污染直接法
-[2026-09-14 23:49] 回测口径三项修订：benchmark_index_nav 大盘指数基准、avg_cash_ratio 平均现金仓位、--topn 默认 [5,10,20]（TDD 57 tests OK）
-[2026-09-14 23:58] 文档+记忆同步：回测口径升级（A股费用模型/指数基准/小TopN/avg_cash_ratio），commit 4073bad
-[2026-09-15 00:59] add-strong-buy-gate 完成（强买门槛）+ E0-E5 综合结论：E0 relative 最稳
-[2026-09-16 01:46] E0 (relative) 设为 baseline：config.defaults NORMALIZE=relative, SCALER_PATH=None; dataset.py 默认 normalize=relative
-[2026-09-20 15:31] 建立 scripts/eval_three_way.py 严格三分评估规范：val/test 对比 + 阈值样本外校准，发现 val 达不到 75% precision（顶格 57.8%）
-[2026-09-20 15:34] 新增 label_mode=excess 截面超额收益标签选项（默认 absolute 不变），含纯函数、dataset 应用、缓存 key 隔离与单测
-[2026-09-20 16:04] 特征/截面特征研究：单特征 IC、冗余簇、截面 rank 原型（Ridge/GBDT RankIC 0.08-0.09 vs DL 0.025-0.046），报告 logs/ic_analysis/REPORT.md
-[2026-09-20 16:30] 新增 cs_rank 逐日全市场截面 rank 特征（可选默认关，旁路归一化追加 F=69）
-[2026-09-20 17:09] 完成 GBDT 截面 rank 生产模型（logs/gbdt_cs）：严格三分 test RankIC 0.075、阈值样本外 precision 0.547，确认 75% 胜率不可达
-[2026-09-20 17:47] 市场择时研究：test top10 股票级胜率诚实上限 ~0.47，无法达 75%；市场方向不可预测（AUC≈0.5），val→test 过滤器不可迁移
-[2026-09-20 19:24] 完成散户模型全链路研究：GBDT截面rank+target动态退出回测(test +40.6%/Sharpe1.45, val +58.5%)，修复引擎隐性杠杆bug，确定"75%单票胜率"不可达(天花板52-58%)
-[2026-09-20 20:18] 集成/共识/组合策略研究（logs/ensemble/）：集成与 stacking 不如 clf 单信号，单纯共识天花板 0.544；clf 共识+宽度过滤(test)单票胜率 0.5904，四段稳定 0.55-0.61；DL 无 val 覆盖且 2026 失效，不可用
-- [2026-09-20] 多周期×多标签扫描（logs/horizon_target/）：H20/H5 rank 目标把 test 单票 top10 胜率做到 ~0.55（超额 +6~7pp，两半年稳定）；H60 表面 0.58 系重叠窗口假象不可信；75% 仍不可达（样本外最高 0.6557）。
-[2026-09-20 22:06] 特征工程实验复现并新增胜率发现：base16+7动量 GBDT 集成冻结阈值 test 胜率 0.5688（基线 0.5473），RankIC 天花板仍 ~0.076
-[2026-09-20 23:30] 滚动重训多模型对比（logs/rolling_models/）：GBDT+Ridge 截面 rank 集成全面最优（size=20 年化 +45.4%/Sharpe 1.416/MDD 34.8%），单模型 Ridge 风险调整最优（+27.4%/1.106），分类器 RankIC 最高 0.098；三路集成反而降到 +32.8%
-[2026-09-20 22:15] 风险 overlay 研究：指数 MA40~80 趋势过滤把滚动 GBDT 策略 MDD 55.4%/37.8% 降到 24.2%/21.8% 且年化升至 35.5%/34.7%，近乎免费；回撤控制/止损/波动率目标无效或有害（logs/risk_overlay/）
-[2026-09-20 22:23] 空仓专项：清仓能把 size200 MDD 压到 ~20% 但收益腰斩且 2023/2026 转负；size20 清仓不如 hold；高频信号二级清仓换手 204-244x；结论「降暴露优于清仓成空仓」
-[2026-09-20 22:54] 确认 xgboost 3.4.1 GPU 可用(device=cuda OK)，后续 GBDT 实验改用 xgb GPU 加速；派子代理做逐笔订单深度分析
-[2026-09-20 23:20] XGB-GPU+DNN对照完成：X3/DNN/GBDT test IC≈0.075打平，涨停0.31%，空仓+回测绝对收益验证完成
-[2026-09-21 00:04] 全市场截面扩展完成：73维解耦验证16维最优，52rank test掉到0.0689，regime空仓门相关≤0.11
-[2026-09-21 00:19] 截面因子拓展：16基线xgb test0.0903最优，52/dist/mom/mkt/inter全败，未破0.10
-[2026-09-21 00:44] 自主冲75%新四路均失败：Ranker反向、择时testAUC0.42、口袋0.55/组合0.60、breadth门无效；最优仍是WF组合0.71
-[2026-09-21 01:50] xgb新目标滚动8折：大涨分类学到波动率非方向，无≥75%分档，不替换生产模型
-[2026-09-21 08:52] 三会话独立验证完成：无证伪、所有关键数字可复现。引擎杠杆bug修复。ASL数学模型证明（p*=0.575梯度偏移）。滚动重训（8折expanding）揭示真实表现：size=20仅+10.77%/MDD55.4%，size=200达+28.61%/0.990。动态退出年化翻倍于固定持有。七路研究全部收敛：75%不可达。
-[2026-09-21 19:02] 提交纪律：禁用git add -A，只点名文件提交；并行论文复现会话文件永不提交
-[2026-09-22 12:57] H10 2026 bakeoff2: 大盘门指数口径决定成败, 全栈对账 PASS(2.13%/0.80%), 2026 裸奔版 E 最硬(+45.3%), 历史排序失效
-[2026-09-22 23:25] H10 指数口径独立审计：生产 mean-close 被后复权高价股绑架（2015-07-10 +89.6% 伪动），ew 等权收益指数唯一合格；REPORT.md B 口径精确复现但 2016-18 +1.7% 行不可复现
-[2026-09-22 23:37] H10 冻结A 2026 一次性样本外裁判完成：校准逐bit复现，A V1/V2 NAV 1.1448/1.1174 但跑输裸奔1.20
-[2026-09-22 23:38] 样本内预注册重设计：方案A(双账户50/50)唯一通过四段验收；2026一次性验证A未亏(+19~24%/DD15~17%)但跑输裸奔
-[2026-09-23 00:00] H10 选项二叠加层（27票卖出+DD10）预注册验证：校准逐bit通过，四段最差Sharpe 0.7592 过标准一但 S2 触发标准二失败 → REJECT；A 仍唯一全过
-[2026-09-23 00:05] H10 选项一固化前验证完成：方案A四段+2026逐bit复现PASS；口径排查(静态50/50、跨腿无重复计费、合并MDD、涨跌停独立规则)与生产落地清单(engine缺口/index口径5日翻转)产出 temp\h10_opt1_verify
-[2026-09-28 00:50] 主仓整理归档完成：merge origin/main得a8866a7（adapter唯一回测路径N01/N02，解pyproject/trainer两冲突）；clone ../backtest-core补齐editable依赖；logs 340项编目后KEEP 76、264项打包D:/tmp/cnn_trash_20260927.tar.gz（15.35G/sha256 04DAAE92…）并清空；baseline改道logs/KEEP/baseline（R重命名保留入库）；冒烟通过；docs/archive四件套+STATE_FREEZE落盘，未提交
-[2026-09-28 11:30] 完成 merge origin/main (a8866a7)、backtest-core 克隆、P0-P4 大扫除（logs 340→76 项，264 项打包仓外）、docs/archive/ 四件套归档、.gitignore 收紧
-
-[2026-09-30 01:34] 添加三组建模完整评估（CNN-Transformer A/B 全量对比 + 2026 回测结果）和 JKX 2D-CNN 渲染审计及 I30-color RGB 实现
-[2026-10-01 11:19] 合并 JKX I30-color 全链路实现、分片缓存方案、训练协议修正、模型瘦身与三组建模完整评估结论到项目记忆
-[2026-10-01 12:47] JKX I30-color 实验定论：三处改动(高分辨率/彩色/30天)实现+分片缓存解决 HDD 瓶颈(GPU 1%→97%)；改独立2025验证消除泄漏后，2025 IC 0.055(优于旧I5 0.039,追平主模型A)但2026衰减至0.021、回测-19.9%仍不如主模型B；发现早停监控val CE是错的(RankIC正但CE≈随机)
-[2026-10-01 14:23] 完成 α vs 市场项 H1–H6 实证：信号 α 主导、CE 早停错、截面目标提 IC 不提 topN、均值门控不减亏
-[2026-10-02 17:07] 任务3 完成：k=32/6ep/seed0-2 损失对照，C/D/E 的 RankIC 显著高于 A（C-A +0.026, CI[+0.013,+0.040]），top10/200 均不显著；persistent_workers 修复 Windows DataLoader 崩溃。
-[2026-10-02 19:53] 任务1完成：train.py 早停改 RankIC（IndexedDataset+xs_rank_ic）；对 CE 变体仅 +0.0002 近乎无效，真正提升来自换截面目标；任务2门控无泄漏确认
-[2026-10-02 19:54] 恢复项目记忆（此前 memory_save 误用部分内容覆盖），并保留 H1-H6/任务3/4/6 全部条目
-[2026-10-03 01:25] 补跑主模型 A 的 2026 推理+回测：preds/eval/bt_2026_final_A_{target,rolling} + eval_fullA_summary.json；A vs B 指标对比完成
-[2026-10-03 12:16] 树模型同口径正式验证：树 IC 0.105/0.083 全面优于主模型 A/B（0.055-0.078/0.061-0.068），2026 target 绝对收益 +2% vs -7%；rolling 更差、净值属噪声区，判排序更优基线但不建议替换生产；报告 logs/tree_verify/REPORT.md
-[2026-10-05 16:38] 全模型 α vs m_t 归因横评（2026-10-05）：树模型 2026 是唯一守住正 α 的一族
-[2026-10-08 01:13] m_t 可预测性系统研究：12种方法方向AUC≈0.54（bootstrap含0）、幅度R²<0、真实引擎门-35pp；唯|fwd5|波动幅度IC+0.18显著；判方向/幅度不可行，仅波动可作风控候选
-[2026-10-08 11:09] 完全分离双塔：方向门证伪（离线-16pp P(>0)=0.012，引擎α-only+51.4%→+9.3%）；波动定仓Sharpe+0.088不显著；参数分离未救活m方向
-[2026-10-08 01:14] m_t可预测性系统研究：方向/幅度不可行（引擎门-35pp），仅波动幅度可测，报告logs/m_research/REPORT.md
-[2026-10-08 01:58] 精确优先第一批完成（2026-10-07）：VAL 精确提到 0.60-0.64，2026 全部坍塌
-[2026-10-23] 创建 scripts/decile_diagnosis.py + tests/unit/test_decile_diagnosis.py：十分位收益诊断 + 驼峰检测工具，复用 load_prediction_cache/validate_prediction_cache_arrays，pltoly HTML/JSON 双输出，16 单测全 PASS + ruff 零告警
+[2026-09-03~09-13] 归一化基调 per-code，E1-E4 对照实验完成，context warmup 修复（标签日 95→154）
+[2026-09-14] redesign: FEATURE_GROUPS(P/R/N/G)+52列+shared mask、ColumnRule registry、PerCodeGroupedScaler v4、rolling scope e0..e5、train/CLI 适配；E0-E5 六臂训练 E3 最优(RankIC 0.0441)
+[2026-09-14~15] 回测口径升级(A股费用/指数基准/小TopN/avg_cash_ratio)；E0 relative 设为 baseline
+[2026-09-20] 建立三分评估规范(eval_three_way)，新增 cs_rank 截面rank特征；GBDT 截面 rank 生产模型 test RankIC 0.075，确认 75% 单票胜率不可达(天花板 52-58%)
+[2026-09-20] 特征工程/滚动重训/风险 overlay/空仓/XGB-GPU+DNN 研究完成；集成共识天花板 0.544；指数 MA40~80 趋势过滤近乎免费降 MDD
+[2026-09-21] 全市场截面扩展/截面因子拓展/自主冲75%/xgb新目标全部失败，75%不可达收敛。引擎杠杆 bug 修复。ASL 证伪(p*=0.575梯度偏移)。提交纪律确立。
+[2026-09-22~23] H10 全链路：指数口径审计(ew等权唯一合格)、冻结A 2026 样本外(V1/V2 NAV 1.1448/1.1174)、预注册方案A唯一通过、选项二 REJECT、选项一固化前验证 PASS
+[2026-09-28] 主仓整理：merge origin/main(a8866a7)、backtest-core 克隆、logs 大扫除(340→76)、paper_jkx 源码入库、adapter 为唯一回测路径
+[2026-09-30~10-01] 三组建模完整评估(B截面最优)、JKX I30-color 实验定论(排序有信号但绝对收益不如主模型)、α vs 市场项 H1-H6(信号α主导)
+[2026-10-02~03] 损失对照(C/D/E截面损失RankIC显著优于CE，top10/200绝对收益均不显著)、早停改RankIC(对CE变体+0.0002近乎无效)、JKX图像线停止、主模型A补跑2026、树模型同口径验证(IC全面优但target净值属噪声区)
+[2026-10-05~08] 全模型α归因(树模型2026唯一守住正α)、精确优先(VAL提至0.60-0.64,2026全塌)、m_t可预测性系统研究(方向/幅度不可行,仅波动可作风控候选)、完全分离双塔(方向门证伪,波动定仓不显著)
+[2026-10-23] 创建 decile_diagnosis.py(十分位收益诊断+驼峰检测), 16单测PASS+ruff零告警
