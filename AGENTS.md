@@ -48,13 +48,13 @@ uv run ruff check .   # 零告警；规则见 pyproject.toml [tool.ruff.lint] se
 ## Data Contract
 
 - 单 parquet `data/test/train_data/train_data_v1_*.parquet` 11.4M行×58列 5166股，10基础+48因子。`is_trading=False` 的行 OHLC/因子=NaN 必须 `dataset.py:160` 过滤。
-- 当前默认特征为 **52 个 raw feature（`P18+R16+N12+G6`）+ 1 个共享 `g9_observed_mask`，输出 `F=53`**，列序 `[P→R→N→G→mask]`（`data/schema.py` `FEATURE_GROUPS`/`APPROVED_RAW_FEATURES`）。`close` 已解禁进 P 组（relative 分母 `close[t-1]`）。`F=69`（旧 51 raw + 18 逐列 mask）、`F=45`（39+6 mask）、`F=55` 均为**历史** schema，不代表当前默认输入。**注意一号两用**：`--cs_rank` 开启时默认输出为 `52+1+16=F=69`（16 个 `cs_*` 截面 rank 列旁路归一化追加末尾），与历史 `F=69` 同数不同义；`--mkt_factors` 全开时再 `+11=F=80`。默认双关，`F=53`。
+- 当前默认特征为 **52 个 raw feature（`P18+R16+N12+G6`）+ 1 个共享 `g9_observed_mask` + 16 个 `cs_*` 截面 rank 列 + 11 个 `mkt_*` 市场因子列 = `F=80`**，列序 `[P→R→N→G→mask→cs→mkt]`（`data/schema.py` `FEATURE_GROUPS`/`APPROVED_RAW_FEATURES`/`DEFAULT_CS_RANK_FEATURES`/`DEFAULT_MKT_FACTOR_FEATURES`）。`F=53`（旧默认无 cs/mkt）、`F=69`（51+18 mask）、`F=45`（39+6 mask）均为**历史** schema。`--no-cs_rank --no-mkt-factors` 回到 `F=53`。
 - 标签 `dataset.py:309` `future_ret[t]=open[t+1+horizon]/open[t+1]-1`（horizon=10），`np.digitize(BINS)` 52类，`BINS=linspace(-0.38,0.38,51)` `config/defaults.py:15`。窗口 `[s,s+60)` 取末日 `y`。
 - 窗口 warmup（评估/验证）：`start_date` 之前最多 `seq_len-1`（rolling 非训练 251）条历史行以 `_transform_context=True` 保留，**可进入窗口作 warmup 输入，但绝不作为标签日**（`valid_starts` 过滤 `is_context[s+seq_len-1]`）；评估区间标签日覆盖 = 交易日数 − `(horizon+1)`（2026-01-01~08-31 由 95 → ≈154）。`data/feature_cache.py` `CACHE_FORMAT_VERSION=v3_relative_groups`（旧 `v2_context_warmup` 为历史）使旧语义缓存失效；训练集 start≈数据起点，窗口不变。勿与归一化统计预热混淆。
 
 ## Normalization — 三策略（relative/per_code/rolling）+ 列语义分组 P/R/N/G
 
-- 列分组 `data/schema.py` `FEATURE_GROUPS{P:18,R:16,N:12,G:6}`，`APPROVED_RAW_FEATURES`=**52**（`close` 解禁进 P）；输出恒追加 1 个共享 `g9_observed_mask`（OR 18 个 G9 列 finite）→ `F=53`。默认 `NORMALIZE=relative`（`config/defaults.py:24`），`per_code`/`rolling` 需显式 `--normalize` opt-in。
+- 列分组 `data/schema.py` `FEATURE_GROUPS{P:18,R:16,N:12,G:6}`，`APPROVED_RAW_FEATURES`=**52**（`close` 解禁进 P）；输出恒追加 1 个共享 `g9_observed_mask`（OR 18 个 G9 列 finite）+ 16 `cs_*` + 11 `mkt_*` → **`F=80`**（新默认 2026-10-24）。默认 `NORMALIZE=relative`（`config/defaults.py:24`），`per_code`/`rolling` 需显式 `--normalize` opt-in。旧 `F=53` 默认对应 `--no-cs_rank --no-mkt-factors`。
 - 变换规则由 `data/scaler.py` `COLUMN_RULES` 集中注册：P `x/close[t-1]-1`(+robust)+`clip±5`；R `clip(asinh(x·scale),±5)`（`amihud` `scale=1e12`）；N `clip[0,1]`；G `fixed_clip`（E0–E4）/ rolling winsor（E5）。`column_rule`/`column_group` 对未知列 raise。
 - 三模式：`relative`（E0，默认，`RelativeScaler` 无状态/无 fit，P 仅 relative+clip）；`per_code`（E1，`PerCodeGroupedScaler` P 组静态 per-code robust，`fit` 仅训练集，`save/load` `logs/scaler_per_code.pkl`）；`rolling`（E2–E5，`RollingNormalizer` 252 滚动 robust/winsor）。`none` 仅供明确实验；验证/评估复用训练 scaler/state，未见 code 回退 `global_stats`，切勿重 fit。
 - rolling scope `e0..e5`（滚动列数 0/18/18/21/24/30，默认 `e5`）；`e1`/`e2` 列集同但语义异（per_code 静态 vs rolling 动态）。

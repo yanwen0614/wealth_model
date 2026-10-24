@@ -7,6 +7,7 @@ canonical 位置：
 
 from criterion.dual_loss import DualLoss as DualLoss
 from criterion.emd_loss import EMDLoss as EMDLoss
+from criterion.gate_loss import GateLoss as GateLoss
 from criterion.pure_reg_loss import PureRegLoss as PureRegLoss
 
-__all__ = ["DualLoss", "EMDLoss", "PureRegLoss"]
+__all__ = ["DualLoss", "EMDLoss", "GateLoss", "PureRegLoss"]

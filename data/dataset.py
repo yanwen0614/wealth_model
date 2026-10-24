@@ -52,7 +52,7 @@ from data.cs_mkt import (
 from data.cs_mkt import (
     resolve_mkt_factor_list as _resolve_mkt_impl,
 )
-from data.labels import _cross_sectional_excess, _future_ret_open_open
+from data.labels import _cross_sectional_excess, _future_ret_open_open, crash_conditioned_labels
 from data.reader import load_and_prepare as _load_and_prepare_impl
 from data.rolling_scaler import (  # canonical在data.rolling_scaler，兼容patch("data.dataset.RollingNormalizer")
     RollingNormalizationConfig,
@@ -144,6 +144,12 @@ class ParquetDataConfig:
     cache_enabled: bool = False
     cache_dir: str | None = None  # None -> 由 resolve_cache_root 决定（env/平台默认）
     rebuild_cache: bool = False  # True 时跳过命中、强制重建并写新 generation
+    # 交易门头（head gate）：gate_label = 1（正常交易）if y_ret >= -0.015 else 0（跳过）
+    gate_head: bool = False
+    # 市场状态自适应损失加权
+    sample_weight: bool = False  # 默认关，不影响已有 checkpoint
+    sample_weight_threshold: float = -0.02  # 截面中位数收益低于此阈值时视为崩盘日
+    sample_weight_factor: float = 2.0  # 崩盘日样本权重倍数
 
 
 class ParquetDataset(Dataset):
@@ -159,13 +165,17 @@ class ParquetDataset(Dataset):
             raise ValueError("filter_is_trading 必须为 True，禁止将合成行用于训练/评估")
         if config.role not in {"training", "validation", "evaluation"}:
             raise ValueError(f"未知 dataset role: {config.role}")
-        if config.label_mode not in {"absolute", "excess"}:
-            raise ValueError(f"未知 label_mode: {config.label_mode}, 可选 absolute/excess")
+        if config.label_mode not in {"absolute", "excess", "crash_conditioned"}:
+            raise ValueError(f"未知 label_mode: {config.label_mode}, 可选 absolute/excess/crash_conditioned")
         self.config = config
         self.bins = np.array(config.bins, dtype=np.float64)
 
         # 1. 读取 parquet（委托 data.reader，保证 IO/过滤/context/warmup 语义不变）
         self._load_and_prepare(scaler_stats)
+
+        # 2. 预计算每日样本权重（仅 sample_weight=True 时生效）
+        if config.sample_weight:
+            self._compute_day_weights()
 
     @staticmethod
     def _transform_digest(normalize: str) -> str:
@@ -264,6 +274,26 @@ class ParquetDataset(Dataset):
             self.groups[code]["discrete"] = np.digitize(chunk, self.bins).astype(np.int64)
         print(f"[ParquetDataset] label_mode=excess：已按 kline_time 剔除截面均值（{len(codes)} 只）")
 
+    def _apply_crash_conditioned_labels(self) -> None:
+        """崩盘日标签全部归零（class 0）。
+
+        逐日检查截面收益率中位数，若低于阈值则该日所有离散标签设为 0。
+        ``future_ret``（连续收益率）保持不变，仅覆盖 ``discrete`` 数组。
+        """
+        codes = list(self.groups)
+        dates = np.concatenate([np.asarray(self.groups[code]["kline_time"]) for code in codes])
+        rets = np.concatenate(
+            [np.asarray(self.groups[code]["future_ret"], dtype=np.float64) for code in codes]
+        )
+        new_labels = crash_conditioned_labels(rets, dates, self.bins)
+        offset = 0
+        for code in codes:
+            n = int(self.groups[code]["n"])
+            chunk = new_labels[offset: offset + n]
+            offset += n
+            self.groups[code]["discrete"] = chunk
+        print(f"[ParquetDataset] label_mode=crash_conditioned：崩盘日标签已归零（{len(codes)} 只）")
+
     def _print_label_stats(self):
         """打印标签分布"""
         # 采样最多 1M 窗口统计，避免过慢
@@ -287,10 +317,39 @@ class ParquetDataset(Dataset):
         # 打印 bins 边界对应的收益
         print(f"  BINS: {self.bins.tolist()[:5]} ... {self.bins.tolist()[-5:]} (共 {len(self.bins)} 边界, {len(self.bins)+1} 类)")
 
+    def _compute_day_weights(self) -> None:
+        """预计算每日样本权重：当截面中位数收益 < threshold 时权重 = factor，否则 1.0。
+
+        在 _load_and_prepare 之后调用，遍历全部股的 future_ret 与 kline_time。
+        """
+        threshold = self.config.sample_weight_threshold
+        factor = self.config.sample_weight_factor
+        all_dates_list = []
+        all_rets_list = []
+        for g in self.groups.values():
+            dates = pd.Series(g["kline_time"])
+            rets = g["future_ret"]
+            all_dates_list.append(dates)
+            all_rets_list.append(rets)
+        if not all_dates_list:
+            self._day_weight: dict = {}
+            return
+        all_dates = pd.concat(all_dates_list, ignore_index=True)
+        all_rets = np.concatenate(all_rets_list)
+        df = pd.DataFrame({"date": all_dates, "ret": all_rets})
+        daily_median = df.groupby("date")["ret"].median()
+        self._day_weight = {
+            date: factor if median < threshold else 1.0
+            for date, median in daily_median.items()
+        }
+        crash_days = sum(1 for v in self._day_weight.values() if v > 1.0)
+        print(f"[ParquetDataset] sample_weight 已启用: 共 {len(self._day_weight)} 个交易日, "
+              f"其中崩盘日(权重={factor}) {crash_days} 天")
+
     def __len__(self):
         return len(self.index)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         code, s = self.index[idx]
         g = self.groups[code]
         feat = g["features"]  # [N, num_features_out]
@@ -307,6 +366,23 @@ class ParquetDataset(Dataset):
         x = torch.from_numpy(window.astype(np.float32))
         y = torch.tensor(label, dtype=torch.long)
         y_r = torch.tensor(y_ret, dtype=torch.float32)
+
+        if self.config.gate_head:
+            gate_label_val = 1.0 if y_ret >= -0.015 else 0.0
+            gate_t = torch.tensor(gate_label_val, dtype=torch.float32)
+            if self.config.sample_weight:
+                label_date = pd.Timestamp(g["kline_time"][label_pos])
+                weight = self._day_weight.get(label_date, 1.0)
+                w = torch.tensor(weight, dtype=torch.float32)
+                return x, y, y_r, w, gate_t
+            return x, y, y_r, gate_t
+
+        if self.config.sample_weight:
+            label_date = pd.Timestamp(g["kline_time"][label_pos])
+            weight = self._day_weight.get(label_date, 1.0)
+            w = torch.tensor(weight, dtype=torch.float32)
+            return x, y, y_r, w
+
         return x, y, y_r
 
     @classmethod

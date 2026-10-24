@@ -40,7 +40,7 @@ wheels = [
 [[package]]
 name = "amazingdata"
 version = "1.1.8"
-source = { path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" }
+source = { path = "wheels/AmazingData-1.1.8-cp312-none-any.whl" }
 dependencies = [
     { name = "numba" },
     { name = "pydantic" },
@@ -122,13 +122,16 @@ wheels = [
 [[package]]
 name = "backtest-core"
 version = "0.1.0"
-source = { editable = "../backtest-core" }
+source = { path = "wheels/backtest_core-0.1.0-py3-none-any.whl" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pyyaml" },
+]
+wheels = [
+    { filename = "backtest_core-0.1.0-py3-none-any.whl", hash = "sha256:6d085651da9eb73803b1343ffeb130b4c183ae4c09be75d8db02b7ba7d0199bd" },
 ]
 
 [package.metadata]
@@ -138,12 +141,6 @@ requires-dist = [
     { name = "pyarrow" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyyaml" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyright", specifier = ">=1.1.411" },
-    { name = "ruff", specifier = ">=0.15" },
 ]
 
 [[package]]
@@ -357,8 +354,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", marker = "extra == 'server'", specifier = ">=1.18.5" },
-    { name = "amazingdata", marker = "extra == 'source'", path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" },
-    { name = "backtest-core", editable = "../backtest-core" },
+    { name = "amazingdata", marker = "extra == 'source'", path = "wheels/AmazingData-1.1.8-cp312-none-any.whl" },
+    { name = "backtest-core", path = "wheels/backtest_core-0.1.0-py3-none-any.whl" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.136" },
     { name = "gitpython", marker = "extra == 'tools'", specifier = ">=3.1" },
     { name = "gymnasium", marker = "extra == 'rl'", specifier = ">=1.2" },
@@ -382,7 +379,7 @@ requires-dist = [
     { name = "streamlit", marker = "extra == 'viz'", specifier = ">=1.56" },
     { name = "ta-lib", marker = "extra == 'compute'", specifier = ">=0.6" },
     { name = "tables", marker = "extra == 'storage'", specifier = ">=3.10" },
-    { name = "tgw", marker = "extra == 'source'", path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" },
+    { name = "tgw", marker = "extra == 'source'", path = "wheels/tgw-1.0.8.7-py3-none-any.whl" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = "==2.12.0" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.12.0+cu126", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torch", marker = "sys_platform == 'win32'", specifier = "==2.12.0+cu130", index = "https://download.pytorch.org/whl/cu130" },
@@ -2094,7 +2091,7 @@ wheels = [
 [[package]]
 name = "tgw"
 version = "1.0.8.7"
-source = { path = "../quant/wheels/tgw-1.0.8.7-py3-none-any.whl" }
+source = { path = "wheels/tgw-1.0.8.7-py3-none-any.whl" }
 dependencies = [
     { name = "pandas" },
 ]

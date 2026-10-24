@@ -71,25 +71,29 @@ _BASE_CONFIG = {
     "NORMALIZE": "relative", "SCALER_PATH": None,
     "ROLLING_SCOPE": "e5", "SEED": 42,
     "LABEL_MODE": "absolute",  # absolute=原始 future_ret；excess=截面超额收益
-    "CS_RANK": False,  # True=追加逐日全市场截面 rank 特征（旁路归一化）；默认关
+    "CS_RANK": True,  # True=追加逐日全市场截面 rank 特征（旁路归一化）；诊断显示 IC 弱需加强信号
     "CS_RANK_FEATURES": None,  # None=用 data/schema.DEFAULT_CS_RANK_FEATURES（16 个独立特征）
-    "MKT_FACTORS": False,  # True=追加全市场截面因子（每日广播，旁路归一化）；默认关
+    "MKT_FACTORS": True,  # True=追加全市场截面因子（每日广播，旁路归一化）；诊断显示月度不稳定需市场 regime
     "MKT_FACTOR_LIST": None,  # None=用 data/schema.DEFAULT_MKT_FACTOR_FEATURES（11 个因子）
     "MAX_CODES": None, "MAX_WINDOWS_PER_CODE": None,
     "model": "CNNTransformer", "criterion": "EMDLoss",
     "EMLossConfig": {"p": 2, "label_smoothing": True, "smooth_eps": 0.1},
     "DUAL_HEAD": False, "PURE_REG": False, "LAMBDA_REG": 0.2,
-    "HUBER_DELTA": 1.0, "scheduler": "ReduceLROnPlateau",
-    "LEARNING_RATE": 3e-4, "WEIGHT_DECAY": 1e-5, "EPOCHS": 50,
+    "HUBER_DELTA": 1.0, "scheduler": "CosineWarmup",
+    "WARMUP_EPOCHS": 3, "LEARNING_RATE": 3e-4, "WEIGHT_DECAY": 1e-5, "EPOCHS": 50,
     "PATIENCE": 10, "LOG_DIR": "./logs",
     "CACHE_ENABLED": True, "CACHE_DIR": None, "REBUILD_CACHE": False,
+    "SAMPLE_WEIGHT": False, "SAMPLE_WEIGHT_THRESHOLD": -0.02, "SAMPLE_WEIGHT_FACTOR": 2.0,
+    # 交易门头（默认关）
+    "GATE_HEAD": False, "GATE_LOSS_LAMBDA": 0.3, "GATE_POS_WEIGHT": 0.5,
 }
 
 _BASE_CONFIG["CNNTransformerConfig"] = {
-    "featurenum": 53, "seq_len": 60, "num_classes": 52,
+    "featurenum": 80, "seq_len": 60, "num_classes": 52,
     "cnn_out_channels": 128, "d_model": 256, "nhead": 8,
     "cnn_kernel_sizes": [1, 3, 5, 7, 10], "num_encoder_layers": 4,
     "dropout_rate": 0.3,
+    "gate_head": False,
 }
 
 

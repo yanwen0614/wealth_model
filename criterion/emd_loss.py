@@ -114,11 +114,12 @@ class EMDLoss(nn.Module):
 
         return smoothed_targets
 
-    def forward(self, logits, targets):
+    def forward(self, logits, targets, sample_weight=None):
         """
         Args:
             logits: 模型输出 (Batch_Size, Num_Classes)，未经过 Softmax
             targets: 真实标签索引 (Batch_Size,)，例如 [2, 5, 0...]
+            sample_weight: 样本权重 (Batch_Size,)，可选。崩盘日样本给更高权重。
         
         Returns:
             loss: 标量损失值
@@ -143,15 +144,19 @@ class EMDLoss(nn.Module):
         # 计算真值的 CDF
         target_cdf = torch.cumsum(target_dist, dim=1)
         
-        # 4. 计算两个 CDF 之间的距离
+        # 4. 计算每个样本的 CDF 距离（保留样本维度，不 reduce）
         if self.p == 1:
-            loss = torch.mean(torch.abs(pred_cdf - target_cdf))
+            element_loss = torch.abs(pred_cdf - target_cdf).mean(dim=1)
         elif self.p == 2:
-            loss = torch.mean(torch.pow(pred_cdf - target_cdf, 2))
+            element_loss = torch.pow(pred_cdf - target_cdf, 2).mean(dim=1)
         else:
-            loss = torch.mean(torch.pow(torch.abs(pred_cdf - target_cdf), self.p))
-            
-        return loss
+            element_loss = torch.pow(torch.abs(pred_cdf - target_cdf), self.p).mean(dim=1)
+        
+        # 5. 可选的样本加权
+        if sample_weight is not None:
+            element_loss = element_loss * sample_weight
+        
+        return element_loss.mean()
 
 # --- 使用示例 ---
 if __name__ == "__main__":

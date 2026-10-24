@@ -118,15 +118,24 @@ def load_eval_preprocessing(
         feature_cols = list(feature_cols)
     if mode == "relative":
         from data.scaler import RelativeScaler
+        from data.schema import DEFAULT_CS_RANK_FEATURES, DEFAULT_MKT_FACTOR_FEATURES
 
         if not feature_cols:
             raise ValueError("relative 评估需要 checkpoint preprocessing.feature_cols")
         scaler = RelativeScaler(feature_cols=feature_cols, add_mask=True)
+        # 仿 reader.py 构建完整 feature_cols_out（含 cs_rank + mkt_factors 傍路列）
+        scaler_out = list(scaler.feature_cols_out)
+        if run_cfg.get("CS_RANK"):
+            cs_features = list(run_cfg.get("CS_RANK_FEATURES") or DEFAULT_CS_RANK_FEATURES)
+            scaler_out += [f"cs_{f}" for f in cs_features]
+        if run_cfg.get("MKT_FACTORS"):
+            mkt_features = list(run_cfg.get("MKT_FACTOR_LIST") or DEFAULT_MKT_FACTOR_FEATURES)
+            scaler_out += list(mkt_features)
         metadata_out = metadata.get("feature_cols_out")
-        if metadata_out is not None and list(metadata_out) != list(scaler.feature_cols_out):
+        if metadata_out is not None and list(metadata_out) != scaler_out:
             raise ValueError("relative feature_cols_out 与 rules 重建结果不匹配")
         return EvalPreprocessing(
-            "relative", scaler, feature_cols, None, run_cfg, None, list(scaler.feature_cols_out)
+            "relative", scaler, feature_cols, None, run_cfg, None, scaler_out
         )
     scaler_path = resolve_scaler_path(run_cfg, mode, scaler_override)
     if scaler_path and not os.path.isabs(scaler_path):
@@ -217,7 +226,7 @@ def validate_preprocessing_dimensions(
             scaler = preprocessing.scaler_stats
             if not isinstance(scaler, RelativeScaler):
                 raise ValueError("relative preprocessing state 类型不匹配")
-            expected_output = len(scaler.feature_cols_out)
+            expected_output = len(preprocessing.feature_cols_out) if preprocessing.feature_cols_out else len(scaler.feature_cols_out)
         else:
             from data.scaler import PerCodeGroupedScaler
 
@@ -249,6 +258,7 @@ def _resolve_eval_rolling_scope(preprocessing: EvalPreprocessing) -> str:
 
 
 def build_val_loader(args, preprocessing: EvalPreprocessing) -> tuple[DataLoader, ParquetDataset]:
+    run_cfg = preprocessing.run_config
     cfg = ParquetDataConfig(
         parquet_path=args.parquet,
         seq_len=args.seq_len,
@@ -266,6 +276,10 @@ def build_val_loader(args, preprocessing: EvalPreprocessing) -> tuple[DataLoader
         start_date=args.val_start,
         end_date=args.val_end,
         feature_cols=preprocessing.feature_cols or args.feature_cols,
+        cs_rank=run_cfg.get("CS_RANK", False),
+        cs_rank_features=run_cfg.get("CS_RANK_FEATURES"),
+        mkt_factors=run_cfg.get("MKT_FACTORS", False),
+        mkt_factor_list=run_cfg.get("MKT_FACTOR_LIST"),
         role="evaluation",
     )
     scaler_stats = preprocessing.scaler_stats
@@ -306,6 +320,7 @@ def evaluate(args) -> dict:
         d_model=int(mc.get("d_model", 256)), nhead=int(mc.get("nhead", 8)),
         num_encoder_layers=int(mc.get("num_encoder_layers", 4)),
         dropout_rate=float(mc.get("dropout_rate", 0.3)),
+        gate_head=bool(mc.get("gate_head", False)),
     )
     device = args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
     model = CNNTransformer(model_cfg).to(device)
@@ -324,9 +339,12 @@ def evaluate(args) -> dict:
     for xb, yb, *_ in loader:  # dataset 现返 3 元 (x, y_cls, y_ret)，*_ 兼容双头
         n = xb.shape[0]
         out = model(xb.to(device))
-        if not isinstance(out, tuple) or len(out) != 2:
-            raise ValueError("checkpoint 模型必须返回唯一双头 schema: (logits, ret_pred)")
-        logits, ret_pred = out
+        if isinstance(out, tuple) and len(out) == 3:
+            logits, ret_pred, _ = out  # gate_head 模型忽略 gate 输出
+        elif isinstance(out, tuple) and len(out) == 2:
+            logits, ret_pred = out
+        else:
+            raise ValueError("checkpoint 模型输出 schema 必须是 (logits, ret_pred) 或 (logits, ret_pred, gate)")
         all_ret_pred.append(ret_pred.cpu().numpy())
         probs = torch.softmax(logits, dim=1).cpu().numpy()
         all_probs.append(probs)

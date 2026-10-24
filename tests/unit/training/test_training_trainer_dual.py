@@ -37,29 +37,56 @@ class TestTrainerDualCompat(unittest.TestCase):
     def test_unpack_batch_two_tuple(self):
         data = torch.randn(4, 45, 60)
         y = torch.randint(0, 52, (4,))
-        d, yc, yr = _unpack_batch((data, y))
+        d, yc, yr, sw, gl = _unpack_batch((data, y))
         self.assertIs(d, data)
         self.assertIs(yc, y)
         self.assertIsNone(yr)
+        self.assertIsNone(sw)
+        self.assertIsNone(gl)
 
     def test_unpack_batch_three_tuple(self):
         data = torch.randn(4, 45, 60)
         y = torch.randint(0, 52, (4,))
         r = torch.randn(4)
-        d, yc, yr = _unpack_batch((data, y, r))
+        d, yc, yr, sw, gl = _unpack_batch((data, y, r))
         self.assertIs(d, data)
         self.assertIs(yc, y)
         self.assertIs(yr, r)
+        self.assertIsNone(sw)
+        self.assertIsNone(gl)
+
+    def test_unpack_batch_four_tuple(self):
+        data = torch.randn(4, 45, 60)
+        y = torch.randint(0, 52, (4,))
+        r = torch.randn(4)
+        extra = torch.randn(4)
+        d, yc, yr, sw, gl = _unpack_batch((data, y, r, extra))
+        self.assertIs(d, data)
+        self.assertIs(yc, y)
+        self.assertIs(yr, r)
+        self.assertIs(sw, extra)  # 4th element is sample_weight (or gate_label)
+        self.assertIsNone(gl)
 
     def test_unpack_outputs_single_and_tuple(self):
         logits = torch.randn(4, 52)
-        out_logits, out_ret = _unpack_outputs(logits)
+        out_logits, out_ret, out_gate = _unpack_outputs(logits)
         self.assertIs(out_logits, logits)
         self.assertIsNone(out_ret)
+        self.assertIsNone(out_gate)
         ret = torch.randn(4)
-        l2, r2 = _unpack_outputs((logits, ret))
+        l2, r2, g2 = _unpack_outputs((logits, ret))
         self.assertIs(l2, logits)
         self.assertIs(r2, ret)
+        self.assertIsNone(g2)
+
+    def test_unpack_outputs_triple(self):
+        logits = torch.randn(4, 52)
+        ret = torch.randn(4)
+        gate = torch.sigmoid(torch.randn(4))
+        l, r, g = _unpack_outputs((logits, ret, gate))
+        self.assertIs(l, logits)
+        self.assertIs(r, ret)
+        self.assertIs(g, gate)
 
     def test_compute_loss_single_head(self):
         crit = EMDLoss(num_classes=52, p=2)

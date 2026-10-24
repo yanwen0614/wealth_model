@@ -1,19 +1,25 @@
 """Parquet 直通训练入口：quant 最新因子数据 -> CNNTransformer -> EMDLoss
 
-链路（per-code 共识）：
-  data/test/train_data/train_data_v1_*.parquet (52 raw特征+1 shared G9 mask=F=53, 11M行, G6/G7已剔除)
+链路（新默认 F=80，CS_RANK+MKT_FACTORS 默认开）：
+  data/test/train_data/train_data_v1_F60_*.parquet (52 raw特征+1 shared G9 mask+16 cs_rank+11 mkt_factors=F=80, 11M行)
     -> ParquetDataset (is_trading过滤, future_ret=open[t+6]/open[t+1]-1 52类, per-code分组归一化)
-    -> CNNTransformer (featurenum=53, seq_len=60)
-    -> EMDLoss (有序分类)
+    -> CNNTransformer (featurenum=80, seq_len=60)
+    -> EMDLoss (有序分类) + CosineWarmup LR scheduler
     -> Trainer (早停 + 调度)
+
+改进（2026-10-24）：
+  默认 CS_RANK=True（16 个截面排名特征，提升 RankIC）
+  默认 MKT_FACTORS=True（11 个市场因子，提升跨时间稳定性）
+  默认 scheduler=CosineWarmup（3 epoch warmup → 余弦退火，稳定训练）
+  V1 诊断：Real CNN RankIC 从 0.0285 → 预期提升
+  关闭：--no-cs_rank --no-mkt-factors --scheduler ReduceLROnPlateau
 
 使用：
   uv run --project . python train.py --max_codes 20 --epochs 2 --batch_size 256
   uv run --project . python train.py --train_start 2013-01-01 --train_end 2023-12-31 --val_start 2024-01-01 --val_end 2025-12-31
 
-历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=53 和 future 5d open-open 标签。
-F=45 仅代表旧特征/历史 checkpoint，不属于当前默认训练契约。
-旧模型 checkpoint 不属于当前加载契约，历史结果仅供参考且不可与当前口径混用。
+历史说明：旧 main2.py 的 NPZ 训练链路已删除；本脚本使用 parquet、F=53（旧默认）和 future 5d open-open 标签。
+F=45 仅代表旧特征/历史 checkpoint，不属于当前训练契约。
 """
 import argparse
 import json
@@ -33,6 +39,12 @@ from training import Trainer, load_model_state
 from training.factory import build_criterion, build_model, build_optimizer_scheduler
 from training.preprocessing import ROLLING_SCOPES
 from training.preprocessing import configure_preprocessing as _configure_preprocessing
+from training.sealed_eval import (
+    SEALED_MANIFEST_FILENAME,
+    SealedEvalError,
+    create_sealed_manifest,
+    guard_sealed,
+)
 from visualization import Visualizer
 
 config = make_default_config()
@@ -143,23 +155,31 @@ def parse_args(argv: list[str] | None = None, *, retail: bool = False):
     p.add_argument("--lambda_reg", type=float, default=(0.3 if retail else config['LAMBDA_REG']),
                    help="双头回归项权重 λ（主链路 0.2；retail wrapper 0.3）")
     p.add_argument("--huber_delta", type=float, default=config['HUBER_DELTA'], help="Huber delta")
+    p.add_argument("--gate_head", action=argparse.BooleanOptionalAction, default=config["GATE_HEAD"],
+                   help="交易门头：模型增加 sigmoid gate 头，BCE 监督是否交易（默认关）")
+    p.add_argument("--gate_loss_lambda", type=float, default=config["GATE_LOSS_LAMBDA"],
+                   help="交易门损失权重（默认 0.3）")
     p.add_argument("--normalize", choices=["per_code", "rolling", "relative"], default=config["NORMALIZE"])
     p.add_argument("--rolling_scope", choices=list(ROLLING_SCOPES), default=config["ROLLING_SCOPE"],
                    help="rolling 子集范围 e0..e5（默认 e5=含 G9 raw 全量；非 rolling 时忽略）")
-    p.add_argument("--label_mode", choices=["absolute", "excess"], default=config["LABEL_MODE"],
-                   help="标签口径：absolute=原始未来收益（默认）；excess=按日截面超额收益")
-    p.add_argument("--cs_rank", action="store_true",
-                   help="启用逐日全市场截面 rank 特征（默认关；列 cs_<feature> 追加并旁路归一化）")
+    p.add_argument("--label_mode", choices=["absolute", "excess", "crash_conditioned"], default=config["LABEL_MODE"],
+                   help="标签口径：absolute=原始未来收益（默认）；excess=按日截面超额收益；crash_conditioned=崩盘日标签归零")
+    p.add_argument("--cs_rank", action=argparse.BooleanOptionalAction, default=config['CS_RANK'],
+                   help="启用逐日全市场截面 rank 特征（默认开；列 cs_<feature> 追加并旁路归一化）")
     p.add_argument("--cs_rank_features", nargs="*", default=config["CS_RANK_FEATURES"],
                    help="cs_rank 特征子集；缺省用 DEFAULT_CS_RANK_FEATURES 的 16 个独立特征")
-    p.add_argument("--mkt_factors", action="store_true",
-                   help="启用全市场截面因子（默认关；列 mkt_* 追加在 cs 列之后并旁路归一化）")
+    p.add_argument("--mkt_factors", action=argparse.BooleanOptionalAction, default=config["MKT_FACTORS"],
+                   help="启用全市场截面因子（默认开；列 mkt_* 追加在 cs 列之后并旁路归一化）")
     p.add_argument("--mkt_factor_list", nargs="*", default=config["MKT_FACTOR_LIST"],
                    help="市场因子子集；缺省用 DEFAULT_MKT_FACTOR_FEATURES 的 11 个因子")
     p.add_argument("--feature_cols", nargs="*", default=None, help="显式特征列子集；缺省按 normalize 推导")
     p.add_argument("--featurenum", type=int, default=None,
                    help="模型输入维度；缺省按实测派生，显式值与实测不符则报错")
     p.add_argument("--seed", type=int, default=config["SEED"], help="全局随机种子（默认 42）")
+    p.add_argument("--scheduler", choices=["ReduceLROnPlateau", "CosineAnnealingWarmRestarts", "CosineWarmup"],
+                   default=config["scheduler"], help="LR 调度器（默认 CosineWarmup）")
+    p.add_argument("--warmup_epochs", type=int, default=config["WARMUP_EPOCHS"],
+                   help="CosineWarmup 预热轮数（默认 3）")
     p.add_argument("--cache_dir", type=str, default=config["CACHE_DIR"],
                    help="feature memmap 缓存根目录（默认 None：CNN_DATA_CACHE > 平台默认）")
     p.add_argument("--no_cache", action="store_true", help="关闭 feature memmap 缓存，回到原内存路径")
@@ -177,6 +197,21 @@ def parse_args(argv: list[str] | None = None, *, retail: bool = False):
                    help="零售模型初始决策阈值（主链路 0.5；retail wrapper 0.65）")
     p.add_argument("--target_precision", type=float, default=0.75,
                    help="零售模型阈值校准目标 precision")
+    # 市场状态自适应损失加权
+    p.add_argument("--sample_weight", action=argparse.BooleanOptionalAction, default=config['SAMPLE_WEIGHT'],
+                   help="启用崩盘日样本加权（截面中位数收益 < threshold 时权重 = factor）")
+    p.add_argument("--sample_weight_threshold", type=float, default=config['SAMPLE_WEIGHT_THRESHOLD'],
+                   help="崩盘日阈值：截面中位数收益低于此值视为崩盘日（默认 -0.02）")
+    p.add_argument("--sample_weight_factor", type=float, default=config['SAMPLE_WEIGHT_FACTOR'],
+                   help="崩盘日样本权重倍数（默认 2.0）")
+    # 封存评估
+    p.add_argument("--sealed", action="store_true", help="启用封存模式：训练完成后创建不可变封存清单")
+    p.add_argument("--sealed_start", type=str, default=None,
+                   help="封存评估区间起始（默认 TEST_START）")
+    p.add_argument("--sealed_end", type=str, default=None,
+                   help="封存评估区间结束（默认 TEST_END）")
+    p.add_argument("--sealed_manifest", type=str, default="auto",
+                   help="封存清单路径（默认 run_log_dir/sealed_manifest.json；'auto' 自动派生）")
     return p.parse_args(argv)
 
 
@@ -206,7 +241,13 @@ def apply_args_to_config(cfg: dict, args, *, retail: bool = False) -> None:
     cfg['PURE_REG'] = args.pure_reg
     cfg['LAMBDA_REG'] = args.lambda_reg
     cfg['HUBER_DELTA'] = args.huber_delta
+    cfg['GATE_HEAD'] = args.gate_head
+    cfg['GATE_LOSS_LAMBDA'] = args.gate_loss_lambda
+    cfg['GATE_POS_WEIGHT'] = config.get('GATE_POS_WEIGHT', 0.5)  # 暂不暴露 CLI，保持默认
+    cfg['CNNTransformerConfig']['gate_head'] = args.gate_head
     cfg['SEED'] = args.seed
+    cfg['scheduler'] = args.scheduler
+    cfg['WARMUP_EPOCHS'] = args.warmup_epochs
     cfg['ROLLING_SCOPE'] = args.rolling_scope
     cfg['FEATURE_COLS'] = args.feature_cols
     cfg['LABEL_MODE'] = args.label_mode
@@ -221,6 +262,9 @@ def apply_args_to_config(cfg: dict, args, *, retail: bool = False) -> None:
     cfg['RETAIL_LAMBDA_REG'] = args.lambda_reg
     cfg['RETAIL_DEFAULT_THRESHOLD'] = args.default_threshold
     cfg['RETAIL_TARGET_PRECISION'] = args.target_precision
+    cfg['SAMPLE_WEIGHT'] = args.sample_weight
+    cfg['SAMPLE_WEIGHT_THRESHOLD'] = args.sample_weight_threshold
+    cfg['SAMPLE_WEIGHT_FACTOR'] = args.sample_weight_factor
     _configure_preprocessing(cfg, args.normalize, args.rolling_scope, retail=retail)
 
 
@@ -247,6 +291,10 @@ def build_parquet_data_config(cfg: dict) -> ParquetDataConfig:
         cache_enabled=cfg.get('CACHE_ENABLED', False),
         cache_dir=cfg.get('CACHE_DIR'),
         rebuild_cache=cfg.get('REBUILD_CACHE', False),
+        sample_weight=cfg.get('SAMPLE_WEIGHT', False),
+        sample_weight_threshold=cfg.get('SAMPLE_WEIGHT_THRESHOLD', -0.02),
+        sample_weight_factor=cfg.get('SAMPLE_WEIGHT_FACTOR', 2.0),
+        gate_head=cfg.get('GATE_HEAD', False),
     )
 
 
@@ -257,6 +305,75 @@ def build_cache_settings(args) -> dict:
         "CACHE_DIR": args.cache_dir,
         "REBUILD_CACHE": args.rebuild_cache,
     }
+
+
+def _resolve_sealed_manifest_path(sealed_manifest_arg: str, config: dict) -> str:
+    """解析封存清单路径。
+
+    ``--sealed_manifest auto`` 时自动派生为 ``run_log_dir/sealed_manifest.json``，
+    否则直接使用用户指定的路径。
+
+    Args:
+        sealed_manifest_arg: CLI 传入的 ``--sealed_manifest`` 值
+        config: 运行时配置（需含 ``run_log_dir`` 键）
+
+    Returns:
+        解析后的封存清单绝对路径
+    """
+    if sealed_manifest_arg == "auto":
+        run_log_dir = config.get("run_log_dir", config.get("LOG_DIR", "./logs"))
+        return os.path.join(run_log_dir, SEALED_MANIFEST_FILENAME)
+    return sealed_manifest_arg
+
+
+def _create_sealed_manifest_after_training(args, config: dict, history, best_path: str) -> None:
+    """训练完成后创建封存清单。
+
+    仅在 ``--sealed`` 启用时调用。从训练历史中提取指标快照，
+    计算环境指纹，持久化到封存清单路径。
+
+    Args:
+        args: CLI 解析结果
+        config: 运行时配置
+        history: ``trainer.get_training_history()`` 返回值
+        best_path: 最佳模型检查点路径
+    """
+    sealed_manifest_path = _resolve_sealed_manifest_path(args.sealed_manifest, config)
+    sealed_start = args.sealed_start or config.get("TEST_START", "2026-01-01")
+    sealed_end = args.sealed_end or config.get("TEST_END")
+    if sealed_end is None:
+        sealed_end = ""
+
+    # 从 history 提取指标快照
+    metrics: dict[str, float] = {}
+    if config.get("MODEL") == "retail_friendly":
+        # 零售模式：history 含 calibration_report
+        calib = history.get("calibration_report", {})
+        metrics["calibrated_threshold"] = history.get("calibrated_threshold", float("nan"))
+        metrics["calibration_precision"] = calib.get("precision", float("nan"))
+        metrics["calibration_recall"] = calib.get("recall", float("nan"))
+    else:
+        # CNNTransformer 模式：history=(train_losses, val_losses, train_accs, val_accs)
+        train_losses, val_losses, train_accs, val_accs = history
+        metrics["final_train_loss"] = float(train_losses[-1]) if train_losses else float("nan")
+        metrics["final_train_acc"] = float(train_accs[-1]) if train_accs else float("nan")
+        if val_losses:
+            metrics["final_val_loss"] = float(val_losses[-1])
+            metrics["final_val_acc"] = float(val_accs[-1]) if val_accs else float("nan")
+        metrics["best_model_exists"] = os.path.isfile(best_path)
+
+    create_sealed_manifest(
+        config=config,
+        train_range=(config.get("TRAIN_START", ""), config.get("TRAIN_END", "")),
+        val_range=(config.get("VAL_START", ""), config.get("VAL_END", "")),
+        sealed_range=(sealed_start, sealed_end),
+        metrics_snapshot=metrics,
+        parquet_path=config.get("PARQUET_PATH"),
+        output_dir=os.path.dirname(sealed_manifest_path),
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("封存清单已创建: %s", sealed_manifest_path)
+    print(f"封存清单: {sealed_manifest_path}")
 
 
 def main():
@@ -298,6 +415,15 @@ def main():
     logger = logging.getLogger(__name__)
     logger.info("=== Parquet 训练开始 ===")
     config["run_log_dir"] = logger_manager.run_log_dir
+
+    # 封存守卫：检查该运行目录是否已被封存
+    if args.sealed:
+        sealed_manifest_path = _resolve_sealed_manifest_path(args.sealed_manifest, config)
+        try:
+            guard_sealed(sealed_manifest_path, config, config.get('PARQUET_PATH'))
+        except SealedEvalError:
+            logger.error("封存拒绝：该运行目录已被封存且指纹匹配")
+            raise
 
     # 数据集（T13：经 build_parquet_data_config 单一派生）
     logger.info("=== 初始化数据集 ===")
@@ -454,6 +580,10 @@ def main():
                     + (f" (epoch={meta['epoch']})" if meta["epoch"] is not None else ""))
     else:
         logger.warning(f"未找到最佳模型: {best_path}")
+
+    # 封存清单：如果启用封存模式，创建封存清单
+    if args.sealed:
+        _create_sealed_manifest_after_training(args, config, history, best_path)
 
     logger.info("=== 训练结束 ===")
     print(f"\n训练完成，日志目录: {config['run_log_dir']}")

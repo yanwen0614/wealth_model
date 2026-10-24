@@ -1,4 +1,4 @@
-﻿[2026-09-03 11:13] 归一化总基调定为 per-code（推翻全局z-score）；剔除 G6估值/G7成长 入训特征为 39+6mask=45；标签沿用 close[t+5]/close[t]-1 原逻辑
+[2026-09-03 11:13] 归一化总基调定为 per-code（推翻全局z-score）；剔除 G6估值/G7成长 入训特征为 39+6mask=45；标签沿用 close[t+5]/close[t]-1 原逻辑
 [2026-09-08 17:20] Hardened per-code feature pipeline with v3 scaler identity and feature lists
 [2026-09-12 23:18] E1-E4 对照实验在 RTX3070 以 psmux 会话 cnn_e1e4 后台串行启动，实测 ~12.8 it/s
 [2026-09-13 10:18] T05 修复 _FeatureView 重复 mmap(1455) 并启动 E1-E4 实验链(num_workers=2, patience=5)
@@ -51,6 +51,7 @@
 [2026-09-23 00:05] H10 选项一固化前验证完成：方案A四段+2026逐bit复现PASS；口径排查(静态50/50、跨腿无重复计费、合并MDD、涨跌停独立规则)与生产落地清单(engine缺口/index口径5日翻转)产出 temp\h10_opt1_verify
 [2026-09-28 00:50] 主仓整理归档完成：merge origin/main得a8866a7（adapter唯一回测路径N01/N02，解pyproject/trainer两冲突）；clone ../backtest-core补齐editable依赖；logs 340项编目后KEEP 76、264项打包D:/tmp/cnn_trash_20260927.tar.gz（15.35G/sha256 04DAAE92…）并清空；baseline改道logs/KEEP/baseline（R重命名保留入库）；冒烟通过；docs/archive四件套+STATE_FREEZE落盘，未提交
 [2026-09-28 11:30] 完成 merge origin/main (a8866a7)、backtest-core 克隆、P0-P4 大扫除（logs 340→76 项，264 项打包仓外）、docs/archive/ 四件套归档、.gitignore 收紧
+
 [2026-09-30 01:34] 添加三组建模完整评估（CNN-Transformer A/B 全量对比 + 2026 回测结果）和 JKX 2D-CNN 渲染审计及 I30-color RGB 实现
 [2026-10-01 11:19] 合并 JKX I30-color 全链路实现、分片缓存方案、训练协议修正、模型瘦身与三组建模完整评估结论到项目记忆
 [2026-10-01 12:47] JKX I30-color 实验定论：三处改动(高分辨率/彩色/30天)实现+分片缓存解决 HDD 瓶颈(GPU 1%→97%)；改独立2025验证消除泄漏后，2025 IC 0.055(优于旧I5 0.039,追平主模型A)但2026衰减至0.021、回测-19.9%仍不如主模型B；发现早停监控val CE是错的(RankIC正但CE≈随机)
@@ -64,4 +65,5 @@
 [2026-10-08 01:13] m_t 可预测性系统研究：12种方法方向AUC≈0.54（bootstrap含0）、幅度R²<0、真实引擎门-35pp；唯|fwd5|波动幅度IC+0.18显著；判方向/幅度不可行，仅波动可作风控候选
 [2026-10-08 11:09] 完全分离双塔：方向门证伪（离线-16pp P(>0)=0.012，引擎α-only+51.4%→+9.3%）；波动定仓Sharpe+0.088不显著；参数分离未救活m方向
 [2026-10-08 01:14] m_t可预测性系统研究：方向/幅度不可行（引擎门-35pp），仅波动幅度可测，报告logs/m_research/REPORT.md
-[2026-10-08 01:58] 精确优先第一批完成（2026-10-07）：VAL 精确提到 0.60-0.64，2026 全部坍塌
+[2026-10-08 01:58] 精确优先第一批完成（2026-10-07）：VAL 精确提到 0.60-0.64，2026 全部坍塌
+[2026-10-23] 创建 scripts/decile_diagnosis.py + tests/unit/test_decile_diagnosis.py：十分位收益诊断 + 驼峰检测工具，复用 load_prediction_cache/validate_prediction_cache_arrays，pltoly HTML/JSON 双输出，16 单测全 PASS + ruff 零告警

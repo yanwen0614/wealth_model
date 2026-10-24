@@ -1,5 +1,6 @@
 """训练组件工厂，集中维护入口间的构建规则。"""
 
+import numpy as np
 import torch
 
 from criterion.dual_loss import DualLoss
@@ -28,7 +29,8 @@ def build_model(config: dict, actual_featurenum: int | None = None,
     if actual_featurenum is not None:
         model_cfg_dict["featurenum"] = actual_featurenum
     model_cfg = ModelConfig(**model_cfg_dict)
-    return CNNTransformer(model_cfg).to(config["DEVICE"]), model_cfg
+    model = CNNTransformer(model_cfg).to(config["DEVICE"])
+    return model, model_cfg
 
 
 def _build_retail_model(config: dict, actual_featurenum: int | None = None):
@@ -86,6 +88,16 @@ def build_optimizer_scheduler(model, config: dict):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
             optimizer, T_0=10, T_mult=2, eta_min=1e-6
         )
+    elif config["scheduler"] == "CosineWarmup":
+        # 余弦预热：线性 warmup 3 epoch → 余弦退火到 0
+        warmup_epochs = config.get("WARMUP_EPOCHS", 3)
+        total_epochs = config["EPOCHS"]
+        def lambda_lr(epoch):
+            if epoch < warmup_epochs:
+                return (epoch + 1) / warmup_epochs
+            progress = (epoch - warmup_epochs) / max(total_epochs - warmup_epochs, 1)
+            return 0.5 * (1 + np.cos(np.pi * progress))
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda_lr)
     else:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=5
