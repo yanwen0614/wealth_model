@@ -97,6 +97,14 @@ class CNNTransformer(nn.Module):
             nn.Linear(config.d_model, 1)
         )
 
+        # 5. 交易门头（可选）：sigmoid 0~1，训练时 BCE 监督"今天该不该交易"
+        if config.gate_head:
+            self.fc_gate = nn.Sequential(
+                nn.LayerNorm(config.d_model),
+                nn.Dropout(config.dropout_rate),
+                nn.Linear(config.d_model, 1)
+            )
+
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # x: [batch_size, featurenum, seq_len]
         # Step1: 多窗口CNN提取局部特征
@@ -112,10 +120,14 @@ class CNNTransformer(nn.Module):
         # Step4: Transformer提取长程依赖（包含位置编码）
         trans_out = self.transformer_encoder(trans_feat)  # [seq_len', batch, d_model]
         
-        # Step5: 全局池化+双头 (在seq_len维度求平均，共享 pooled_feat)
+        # Step5: 全局池化+双头/三头 (在seq_len维度求平均，共享 pooled_feat)
         pooled_feat = trans_out.mean(dim=0)  # [batch, d_model]
         logits = self.fc_cls(pooled_feat)        # [batch, num_classes]
         ret_pred = self.fc_reg(pooled_feat).squeeze(-1)  # [batch]
+        # 交易门头（可选）
+        if hasattr(self, 'fc_gate'):
+            gate = torch.sigmoid(self.fc_gate(pooled_feat)).squeeze(-1)  # [batch]
+            return logits, ret_pred, gate
         # 恒返 tuple；旧契约 forward([B,F,T])->[B,52] 即 out[0]
         return logits, ret_pred
 

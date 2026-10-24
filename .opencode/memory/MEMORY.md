@@ -4,7 +4,8 @@
 (none)
 
 ## Preferences
-(none)
+- 子 agent 返回空结果时，不要自己重做，用 task_id 重新给该子 agent 发消息（resume 同一会话），让它交出结果报告即可
+- 链式跟踪定义：`sleep <秒数> && <观察命令>` 循环（禁止 while 循环），例如 `sleep 300 && tmux capture-pane -t <session> -p | tail -40`，用于长时间任务监控；等待时长根据任务实际调整（常用 300/600/900），禁止用 tmux 后台起观察任务
 
 ## Cross-Project Facts
 - [2026-09-20] cnn 项目可用 `xgboost==3.4.1`（GPU 版，`device='cuda'` 可用，CUDA 13.3），后续 GBDT 实验改用 xgb GPU 加速替代 sklearn HistGradientBoosting（训练 90-200s/折 → 预期显著加速）。
@@ -34,3 +35,5 @@
 - [2026-09-28 11:30] **logs/baseline/ 入库修复**：P2 集散时误将已入库的 `logs/baseline/*` 搬家；用 `git mv`（R 重命名）改道 `logs/KEEP/baseline/` 保留入库关系，`.gitignore` 例外路径同步更新为 `!logs/KEEP/baseline/*.pth`。
 - [2026-09-28 11:30] **生产回测入口变更**：`backtest/cnn_adapter/` 成为唯一回测路径（585a533 确立），`backtest/engine.py` 仅保留薄开关（+4 行）。`backtest/legacy.py` 标为历史。`paper_jkx` 复用 `backtest.engine` 但保持 `untracked` 隔离。
 - [2026-09-28 11:30] **paper_jkx 源码入库**：用户显式解除隔离纪律，`paper_jkx/src/*`（16 文件，228KB）+ `README.md` + `STATE_FREEZE.md` 点名提交；`logs/` 产物（权重/矩阵/报告）仍忽略。`AGENTS.md / 000_INDEX.md / paper_jkx_seven_routes.md` 同步更新措辞。
+- [2026-10-23] 创建 `scripts/decile_diagnosis.py` + `tests/unit/test_decile_diagnosis.py`：十分位收益诊断 + 驼峰检测工具。复用 `backtest/cnn_adapter/cache.load_prediction_cache` 和 `data/schema.validate_prediction_cache_arrays`。逐日按 exp_ret 分 10 组→均值→几何累乘累计收益。驼峰检测：D10 < D8 + spread_threshold（D10-D8 日 spread 标准差 × 可调系数）。输出 Plotly HTML 折线图 + JSON 报告。CLI: `uv run python scripts/decile_diagnosis.py <npz> [--output_dir] [--min_stocks] [--std_multiplier]`。16 单测全 PASS + ruff 零告警 + compileall 通过。
+

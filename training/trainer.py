@@ -9,6 +9,8 @@ from sklearn.metrics import confusion_matrix
 from torch import nn, optim
 from tqdm import tqdm
 
+from criterion.gate_loss import GateLoss
+
 from .batch import _compute_loss, _unpack_batch, _unpack_outputs
 from .checkpoint import load_model_state
 from .early_stopping import EarlyStopping
@@ -58,6 +60,13 @@ class Trainer:
         
         # 初始化训练组件
         self.criterion = criterion
+
+        # 交易门头损失（可选，默认关）
+        self.gate_loss: GateLoss | None = None
+        self.gate_head_enabled = config.get("GATE_HEAD", False)
+        if self.gate_head_enabled:
+            self.gate_loss = GateLoss(pos_weight=config.get("GATE_POS_WEIGHT", 0.5))
+            self.gate_loss_lambda = config.get("GATE_LOSS_LAMBDA", 0.3)
         
         # 初始化优化器
         self.optimizer = optimizer
@@ -173,15 +182,21 @@ class Trainer:
         train_loss = 0.0
         train_correct = 0
         train_total = 0
-        
+
         for batch_idx, batch in tqdm(enumerate(self.train_loader),desc="batch train",total=len(self.train_loader)):
-            data, labels, y_ret = _unpack_batch(batch)
+            data, labels, y_ret, sample_weight, gate_labels = _unpack_batch(batch)
             data, labels = data.to(self.device), labels.to(self.device)
             y_ret = y_ret.to(self.device) if y_ret is not None else None
+            sample_weight = sample_weight.to(self.device) if sample_weight is not None else None
+            gate_labels = gate_labels.to(self.device) if gate_labels is not None else None
 
             self.optimizer.zero_grad()
-            logits, ret_pred = _unpack_outputs(self.model(data))  # 单/双头兼容
-            loss = _compute_loss(self.criterion, logits, ret_pred, labels, y_ret)
+            logits, ret_pred, gate_pred = _unpack_outputs(self.model(data))  # 单/双/三头兼容
+            loss = _compute_loss(self.criterion, logits, ret_pred, labels, y_ret, sample_weight=sample_weight)
+            # 交易门头损失（可选）
+            if self.gate_head_enabled and gate_pred is not None and gate_labels is not None:
+                gate_loss_val = self.gate_loss(gate_pred, gate_labels)
+                loss = loss + self.gate_loss_lambda * gate_loss_val
             loss.backward()
             self.optimizer.step()
 
@@ -224,10 +239,10 @@ class Trainer:
         
         with torch.no_grad():
             for batch in self.val_loader:
-                data, labels, y_ret = _unpack_batch(batch)
+                data, labels, y_ret, _sample_weight, _gate_labels = _unpack_batch(batch)
                 data, labels = data.to(self.device), labels.to(self.device)
                 y_ret = y_ret.to(self.device) if y_ret is not None else None
-                logits, ret_pred = _unpack_outputs(self.model(data))  # 单/双头兼容
+                logits, ret_pred, _gate_pred = _unpack_outputs(self.model(data))  # 单/双/三头兼容
                 loss = _compute_loss(self.criterion, logits, ret_pred, labels, y_ret)
 
                 val_loss += loss.item() * data.size(0)
@@ -328,10 +343,10 @@ class Trainer:
 
         self.model.eval()
         for batch in self.val_loader:
-            data, labels, y_ret = _unpack_batch(batch)
+            data, labels, y_ret, _sample_weight, _gate_labels = _unpack_batch(batch)
             data = data.to(self.device)
             y_bin = self.binarize_labels(labels, y_ret)
-            logits, _ = _unpack_outputs(self.model(data))
+            logits, _ret_pred, _gate_pred = _unpack_outputs(self.model(data))
             p_bin = torch.sigmoid(logits)
             all_p_bin.append(p_bin.cpu())
             all_y_bin.append(y_bin.cpu())

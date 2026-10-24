@@ -270,6 +270,8 @@ def load_and_prepare(dataset: Any, scaler_stats: dict | object | None) -> None:
     # 标签分布统计与缓存落盘（原 _load_and_prepare 尾段逐行移动）。
     if cfg.label_mode == "excess":
         dataset._apply_excess_labels()
+    elif cfg.label_mode == "crash_conditioned":
+        dataset._apply_crash_conditioned_labels()
     dataset._print_label_stats()
     if cfg.cache_enabled:
         save_cache(dataset, key)
@@ -452,8 +454,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--scaler_path", type=str, default=None, help="scaler 持久化路径")
     parser.add_argument(
-        "--label_mode", type=str, default="absolute", choices=["absolute", "excess"],
-        help="标签口径：absolute 原始未来收益；excess 截面超额收益",
+        "--label_mode", type=str, default="absolute", choices=["absolute", "excess", "crash_conditioned"],
+        help="标签口径：absolute 原始未来收益；excess 截面超额收益；crash_conditioned 崩盘日归零",
     )
     parser.add_argument(
         "--cs_rank", action="store_true",

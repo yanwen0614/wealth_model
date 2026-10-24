@@ -70,6 +70,43 @@ def rank_ic(scores: np.ndarray, future_ret: np.ndarray) -> float:
     return float((xr * yr).sum() / denom) if denom > 0 else 0.0
 
 
+def crash_conditioned_labels(
+    future_ret: np.ndarray,
+    dates: np.ndarray,
+    bins: list[float] | np.ndarray,
+    crash_threshold: float = -0.02,
+) -> np.ndarray:
+    """崩盘日标签全部设为最低类（class 0），强制模型学习"今天不该买"。
+
+    逐日检查截面收益率中位数：若 < ``crash_threshold``，该日所有标签归零。
+    NaN 被 ``np.nanmedian`` 自动忽略，不影响判定。
+
+    Args:
+        future_ret: 每行未来收益率，形状 (N,)
+        dates: 每行对应日期（与 future_ret 同长），可比较的 array-like
+        bins: ``np.digitize`` 边界（训练 BINS，51 边界→52 类）
+        crash_threshold: 崩盘阈值，默认 -0.02（-2%）
+
+    Returns:
+        labels: 形状 (N,) 的 int64 离散标签，崩盘日对应位置为 0
+    """
+    future_ret = np.asarray(future_ret, dtype=np.float64)
+    dates = np.asarray(dates)
+    bins_arr = np.asarray(bins, dtype=np.float64)
+    labels = np.digitize(future_ret, bins_arr, right=True).astype(np.int64)
+    uniq_dates = np.unique(dates)
+    for d in uniq_dates:
+        mask = dates == d
+        day_rets = future_ret[mask]
+        # 跳过全部为 NaN 的日期（如 context warmup 行的标签位置），
+        # 这种日期无有效标签，中位数无意义且应避免 All-NaN RuntimeWarning。
+        if not np.any(np.isfinite(day_rets)):
+            continue
+        if np.nanmedian(day_rets) < crash_threshold:
+            labels[mask] = 0
+    return labels
+
+
 def _cross_sectional_excess(
     dates: np.ndarray,
     future_ret: np.ndarray,

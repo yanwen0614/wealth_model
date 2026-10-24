@@ -12,6 +12,7 @@ class ModelConfig:
     nhead: int = 8                # 注意力头数（需整除d_model）
     num_encoder_layers: int = 2   # Transformer Encoder层数
     dropout_rate: float = 0.1     # 正则化率
+    gate_head: bool = False       # 交易门头：sigmoid 0~1 输出
 
 if __name__ == "__main__":
     print(ModelConfig().cnn_kernel_sizes)

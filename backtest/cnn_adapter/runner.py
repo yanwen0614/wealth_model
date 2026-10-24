@@ -92,7 +92,9 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                       exit_threshold: float = 0.0,
                       strong_buy_threshold: float = 0.0,
                       min_edge: float = 0.0,
-                      min_edge_tail_ratio: float = 0.3) -> CnnBacktestOutcome:
+                      min_edge_tail_ratio: float = 0.3,
+                      ic_gate_window: int | None = None,
+                      ic_gate_min_ic: float | None = None) -> CnnBacktestOutcome:
     """cnn 订单路径端到端：组装 adapter/策略 → core 引擎 → 整段核验 → 打包结果.
 
     ``dates`` 默认为缓存全部归属日；显式传入时必须为缓存子集（误传日期 fail-fast，
@@ -146,7 +148,15 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                           min_edge_tail_ratio=min_edge_tail_ratio)
         portfolio_top_n = target_size
     else:
-        strategy = CnnOrderStrategy(adapter, top_n=top_n)
+        ic_gate = None
+        if ic_gate_window is not None or ic_gate_min_ic is not None:
+            from backtest.cnn_adapter.order_strategy import RollingIcGate
+            ic_gate = RollingIcGate(
+                pred_cache["exp_ret"], pred_cache["true_ret"],
+                pred_cache["dates"], pred_cache["codes"],
+                window=ic_gate_window or 10, min_ic=ic_gate_min_ic or 0.02,
+            )
+        strategy = CnnOrderStrategy(adapter, top_n=top_n, ic_gate=ic_gate)
         portfolio_top_n = top_n
     resolved_methodology = methodology if methodology is not None else MetricMethodology()
     if not isinstance(resolved_methodology, MetricMethodology):
