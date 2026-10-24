@@ -9,9 +9,17 @@ buffer，缺预测不卖）；买入带 rank <= target_size 内 exp_ret < 门槛
 exp_ret < ``min_edge`` 同样跳过留现金、不补位（0.0 = 关闭；goal v6 同语义的 cnn 侧等价参数）；
 买入按预算等权现金单，已持有目标不动。
 
+两档止损（可选，默认关闭）：``stop_half``（如 0.03）触发持仓浮亏
+``price / cost - 1 <= -stop_half`` 时卖出一半可卖股数；
+``stop_full``（如 0.06）触发全仓卖出。浮亏按 AccountView 持仓快照计算：
+``cost`` 为引擎维护的每股均价（core account 口径），``price`` 为最新市价；
+缺价（price 为 None）或 cost <= 0 时不触发；T+1 锁定股数（locked）不可卖，
+只卖可卖部分。
+止损卖单与 rank/exit 卖单按代码取并集（股数取最大者），卖出在前按代码序。
+
 口径声明：
-- core 整手/涨跌停锁定由 core 引擎裁决，策略不预判价格（本文件不读任何
-  价格，只按截面名单发单，避免与账户视图估值口径漂移）。
+- 涨跌停/整手/锁定最终由 core 引擎裁决：rank/exit 卖单沿旧语义发全量
+  持有股数（引擎裁决 locked），止损卖单按可卖股数发单（同样接受引擎裁决）。
 - 与 engine 版 limit_up 跳过口径差：engine 版买入前按 open/prev_close 预判
   涨停跳过；本策略不预判，涨停锁定留给 core 引擎 locked 事件裁决——执行口径以 core 为准。
 禁影子账户：持仓/现金/锁定只读 AccountView，不保存任何状态。
@@ -41,6 +49,8 @@ class CnnTargetOrderCounters:
     sell_order_count: int = 0
     skipped_strong_buy_count: int = 0
     skipped_min_edge_count: int = 0
+    stop_half_order_count: int = 0
+    stop_full_order_count: int = 0
 
 
 def _ranked_predictions(adapter: CnnPredictionAdapter, trading_date: date) -> tuple:
@@ -55,7 +65,8 @@ class CnnTargetOrderStrategy:
     def __init__(self, prediction_adapter: CnnPredictionAdapter, *, target_size: int = 100,
                  sell_buffer: int = 500, exit_on_nonpositive: bool = False,
                  exit_threshold: float = 0.0, strong_buy_threshold: float = 0.0,
-                 min_edge: float = 0.0, min_edge_tail_ratio: float = 0.3) -> None:
+                 min_edge: float = 0.0, min_edge_tail_ratio: float = 0.3,
+                 stop_half: float | None = None, stop_full: float | None = None) -> None:
         if not isinstance(prediction_adapter, CnnPredictionAdapter):
             raise ValueError(  # noqa: TRY004
                 f"prediction_adapter must be a CnnPredictionAdapter, got {prediction_adapter!r}"
@@ -79,6 +90,12 @@ class CnnTargetOrderStrategy:
                 or not 0.0 < float(min_edge_tail_ratio) <= 1.0):
             raise ValueError(
                 f"min_edge_tail_ratio must be in (0, 1], got {min_edge_tail_ratio!r}")
+        self._stop_half = self._checked_stop(stop_half, "stop_half")
+        self._stop_full = self._checked_stop(stop_full, "stop_full")
+        if self._stop_half is not None and self._stop_full is not None \
+                and self._stop_full < self._stop_half:
+            raise ValueError(
+                f"stop_full ({self._stop_full!r}) must be >= stop_half ({self._stop_half!r})")
         self._adapter = prediction_adapter
         self._target_size = target_size
         self._sell_buffer = sell_buffer
@@ -91,6 +108,8 @@ class CnnTargetOrderStrategy:
         self._sell_order_count = 0
         self._skipped_strong_buy_count = 0
         self._skipped_min_edge_count = 0
+        self._stop_half_order_count = 0
+        self._stop_full_order_count = 0
 
     @staticmethod
     def _checked_threshold(value: object, name: str) -> float:
@@ -100,6 +119,20 @@ class CnnTargetOrderStrategy:
         result = float(value)
         if math.isnan(result):
             raise ValueError(f"{name} must not be NaN, got {value!r}")
+        return result
+
+    @staticmethod
+    def _checked_stop(value: object, name: str) -> float | None:
+        """止损阈值校验：None/0.0 = 关闭；开启时须在 (0, 1) 内（亏损比例）。"""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError(f"{name} must be a number or None, got {value!r}")
+        result = float(value)
+        if result == 0.0:
+            return None
+        if not math.isfinite(result) or not 0.0 < result < 1.0:
+            raise ValueError(f"{name} must be in (0, 1) or 0.0/None (disabled), got {value!r}")
         return result
 
     @property
@@ -131,6 +164,14 @@ class CnnTargetOrderStrategy:
         return self._min_edge_tail_ratio
 
     @property
+    def stop_half(self) -> float | None:
+        return self._stop_half
+
+    @property
+    def stop_full(self) -> float | None:
+        return self._stop_full
+
+    @property
     def available_dates(self) -> tuple:
         """B03 谱系日期直通：策略/Runner 共用同一 fail-fast 边界."""
         return self._adapter.available_dates
@@ -141,7 +182,9 @@ class CnnTargetOrderStrategy:
         return CnnTargetOrderCounters(buy_order_count=self._buy_order_count,
                                       sell_order_count=self._sell_order_count,
                                       skipped_strong_buy_count=self._skipped_strong_buy_count,
-                                      skipped_min_edge_count=self._skipped_min_edge_count)
+                                      skipped_min_edge_count=self._skipped_min_edge_count,
+                                      stop_half_order_count=self._stop_half_order_count,
+                                      stop_full_order_count=self._stop_full_order_count)
 
     @staticmethod
     def signal_time_for(trading_date: date) -> datetime:
@@ -154,7 +197,9 @@ class CnnTargetOrderStrategy:
         return {"buy_order_count": str(counters.buy_order_count),
                 "sell_order_count": str(counters.sell_order_count),
                 "skipped_strong_buy_count": str(counters.skipped_strong_buy_count),
-                "skipped_min_edge_count": str(counters.skipped_min_edge_count)}
+                "skipped_min_edge_count": str(counters.skipped_min_edge_count),
+                "stop_half_order_count": str(counters.stop_half_order_count),
+                "stop_full_order_count": str(counters.stop_full_order_count)}
 
     def orders_for(self, *, trading_date: date, signal_time: datetime, account: AccountView,
                    market: MarketView) -> tuple:
@@ -184,21 +229,71 @@ class CnnTargetOrderStrategy:
         return (*sells, *buys)
 
     def _sell_orders(self, account: AccountView, rank_map: dict, exp_map: dict) -> list[OrderIntent]:
-        """滞后带卖单：exit 开启看阈值（缺预测不卖），否则看 rank（缺预测 rank 记 0 → 持有）."""
-        to_sell: list[str] = []
+        """滞后带卖单：exit 开启看阈值（缺预测不卖），否则看 rank（缺预测 rank 记 0 → 持有）.
+
+        止损卖单（可选）：浮亏达 ``stop_half`` 卖一半可卖股数，达 ``stop_full``
+        卖全部可卖股数；与 rank/exit 卖单按代码取并集（股数取最大者）。
+        """
+        full_sell: set[str] = set()
         for code in account.positions:
             if self._exit_on_nonpositive:
                 value = exp_map.get(code)
                 if value is not None and value <= self._exit_threshold:
-                    to_sell.append(code)
+                    full_sell.add(code)
             elif rank_map.get(code, 0) > self._target_size + self._sell_buffer:
-                to_sell.append(code)
+                full_sell.add(code)
+        locked = account.locked if isinstance(account.locked, dict) else {}
+        stop_shares: dict[str, int] = {}
+        if self._stop_half is not None or self._stop_full is not None:
+            for code in account.positions:
+                desired = self._stop_shares_for(account, code, locked)
+                if desired is not None and desired > 0:
+                    stop_shares[code] = desired
         orders: list[OrderIntent] = []
-        for code in sorted(to_sell):
+        for code in sorted(set(full_sell) | set(stop_shares)):
             held = int(account.positions[code].shares)
-            if held > 0:
-                orders.append(OrderIntent(instrument_id=code, side=Side.SELL, shares=held))
+            if held <= 0:
+                continue
+            if code in stop_shares and code not in full_sell:
+                # 纯止损单：全量计 stop_full，半量计 stop_half；rank/exit 主导时不重复计
+                shares = stop_shares[code]
+                if shares >= held:
+                    self._stop_full_order_count += 1
+                else:
+                    self._stop_half_order_count += 1
+            else:
+                shares = held
+            if shares > 0:
+                orders.append(OrderIntent(instrument_id=code, side=Side.SELL, shares=shares))
         return orders
+
+    def _stop_shares_for(self, account: AccountView, code: str, locked: dict) -> int | None:
+        """单持仓止损股数：无止损配置/缺价/cost 非正/锁定无可卖时返回 None."""
+        if self._stop_half is None and self._stop_full is None:
+            return None
+        pos = account.positions[code]
+        held = int(pos.shares)
+        if held <= 0:
+            return None
+        price = pos.price
+        try:
+            cost = float(pos.cost)
+        except (TypeError, ValueError):
+            return None
+        if price is None or not cost > 0.0 or not float(price) > 0.0:
+            return None
+        floating = float(price) / cost - 1.0
+        if not math.isfinite(floating):
+            return None
+        sellable = held - int(locked.get(code, 0) or 0)
+        if sellable <= 0:
+            return None
+        if self._stop_full is not None and floating <= -self._stop_full:
+            return sellable
+        if self._stop_half is not None and floating <= -self._stop_half:
+            half = sellable // 2
+            return half if half > 0 else None
+        return None
 
     def _buy_orders(self, account: AccountView, buy_band: Sequence[str],
                     exp_map: dict) -> tuple[list[OrderIntent], int, int]:

@@ -312,14 +312,6 @@ compute = [
     { name = "scipy" },
     { name = "ta-lib" },
 ]
-dev = [
-    { name = "debugpy" },
-    { name = "ipykernel" },
-    { name = "ipython" },
-    { name = "jupyter-client" },
-    { name = "pyright" },
-    { name = "ruff" },
-]
 rl = [
     { name = "gymnasium" },
     { name = "stable-baselines3" },
@@ -367,14 +359,10 @@ requires-dist = [
     { name = "alembic", marker = "extra == 'server'", specifier = ">=1.18.5" },
     { name = "amazingdata", marker = "extra == 'source'", path = "../quant/wheels/AmazingData-1.1.8-cp312-none-any.whl" },
     { name = "backtest-core", editable = "../backtest-core" },
-    { name = "debugpy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.136" },
     { name = "gitpython", marker = "extra == 'tools'", specifier = ">=3.1" },
     { name = "gymnasium", marker = "extra == 'rl'", specifier = ">=1.2" },
-    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.1" },
-    { name = "ipython", marker = "extra == 'dev'", specifier = ">=9.8" },
     { name = "joblib", marker = "extra == 'tools'", specifier = ">=1.5" },
-    { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.7" },
     { name = "matplotlib", specifier = ">=3.10" },
     { name = "numba", marker = "extra == 'compute'", specifier = ">=0.65" },
     { name = "numpy", specifier = ">=2.4" },
@@ -384,11 +372,9 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=22.0" },
     { name = "pydantic", marker = "extra == 'tools'", specifier = ">=2.12" },
     { name = "pydantic-settings", marker = "extra == 'tools'", specifier = ">=2.0" },
-    { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.411" },
     { name = "python-dotenv", marker = "extra == 'source'", specifier = ">=1.2" },
     { name = "pyyaml", marker = "extra == 'source'", specifier = ">=6.0" },
     { name = "requests", marker = "extra == 'source'", specifier = ">=2.33" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
     { name = "scikit-learn", specifier = ">=1.8" },
     { name = "scipy", marker = "extra == 'compute'", specifier = ">=1.17" },
     { name = "sqlalchemy", marker = "extra == 'storage'", specifier = ">=2.0" },
@@ -407,7 +393,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.46" },
     { name = "xgboost", specifier = ">=3.4.1" },
 ]
-provides-extras = ["source", "compute", "storage", "tools", "viz", "server", "rl", "dev"]
+provides-extras = ["source", "compute", "storage", "tools", "viz", "server", "rl"]
 
 [package.metadata.requires-dev]
 dev = [

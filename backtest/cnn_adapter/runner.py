@@ -87,12 +87,14 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                       min_commission: float | None = None,
                       stamp_tax_rate: float | None = None,
                       transfer_fee_rate: float | None = 0.00001,
-                      target_size: int = 100,
-                      sell_buffer: int = 500, exit_on_nonpositive: bool = False,
-                      exit_threshold: float = 0.0,
-                      strong_buy_threshold: float = 0.0,
-                      min_edge: float = 0.0,
-                      min_edge_tail_ratio: float = 0.3) -> CnnBacktestOutcome:
+                       target_size: int = 100,
+                       sell_buffer: int = 500, exit_on_nonpositive: bool = False,
+                       exit_threshold: float = 0.0,
+                       strong_buy_threshold: float = 0.0,
+                       min_edge: float = 0.0,
+                       min_edge_tail_ratio: float = 0.3,
+                       stop_half: float | None = None,
+                       stop_full: float | None = None) -> CnnBacktestOutcome:
     """cnn 订单路径端到端：组装 adapter/策略 → core 引擎 → 整段核验 → 打包结果.
 
     ``dates`` 默认为缓存全部归属日；显式传入时必须为缓存子集（误传日期 fail-fast，
@@ -143,7 +145,9 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                           exit_threshold=exit_threshold,
                                           strong_buy_threshold=strong_buy_threshold,
                                           min_edge=min_edge,
-                                          min_edge_tail_ratio=min_edge_tail_ratio)
+                                          min_edge_tail_ratio=min_edge_tail_ratio,
+                                          stop_half=stop_half,
+                                          stop_full=stop_full)
         portfolio_top_n = target_size
     else:
         strategy = CnnOrderStrategy(adapter, top_n=top_n)
@@ -187,7 +191,9 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                  "exit_threshold": exit_threshold,
                                  "strong_buy_threshold": strong_buy_threshold,
                                  "min_edge": min_edge,
-                                 "min_edge_tail_ratio": min_edge_tail_ratio})
+                                 "min_edge_tail_ratio": min_edge_tail_ratio,
+                                 "stop_half": stop_half,
+                                 "stop_full": stop_full})
     provenance = {key: value for key, value in adapter.provenance.items() if value.strip()}
     provenance.update({"run_id": resolved_run_id, "order_entry": ORDER_ENTRY, "top_n": str(top_n),
                        "initial_capital": str(float(initial_capital)), "config_hash": config_hash,

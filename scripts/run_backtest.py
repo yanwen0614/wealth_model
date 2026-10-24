@@ -175,8 +175,9 @@ def run_adapter_target(args, out_dir: str) -> None:
                "index": args.benchmark_index,
                "target_size": args.target_size, "sell_buffer": args.sell_buffer,
                "exit_on_nonpositive": args.exit_on_nonpositive, "exit_threshold": args.exit_threshold,
-               "strong_buy_threshold": args.strong_buy_threshold, "min_edge": args.min_edge,
-               "min_edge_tail_ratio": args.min_edge_tail_ratio, "models": {}}
+                "strong_buy_threshold": args.strong_buy_threshold, "min_edge": args.min_edge,
+                "min_edge_tail_ratio": args.min_edge_tail_ratio,
+                "stop_half": args.stop_half, "stop_full": args.stop_full, "models": {}}
     for path in args.preds:
         preds = load_preds(path)
         name = os.path.splitext(os.path.basename(path))[0]
@@ -196,10 +197,12 @@ def run_adapter_target(args, out_dir: str) -> None:
                                    target_size=args.target_size,
                                    sell_buffer=args.sell_buffer, exit_on_nonpositive=args.exit_on_nonpositive,
                                    exit_threshold=args.exit_threshold,
-                                   strong_buy_threshold=args.strong_buy_threshold,
-                                   min_edge=args.min_edge,
-                                   min_edge_tail_ratio=args.min_edge_tail_ratio,
-                                   model_name=args.model_name, checkpoint=args.checkpoint,
+                                    strong_buy_threshold=args.strong_buy_threshold,
+                                    min_edge=args.min_edge,
+                                    min_edge_tail_ratio=args.min_edge_tail_ratio,
+                                    stop_half=args.stop_half,
+                                    stop_full=args.stop_full,
+                                    model_name=args.model_name, checkpoint=args.checkpoint,
                                    bins_version=args.bins_version, eval_script_version=ADAPTER_EVAL_VERSION)
         m = outcome.account_evaluation
         final_nav = float(args.capital) * (1.0 + float(m["total_return"]))
@@ -211,7 +214,8 @@ def run_adapter_target(args, out_dir: str) -> None:
             excess_desc = f"{target_metrics['excess_annual']:+.4f}"
         metrics["models"][name] = {"target": target_metrics}
         print(f"[bt-adapter] === {name} === target(size={args.target_size}, buffer={args.sell_buffer}, "
-              f"strong_buy={args.strong_buy_threshold}, min_edge={args.min_edge}): "
+              f"strong_buy={args.strong_buy_threshold}, min_edge={args.min_edge}, "
+              f"stop={args.stop_half}/{args.stop_full}): "
               f"annual={m.get('annualized_return', 0.0):.4f} "
               f"sharpe={m.get('sharpe', 0.0):.3f} mdd={m.get('max_drawdown', 0.0):.4f} "
               f"final_nav={final_nav:.2f} 超额={excess_desc}")
@@ -278,7 +282,11 @@ def parse_args(argv=None):
                    help="target 模式：买入带尾部门槛，尾部 exp_ret>=阈值 才买（空槽留现金不补位）；"
                         "默认 0.0=关闭；尾部比例由 --min_edge_tail_ratio 控制")
     p.add_argument("--min_edge_tail_ratio", type=float, default=0.3,
-                   help="target 模式：min_edge 作用的买入带尾部比例（(0,1]，默认 0.3，即后30%%）")
+                    help="target 模式：min_edge 作用的买入带尾部比例（(0,1]，默认 0.3，即后30%%）")
+    p.add_argument("--stop_half", type=float, default=None,
+                    help="target 模式：两档止损半仓线（亏损比例，如 0.03；None/0.0=关闭）")
+    p.add_argument("--stop_full", type=float, default=None,
+                    help="target 模式：两档止损全清线（亏损比例，如 0.06；None/0.0=关闭）")
     p.add_argument("--full_ohlc", default=None, help="[已废弃] 旧全期日频矩阵 npz；显式传入仅告警并忽略")
     p.add_argument("--ohlc", default=None, help="[已废弃] 旧 ohlc 路径表 npz；显式传入仅告警并忽略")
     p.add_argument("--out_dir", default=None, help="默认 logs/backtest_<时间戳>")
