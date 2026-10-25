@@ -162,6 +162,20 @@ class TestLimitGrid(_TempDirMixin):
         self.assertFalse(bar.limit_up)
         self.assertFalse(bar.limit_down)
 
+    def test_execution_day_close_does_not_change_open_limit_flag(self):
+        path = self.tmp_path("open_close.parquet")
+        _write_parquet([_row("600000.SH", "2025-01-02", close=10.0),
+                        _row("600000.SH", "2025-01-03", open=10.2, close=11.0)], path)
+        bar = CnnMarketDataProvider(path).get_bar("600000.SH", datetime.date(2025, 1, 3))
+        assert bar is not None
+        self.assertFalse(bar.limit_up)
+        path = self.tmp_path("open_limit.parquet")
+        _write_parquet([_row("600000.SH", "2025-01-02", close=10.0),
+                        _row("600000.SH", "2025-01-03", open=11.0, close=10.2)], path)
+        bar = CnnMarketDataProvider(path).get_bar("600000.SH", datetime.date(2025, 1, 3))
+        assert bar is not None
+        self.assertTrue(bar.limit_up)
+
     def test_chinext_20pct_and_bse_30pct(self):
         provider = self._provider_two_days("300001.SZ", 10.0, 11.5)
         bar = provider.get_bar("300001.SZ", datetime.date(2025, 1, 3))

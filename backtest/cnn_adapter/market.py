@@ -316,7 +316,7 @@ class CnnMarketDataProvider:
         return bar
 
     def _derive_limits(self, instrument_id: str, cache: _CodeCache, position: int) -> tuple[bool, bool]:
-        """派生涨跌停：prev_close=上一有效 bar close（跨停牌合成行回退到更早有效行）。
+        """派生开盘可见涨跌停状态：前收对比执行日 open，跨停牌回退至更早有效 close。
 
         无法判定（无前收/缺收/无法识别市场）不静默 False：计入 limit_unknown_count，
         返回 (False, False) 仅供 MarketBar bool 契约占位。
@@ -330,8 +330,9 @@ class CnnMarketDataProvider:
                 break
         market_and_pct = _market_and_pct(instrument_id)
         prev = _finite_decimal(prev_close)
-        last = _finite_decimal(row.close)
-        if market_and_pct is None or prev is None or prev <= 0 or last is None or last <= 0:
+        # T+1 开盘的可交易判断只能使用开盘时已知的价格；当日 close 尚不可得。
+        opening = _finite_decimal(row.open)
+        if market_and_pct is None or prev is None or prev <= 0 or opening is None or opening <= 0:
             self._limit_unknown_count += 1
             return False, False
         market, board_pct = market_and_pct
@@ -339,7 +340,9 @@ class CnnMarketDataProvider:
         min_tick_rule = market == "SZ"
         up_price = _limit_price(prev, pct, up=True, min_tick_rule=min_tick_rule)
         down_price = _limit_price(prev, pct, up=False, min_tick_rule=min_tick_rule)
-        return _to_cents(last) >= _to_cents(up_price), _to_cents(last) <= _to_cents(down_price)
+        # 日线 OHLC 无法恢复集合竞价队列或之后的触板顺序；开盘恰在限制价时，
+        # 按排队未成交处理，开盘未封板则允许订单进入执行层。
+        return _to_cents(opening) >= _to_cents(up_price), _to_cents(opening) <= _to_cents(down_price)
 
     def _suspended_bar(self, instrument_id: str, cache: _CodeCache, trading_date: date) -> MarketBar:
         """停牌合成行 → 全 None bar（禁 0.0 冒充，记忆化，去重计数）。"""

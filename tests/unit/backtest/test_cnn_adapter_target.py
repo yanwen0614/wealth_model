@@ -104,6 +104,20 @@ class _TempDirMixin(unittest.TestCase):
 
 
 class TestBuyBand(_TempDirMixin):
+    def test_hard_holding_cap_counts_existing_positions_before_sell_fills(self):
+        from backtest_core.contracts import Side
+
+        codes = [f"{i:06d}" for i in range(12)]
+        strategy = _make_target_strategy(self, codes, target_size=5, sell_buffer=5)
+        for held_count, expected_buys in ((9, 1), (10, 0), (11, 0)):
+            held = {f"HELD{i:02d}": _FakePosition(100, 10.0) for i in range(held_count)}
+            orders = strategy.orders_for(
+                trading_date=date(2025, 3, 3),
+                signal_time=strategy.signal_time_for(date(2025, 3, 3)),
+                account=_FakeAccount(positions=held), market=_FakeMarket())
+            buys = [order for order in orders if order.side is Side.BUY]
+            self.assertEqual(len(buys), expected_buys)
+
     def test_buy_band_picks_rank_within_target_size(self):
         from backtest_core.contracts import Side
 

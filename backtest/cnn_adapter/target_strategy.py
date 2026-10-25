@@ -40,6 +40,8 @@ from backtest.cnn_adapter.predictions import CnnPredictionAdapter
 
 __all__ = ["CnnTargetOrderCounters", "CnnTargetOrderStrategy"]
 
+_MAX_HOLDINGS = 10
+
 
 @dataclass(frozen=True)
 class CnnTargetOrderCounters:
@@ -318,6 +320,10 @@ class CnnTargetOrderStrategy:
                 skipped_min_edge += 1
                 continue
             candidates.append(code)
+        # 所有当前仓位（包括当日可能被拒绝的卖单）先占用名额，不能预支卖出成交。
+        held_count = sum(int(position.shares) > 0 for position in account.positions.values())
+        slots = max(_MAX_HOLDINGS - held_count, 0)
+        candidates = candidates[:slots]
         if not candidates:
             return [], skipped_strong_buy, skipped_min_edge
         usable = float(account.available_cash)
