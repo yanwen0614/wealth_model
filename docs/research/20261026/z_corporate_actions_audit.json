@@ -1,0 +1,717 @@
+{
+  "scope": "read_only_pretax_corporate_action_accounting_fixture; no orders or performance",
+  "sqlite": "Z:\\dev\\quant_data_dev.db",
+  "sqlite_sha256": "bb1372c362e8a9b085af4984eb522f9a4b243e0d07f5c1b9777c532d94b7b14b",
+  "raw_directory": "Z:\\dev\\kline\\day",
+  "audit_script": "D:\\code\\cnn_full_20260905\\cnn\\scripts\\audit_z_corporate_actions.py",
+  "audit_script_sha256": "fa5d6944054d9b969c7071e9b637886ff003d8c333c33134f5b31ddb8fd85093",
+  "repository_identity": {
+    "cnn": {
+      "root": "D:\\code\\cnn_full_20260905\\cnn",
+      "head": "4ff2e2ba852d2a94f1dad3b8ef36ec511eb0cb7e",
+      "dirty": true
+    },
+    "backtest_core": {
+      "root": "..\\backtest-core",
+      "head": "8aa82f2b4c3ea2af1a308f09e346663d08031ef6",
+      "dirty": true
+    }
+  },
+  "cases": [
+    {
+      "instrument_id": "000001.SZ",
+      "fixture_initial_shares": 100,
+      "source_row_id": 17328,
+      "source_row_sha256": "101f8d130f341174fd95a88c8f1b445aa232808289578d871e31b4308aa16fd9",
+      "source_snapshot_updated": "2026-10-04 03:53:38.635730",
+      "raw_parquet": "Z:\\dev\\kline\\day\\000001.SZ.parquet",
+      "raw_parquet_sha256": "945a652db2352362e94515a41dc1a495eee84cd5fb4a14d7351efe91a29bb027",
+      "event": {
+        "record_date": "2021-05-13",
+        "ex_date": "2021-05-14",
+        "pay_date": "2021-05-14",
+        "listing_date": null,
+        "gross_cash_per_share": 0.18,
+        "share_ratio": null,
+        "cash_tax_policy": "pretax",
+        "cash_tax_amount": 0.0,
+        "share_tax_status": "not_applicable"
+      },
+      "snapshots": [
+        {
+          "date": "2021-05-13",
+          "operation_ids": [
+            "fixture-000001.SZ-100:dividend:17328:record:2021-05-13"
+          ],
+          "cash": 100000000.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.07,
+          "expanded_nav": 100002307.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-14",
+          "operation_ids": [
+            "fixture-000001.SZ-100:dividend:17328:cash-ex:2021-05-14",
+            "fixture-000001.SZ-100:dividend:17328:cash-pay:2021-05-14"
+          ],
+          "cash": 100000018.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.32,
+          "expanded_nav": 100002350.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-17",
+          "operation_ids": [],
+          "cash": 100000018.0,
+          "available_cash": 100000018.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.6,
+          "expanded_nav": 100002378.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-18",
+          "operation_ids": [],
+          "cash": 100000018.0,
+          "available_cash": 100000018.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.9,
+          "expanded_nav": 100002408.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-19",
+          "operation_ids": [],
+          "cash": 100000018.0,
+          "available_cash": 100000018.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.6,
+          "expanded_nav": 100002378.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-20",
+          "operation_ids": [],
+          "cash": 100000018.0,
+          "available_cash": 100000018.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.82,
+          "expanded_nav": 100002400.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-21",
+          "operation_ids": [],
+          "cash": 100000018.0,
+          "available_cash": 100000018.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.49,
+          "expanded_nav": 100002367.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-24",
+          "operation_ids": [],
+          "cash": 100000018.0,
+          "available_cash": 100000018.0,
+          "positions": {
+            "000001.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.48,
+          "expanded_nav": 100002366.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        }
+      ]
+    },
+    {
+      "instrument_id": "000001.SZ",
+      "fixture_initial_shares": 1000,
+      "source_row_id": 17328,
+      "source_row_sha256": "101f8d130f341174fd95a88c8f1b445aa232808289578d871e31b4308aa16fd9",
+      "source_snapshot_updated": "2026-10-04 03:53:38.635730",
+      "raw_parquet": "Z:\\dev\\kline\\day\\000001.SZ.parquet",
+      "raw_parquet_sha256": "945a652db2352362e94515a41dc1a495eee84cd5fb4a14d7351efe91a29bb027",
+      "event": {
+        "record_date": "2021-05-13",
+        "ex_date": "2021-05-14",
+        "pay_date": "2021-05-14",
+        "listing_date": null,
+        "gross_cash_per_share": 0.18,
+        "share_ratio": null,
+        "cash_tax_policy": "pretax",
+        "cash_tax_amount": 0.0,
+        "share_tax_status": "not_applicable"
+      },
+      "snapshots": [
+        {
+          "date": "2021-05-13",
+          "operation_ids": [
+            "fixture-000001.SZ-1000:dividend:17328:record:2021-05-13"
+          ],
+          "cash": 100000000.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.07,
+          "expanded_nav": 100023070.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-14",
+          "operation_ids": [
+            "fixture-000001.SZ-1000:dividend:17328:cash-ex:2021-05-14",
+            "fixture-000001.SZ-1000:dividend:17328:cash-pay:2021-05-14"
+          ],
+          "cash": 100000180.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.32,
+          "expanded_nav": 100023500.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-17",
+          "operation_ids": [],
+          "cash": 100000180.0,
+          "available_cash": 100000180.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.6,
+          "expanded_nav": 100023780.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-18",
+          "operation_ids": [],
+          "cash": 100000180.0,
+          "available_cash": 100000180.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.9,
+          "expanded_nav": 100024080.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-19",
+          "operation_ids": [],
+          "cash": 100000180.0,
+          "available_cash": 100000180.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.6,
+          "expanded_nav": 100023780.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-20",
+          "operation_ids": [],
+          "cash": 100000180.0,
+          "available_cash": 100000180.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.82,
+          "expanded_nav": 100024000.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-21",
+          "operation_ids": [],
+          "cash": 100000180.0,
+          "available_cash": 100000180.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.49,
+          "expanded_nav": 100023670.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-05-24",
+          "operation_ids": [],
+          "cash": 100000180.0,
+          "available_cash": 100000180.0,
+          "positions": {
+            "000001.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 23.48,
+          "expanded_nav": 100023660.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        }
+      ]
+    },
+    {
+      "instrument_id": "300896.SZ",
+      "fixture_initial_shares": 100,
+      "source_row_id": 70078,
+      "source_row_sha256": "56caea7fc67f81cb609b0f981567ef146623e07d5bd51856f9f1d9559d7c09af",
+      "source_snapshot_updated": "2026-10-04 03:53:38.635730",
+      "raw_parquet": "Z:\\dev\\kline\\day\\300896.SZ.parquet",
+      "raw_parquet_sha256": "4fed8dba85270d92f9028d0d1e8c2f08b54565930453ba50f0a042eabf7d926f",
+      "event": {
+        "record_date": "2021-03-15",
+        "ex_date": "2021-03-16",
+        "pay_date": "2021-03-16",
+        "listing_date": "2021-03-16",
+        "gross_cash_per_share": 3.5,
+        "share_ratio": 0.8,
+        "cash_tax_policy": "pretax",
+        "cash_tax_amount": 0.0,
+        "share_tax_status": "unknown"
+      },
+      "snapshots": [
+        {
+          "date": "2021-03-15",
+          "operation_ids": [
+            "fixture-300896.SZ-100:dividend:70078:record:2021-03-15"
+          ],
+          "cash": 100000000.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "300896.SZ": 100.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 750.88,
+          "expanded_nav": 100075088.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-16",
+          "operation_ids": [
+            "fixture-300896.SZ-100:dividend:70078:cash-ex:2021-03-16",
+            "fixture-300896.SZ-100:dividend:70078:share-ex:2021-03-16",
+            "fixture-300896.SZ-100:dividend:70078:cash-pay:2021-03-16",
+            "fixture-300896.SZ-100:dividend:70078:share-list:2021-03-16"
+          ],
+          "cash": 100000350.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 439.6,
+          "expanded_nav": 100079478.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-17",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 436.0,
+          "expanded_nav": 100078830.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-18",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 451.73,
+          "expanded_nav": 100081661.4,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-19",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 441.83,
+          "expanded_nav": 100079879.4,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-22",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 438.8,
+          "expanded_nav": 100079334.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-23",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 396.7,
+          "expanded_nav": 100071756.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-24",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 387.25,
+          "expanded_nav": 100070055.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-25",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 370.2,
+          "expanded_nav": 100066986.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-26",
+          "operation_ids": [],
+          "cash": 100000350.0,
+          "available_cash": 100000350.0,
+          "positions": {
+            "300896.SZ": 180.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 385.59,
+          "expanded_nav": 100069756.2,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        }
+      ]
+    },
+    {
+      "instrument_id": "300896.SZ",
+      "fixture_initial_shares": 1000,
+      "source_row_id": 70078,
+      "source_row_sha256": "56caea7fc67f81cb609b0f981567ef146623e07d5bd51856f9f1d9559d7c09af",
+      "source_snapshot_updated": "2026-10-04 03:53:38.635730",
+      "raw_parquet": "Z:\\dev\\kline\\day\\300896.SZ.parquet",
+      "raw_parquet_sha256": "4fed8dba85270d92f9028d0d1e8c2f08b54565930453ba50f0a042eabf7d926f",
+      "event": {
+        "record_date": "2021-03-15",
+        "ex_date": "2021-03-16",
+        "pay_date": "2021-03-16",
+        "listing_date": "2021-03-16",
+        "gross_cash_per_share": 3.5,
+        "share_ratio": 0.8,
+        "cash_tax_policy": "pretax",
+        "cash_tax_amount": 0.0,
+        "share_tax_status": "unknown"
+      },
+      "snapshots": [
+        {
+          "date": "2021-03-15",
+          "operation_ids": [
+            "fixture-300896.SZ-1000:dividend:70078:record:2021-03-15"
+          ],
+          "cash": 100000000.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "300896.SZ": 1000.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 750.88,
+          "expanded_nav": 100750880.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-16",
+          "operation_ids": [
+            "fixture-300896.SZ-1000:dividend:70078:cash-ex:2021-03-16",
+            "fixture-300896.SZ-1000:dividend:70078:share-ex:2021-03-16",
+            "fixture-300896.SZ-1000:dividend:70078:cash-pay:2021-03-16",
+            "fixture-300896.SZ-1000:dividend:70078:share-list:2021-03-16"
+          ],
+          "cash": 100003500.0,
+          "available_cash": 100000000.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 439.6,
+          "expanded_nav": 100794780.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-17",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 436.0,
+          "expanded_nav": 100788300.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-18",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 451.73,
+          "expanded_nav": 100816614.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-19",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 441.83,
+          "expanded_nav": 100798794.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-22",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 438.8,
+          "expanded_nav": 100793340.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-23",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 396.7,
+          "expanded_nav": 100717560.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-24",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 387.25,
+          "expanded_nav": 100700550.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-25",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 370.2,
+          "expanded_nav": 100669860.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        },
+        {
+          "date": "2021-03-26",
+          "operation_ids": [],
+          "cash": 100003500.0,
+          "available_cash": 100003500.0,
+          "positions": {
+            "300896.SZ": 1800.0
+          },
+          "receivables": {},
+          "unlisted": {},
+          "raw_close": 385.59,
+          "expanded_nav": 100697562.0,
+          "market_state": "unknown",
+          "st_state": "unknown",
+          "reference_state": "unknown"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Fixture positions/cash do not establish executable purchases; market/ST/reference states are unknown.",
+    "Cash is pretax gross receivable/payment; actual personal tax is not modeled.",
+    "20% cash dividend withholding is a stress scenario only, not actual tax or a guaranteed return floor.",
+    "Share-tax classification and legal rounding are unverified; unknown tax is not assumed zero.",
+    "NAV is an accounting reconciliation, not strategy performance."
+  ]
+}
