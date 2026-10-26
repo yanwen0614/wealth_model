@@ -1,12 +1,16 @@
 """纯预算登记；账户现金与持仓快照必须由 core 提供。"""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from enum import StrEnum
 from math import isfinite
 from types import MappingProxyType
 from typing import Literal
+
+CASH_RECONCILIATION_ABS_TOLERANCE = 1e-8
 
 
 class AllocationError(ValueError):
@@ -47,6 +51,9 @@ class ExecutionFeedback:
     positions: Mapping[str, int] | None = None
     unlisted_entitlement_codes: frozenset[str] | None = None
     active_order_codes: frozenset[str] | None = None
+    cash: float | None = None
+    locked: Mapping[str, int] | None = None
+    core_snapshot: CoreAccountSnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,12 @@ class CoreAccountSnapshot:
     positions: Mapping[str, int]
     unlisted_entitlement_codes: frozenset[str]
     active_order_codes: frozenset[str]
+    cash: float | None = None
+    locked: Mapping[str, int] = field(default_factory=dict)
+    cash_receivables: Mapping[str, object] = field(default_factory=dict)
+    unlisted_entitlements: Mapping[str, object] = field(default_factory=dict)
+    pending_cash: Mapping[str, float] = field(default_factory=dict)
+    active_orders: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -71,6 +84,7 @@ class Episode:
     cumulative_cash_debit: float = 0.0
     exit_pending: bool = False
     exit_date: date | None = None
+    plan_end_date: date | None = None
     status: EpisodeStatus = EpisodeStatus.ACTIVE
 
 
@@ -103,10 +117,18 @@ class AllocationRegistry:
         self.calendar_days = tuple(calendar_days)
         self.current_day = calendar_days[0]
         self._available_cash = float(initial_cash)
+        self._cash = float(initial_cash)
         self._episodes: dict[str, Episode] = {}
         self._seen_fills: dict[str, ExecutionFeedback] = {}
         self._seen_snapshots: dict[str, tuple[object, ...]] = {}
+        self._snapshot_sources: dict[str, str] = {}
         self._positions: Mapping[str, int] = MappingProxyType({})
+        self._locked: Mapping[str, int] = MappingProxyType({})
+        self._cash_receivables: Mapping[str, object] = MappingProxyType({})
+        self._unlisted_entitlements: Mapping[str, object] = MappingProxyType({})
+        self._pending_cash: Mapping[str, float] = MappingProxyType({})
+        self._active_order_snapshots: Mapping[str, object] = MappingProxyType({})
+        self._core_snapshot: CoreAccountSnapshot | None = None
         self._entitlements: frozenset[str] = frozenset()
         self._active_orders: frozenset[str] = frozenset()
         self._core_snapshot_id: str | None = None
@@ -119,12 +141,29 @@ class AllocationRegistry:
         return self._available_cash
 
     @property
+    def core_cash(self) -> float:
+        return self._cash
+
+    @property
+    def locked(self) -> Mapping[str, int]:
+        return MappingProxyType(dict(self._locked))
+
+    @property
+    def active_order_snapshots(self) -> Mapping[str, object]:
+        return MappingProxyType(dict(self._active_order_snapshots))
+
+    @property
+    def core_snapshot(self) -> CoreAccountSnapshot | None:
+        return self._core_snapshot
+
+    @property
     def free_cash(self) -> float:
         return self._available_cash - self.active_commitments
 
     @property
     def active_commitments(self) -> float:
-        return sum(item.commitment for item in self._episodes.values())
+        return sum(item.commitment for item in self._episodes.values()
+                   if item.status is not EpisodeStatus.CLOSED)
 
     @property
     def episodes(self) -> Mapping[str, Episode]:
@@ -134,6 +173,7 @@ class AllocationRegistry:
     def active_codes(self) -> frozenset[str]:
         return frozenset(
             {code for code, shares in self._positions.items() if shares > 0}
+            | {code for code, shares in self._locked.items() if shares > 0}
             | self._entitlements | self._active_orders
         )
 
@@ -151,7 +191,8 @@ class AllocationRegistry:
 
     def snapshot(self) -> RegistrySnapshot:
         return RegistrySnapshot(
-            len(self._episodes), self._available_cash, self.active_codes,
+            sum(item.status is not EpisodeStatus.CLOSED for item in self._episodes.values()),
+            self._available_cash, self.active_codes,
             self.active_commitments, self._core_snapshot_id, self._last_fill_id,
             self._last_order_id, self._snapshot_sequence,
         )
@@ -164,7 +205,7 @@ class AllocationRegistry:
             raise AllocationError("同代码旧 episode 尚未由 core 快照清除")
         if not code or code in self.active_codes:
             raise AllocationError("代码已有持仓、权益或活动订单")
-        if len(self._episodes) >= 5:
+        if sum(item.status is not EpisodeStatus.CLOSED for item in self._episodes.values()) >= 5:
             raise AllocationError("五个预算槽已占满")
         if self.free_cash < self.tranche_budget:
             raise AllocationError("free_cash 不足一个完整 C/5")
@@ -184,6 +225,14 @@ class AllocationRegistry:
             episode, exit_pending=True, exit_date=requested_day
         )
 
+    def set_episode_plan_end(self, episode_id: str, final_day: date) -> None:
+        if final_day not in self.calendar_days or final_day < self.current_day:
+            raise AllocationError("计划结束日必须属于 calendar 且不得早于当前日")
+        episode = self._episodes[episode_id]
+        if episode.status is not EpisodeStatus.ACTIVE:
+            raise AllocationError("仅 ACTIVE episode 可登记计划结束日")
+        self._episodes[episode_id] = replace(episode, plan_end_date=final_day)
+
     def advance(self, day: date) -> None:
         if day not in self.calendar_days or day < self.current_day:
             raise AllocationError("advance 日期必须来自 calendar 且不得倒退")
@@ -193,6 +242,56 @@ class AllocationRegistry:
         # 取消只记录流程状态，预算承诺和 slot 保留至周期结束。
         episode = self._episodes[episode_id]
         self._episodes[episode_id] = replace(episode, status=EpisodeStatus.CANCELLED)
+
+    def apply_core_snapshot(self, snapshot: CoreAccountSnapshot) -> bool:
+        """用新的 core 权威快照同步账户；相同快照重放为 no-op。"""
+        self._validate_core_snapshot(snapshot, require_cash=True)
+        payload = self._snapshot_payload(snapshot)
+        previous = self._seen_snapshots.get(snapshot.snapshot_id)
+        if previous is not None:
+            if previous != payload:
+                raise AllocationError("core_snapshot_id 重用且内容不一致")
+            return False
+        if self._snapshot_sequence is not None and snapshot.sequence <= self._snapshot_sequence:
+            raise AllocationError("core snapshot sequence 陈旧或未递进")
+        self._commit_core_snapshot(snapshot, payload, source="state")
+        self._sync_exit_state()
+        return True
+
+    @staticmethod
+    def _validate_core_snapshot(snapshot: CoreAccountSnapshot, *, require_cash: bool = False) -> None:
+        if not isinstance(snapshot.snapshot_id, str) or not snapshot.snapshot_id:
+            raise AllocationError("core_snapshot_id 缺失")
+        if not isinstance(snapshot.sequence, int) or isinstance(snapshot.sequence, bool) or snapshot.sequence < 0:
+            raise AllocationError("core snapshot sequence 必须为非负整数")
+        if require_cash and snapshot.cash is None:
+            raise AllocationError("权威 core snapshot 缺少 cash")
+        for label, value in (("available_cash", snapshot.available_cash), ("cash", snapshot.cash)):
+            if value is None and label == "cash":
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or value < 0:
+                raise AllocationError(f"{label} 必须为有限非负数")
+        for label, positions in (("positions", snapshot.positions), ("locked", snapshot.locked)):
+            if not isinstance(positions, Mapping):
+                raise AllocationError(f"{label} 必须为 mapping")
+            if any(not isinstance(code, str) or not code or not isinstance(shares, int)
+                   or isinstance(shares, bool) or shares < 0 for code, shares in positions.items()):
+                raise AllocationError(f"{label} 必须是代码到非负整数股数的快照")
+        for label, codes in (("权益", snapshot.unlisted_entitlement_codes),
+                             ("活动订单", snapshot.active_order_codes)):
+            if not isinstance(codes, (set, frozenset)) or any(not isinstance(code, str) or not code for code in codes):
+                raise AllocationError(f"{label}代码快照格式无效")
+        for label, mapping in (("cash_receivables", snapshot.cash_receivables),
+                               ("unlisted_entitlements", snapshot.unlisted_entitlements),
+                               ("active_orders", snapshot.active_orders)):
+            if not isinstance(mapping, Mapping) or any(not isinstance(key, str) or not key for key in mapping):
+                raise AllocationError(f"{label} 必须为非空 key 的 mapping")
+        if not isinstance(snapshot.pending_cash, Mapping):
+            raise AllocationError("pending_cash 必须为 mapping")
+        for key, value in snapshot.pending_cash.items():
+            if (not isinstance(key, str) or not key or isinstance(value, bool)
+                    or not isinstance(value, (int, float)) or not isfinite(value) or value < 0):
+                raise AllocationError("pending_cash 必须为有限非负金额 mapping")
 
     def _validate_feedback(self, feedback: ExecutionFeedback) -> None:
         if (not isinstance(feedback.episode_id, str) or not feedback.episode_id
@@ -252,7 +351,9 @@ class AllocationRegistry:
         if any(not isinstance(code, str) or not code
                for code in feedback.unlisted_entitlement_codes | feedback.active_order_codes):
             raise AllocationError("权益/活动订单代码不得为空")
-        if feedback.side == "buy" and feedback.cash_debit != feedback.amount + feedback.fees:
+        if (feedback.side == "buy"
+                and abs(feedback.cash_debit - (feedback.amount + feedback.fees))
+                > CASH_RECONCILIATION_ABS_TOLERANCE):
             raise AllocationError("buy cash_debit 必须等于成交额加真实费用")
 
     def apply_feedback(self, feedback: ExecutionFeedback) -> bool:
@@ -277,13 +378,18 @@ class AllocationRegistry:
         assert positions is not None
         assert entitlements is not None
         assert active_orders is not None
-        snapshot = CoreAccountSnapshot(
+        snapshot = feedback.core_snapshot or CoreAccountSnapshot(
             snapshot_id, sequence, available_cash, positions,
-            frozenset(entitlements), frozenset(active_orders),
+            frozenset(entitlements), frozenset(active_orders), cash=feedback.cash,
+            locked=feedback.locked or {},
         )
+        if snapshot.snapshot_id != snapshot_id or snapshot.sequence != sequence:
+            raise AllocationError("fill feedback 与 core snapshot 身份不匹配")
+        self._validate_core_snapshot(snapshot, require_cash=True)
         feedback = replace(
             feedback,
             positions=MappingProxyType(dict(snapshot.positions)),
+            locked=MappingProxyType(dict(snapshot.locked)),
             unlisted_entitlement_codes=snapshot.unlisted_entitlement_codes,
             active_order_codes=snapshot.active_order_codes,
         )
@@ -309,16 +415,20 @@ class AllocationRegistry:
             if feedback.cash_debit > episode.commitment:
                 raise AllocationError("真实现金借记超过 episode 未投入承诺")
         payload = self._snapshot_payload(snapshot)
-        if snapshot.snapshot_id in self._seen_snapshots:
-            previous = self._seen_snapshots[snapshot.snapshot_id]
-            if previous != payload:
-                raise AllocationError("core_snapshot_id 重用且内容不一致")
+        existing_payload = self._seen_snapshots.get(snapshot.snapshot_id)
+        if existing_payload is not None and existing_payload != payload:
+            raise AllocationError("core_snapshot_id 重用且内容不一致")
+        state_snapshot_already_applied = (
+            existing_payload == payload and self._snapshot_sources.get(snapshot.snapshot_id) == "state"
+        )
+        if existing_payload is not None and not state_snapshot_already_applied:
             raise AllocationError("core_snapshot_id 必须唯一")
-        if (self._snapshot_sequence is not None
+        if (not state_snapshot_already_applied and self._snapshot_sequence is not None
                 and snapshot.sequence <= self._snapshot_sequence):
             raise AllocationError("core snapshot sequence 陈旧或未递进")
         self._seen_fills[fill_id] = feedback
         self._seen_snapshots[snapshot.snapshot_id] = payload
+        self._snapshot_sources[snapshot.snapshot_id] = "fill"
         episode = replace(
             episode,
             commitment=episode.commitment - feedback.cash_debit
@@ -327,14 +437,10 @@ class AllocationRegistry:
             + (feedback.cash_debit if feedback.side == "buy" else 0.0),
         )
         self._episodes[episode.episode_id] = episode
-        self._available_cash = float(snapshot.available_cash)
-        self._core_snapshot_id = snapshot.snapshot_id
         self._last_fill_id = fill_id
         self._last_order_id = order_id
-        self._snapshot_sequence = snapshot.sequence
-        self._positions = MappingProxyType(dict(snapshot.positions))
-        self._entitlements = snapshot.unlisted_entitlement_codes
-        self._active_orders = snapshot.active_order_codes
+        if not state_snapshot_already_applied:
+            self._commit_core_snapshot(snapshot, payload, source="fill")
         self._sync_exit_state()
         return True
 
@@ -343,15 +449,52 @@ class AllocationRegistry:
         return (
             snapshot.sequence,
             snapshot.available_cash,
+            snapshot.cash,
             tuple(sorted(snapshot.positions.items())),
+            tuple(sorted(snapshot.locked.items())),
             tuple(sorted(snapshot.unlisted_entitlement_codes)),
             tuple(sorted(snapshot.active_order_codes)),
+            tuple(sorted(snapshot.cash_receivables.items())),
+            tuple(sorted(snapshot.unlisted_entitlements.items())),
+            tuple(sorted(snapshot.pending_cash.items())),
+            tuple(sorted(snapshot.active_orders.items())),
         )
+
+    def _commit_core_snapshot(
+        self, snapshot: CoreAccountSnapshot, payload: tuple[object, ...], *, source: str
+    ) -> None:
+        self._seen_snapshots[snapshot.snapshot_id] = payload
+        self._snapshot_sources[snapshot.snapshot_id] = source
+        self._core_snapshot_id = snapshot.snapshot_id
+        self._snapshot_sequence = snapshot.sequence
+        self._available_cash = float(snapshot.available_cash)
+        if snapshot.cash is not None:
+            self._cash = float(snapshot.cash)
+        self._positions = MappingProxyType(dict(snapshot.positions))
+        self._locked = MappingProxyType(dict(snapshot.locked))
+        self._cash_receivables = MappingProxyType(dict(snapshot.cash_receivables))
+        self._unlisted_entitlements = MappingProxyType(dict(snapshot.unlisted_entitlements))
+        self._pending_cash = MappingProxyType(dict(snapshot.pending_cash))
+        self._active_order_snapshots = MappingProxyType(dict(snapshot.active_orders))
+        self._core_snapshot = replace(
+            snapshot,
+            positions=self._positions,
+            locked=self._locked,
+            cash_receivables=self._cash_receivables,
+            unlisted_entitlements=self._unlisted_entitlements,
+            pending_cash=self._pending_cash,
+            active_orders=self._active_order_snapshots,
+        )
+        self._entitlements = frozenset(snapshot.unlisted_entitlement_codes)
+        self._active_orders = frozenset(snapshot.active_order_codes)
 
     def _sync_exit_state(self) -> None:
         active = self.active_codes
         for episode_id, episode in tuple(self._episodes.items()):
-            should_close = episode.exit_pending or episode.status is EpisodeStatus.CANCELLED
+            expired = episode.plan_end_date is not None and self.current_day >= episode.plan_end_date
+            should_close = (
+                episode.status is EpisodeStatus.CANCELLED or episode.exit_pending or expired
+            )
             if should_close and episode.code not in active:
                 self._episodes[episode_id] = replace(
                     episode, exit_pending=False, exit_date=None,
