@@ -11,6 +11,20 @@ from backtest_core.contracts.market import MarketBar
 from backtest.cnn_adapter.raw_market_inputs import RawMarketRecord, read_raw_market_inputs
 
 
+def _to_float_price(value: object, field: str) -> float | None:
+    """verified_states 条目值 → float | None。
+
+    仅做类型转换和 bool 拒绝；正有限及大小关系由 core MarketBar.__post_init__ 校验。
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be numeric, got bool {value!r}")  # noqa: TRY004
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be numeric, got {type(value).__name__} {value!r}")  # noqa: TRY004
+    return float(value)
+
+
 class CnnRawMarketDataProvider:
     """按代码惰性读取 raw parquet；只有显式传入已核验状态才允许执行。"""
 
@@ -73,6 +87,9 @@ class CnnRawMarketDataProvider:
             market_state_known=market_known, st_state_known=st_known,
             reference_known=reference_known, limit_state_known=limit_known,
             corporate_action_reference_required=key in self.corporate_action_dates,
+            # 绝对限价由 verified_states 直接透传，缺失为 None；不根据 ST/前收盘重建
+            absolute_limit_up_price=_to_float_price(state.get("absolute_limit_up_price"), "absolute_limit_up_price"),
+            absolute_limit_down_price=_to_float_price(state.get("absolute_limit_down_price"), "absolute_limit_down_price"),
         )
         self._bars[key] = bar
         return bar

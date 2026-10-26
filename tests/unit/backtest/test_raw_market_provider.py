@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from collections.abc import Mapping
 from datetime import date, timedelta
 from pathlib import Path
 from shutil import copyfile
@@ -107,3 +108,104 @@ class RawMarketProviderTest(unittest.TestCase):
         )
         self.assertEqual(result.order_results[0].reason, ReasonCode.MARKET_STATE_UNKNOWN)
         self.assertFalse(any(event.status.value == "filled" for event in result.trades))
+
+
+class RawMarketProviderAbsoluteLimitTest(unittest.TestCase):
+    """absolute_limit_up_price / absolute_limit_down_price 直接字段透传。"""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.path = Path(self.temp.name) / "raw.parquet"
+        self.days = [date(2021, 3, 15) + timedelta(days=index) for index in range(4)]
+        pd.DataFrame({
+            "code": ["A.SZ"] * 4, "kline_time": pd.to_datetime(self.days),
+            "open": [10.0] * 4, "high": [10.5] * 4, "low": [9.5] * 4,
+            "close": [10.0] * 4, "volume": [100_000] * 4, "amount": [1_000_000_000] * 4,
+        }).to_parquet(self.path, index=False)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _provider(self, state: Mapping[str, object] | None = None) -> CnnRawMarketDataProvider:
+        key: tuple[str, date] = ("A.SZ", self.days[1])
+        states: Mapping[tuple[str, date], Mapping[str, object]] = {}
+        if state is not None:
+            states = {key: state}
+        return CnnRawMarketDataProvider(
+            self.path, signal_start=self.days[0], signal_end=self.days[2],
+            execution_end=self.days[3], verified_states=states,
+        )
+
+    def test_absent_keys_yield_none(self) -> None:
+        """缺字段 None：verified_states 无 absolute_limit 键 → MarketBar 字段为 None。"""
+        bar = self._provider({"market_state": "trading"}).get_bar("A.SZ", self.days[1])
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        self.assertIsNone(bar.absolute_limit_up_price)
+        self.assertIsNone(bar.absolute_limit_down_price)
+
+    def test_direct_passthrough(self) -> None:
+        """直接原值：verified_states 中明确的价格原样传到 MarketBar。"""
+        bar = self._provider({
+            "market_state": "trading", "limit_known": True,
+            "absolute_limit_up_price": 11.0, "absolute_limit_down_price": 9.0,
+        }).get_bar("A.SZ", self.days[1])
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        self.assertEqual(bar.absolute_limit_up_price, 11.0)
+        self.assertEqual(bar.absolute_limit_down_price, 9.0)
+
+    def test_known_flag_not_forced_by_price(self) -> None:
+        """known 标志不因有价变 True：价格存在但 limit_known=False → limit_state_known 仍为 False。"""
+        bar = self._provider({
+            "market_state": "trading", "limit_known": False,
+            "absolute_limit_up_price": 11.0, "absolute_limit_down_price": 9.0,
+        }).get_bar("A.SZ", self.days[1])
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        self.assertFalse(bar.limit_state_known)
+        self.assertEqual(bar.absolute_limit_up_price, 11.0)
+        self.assertEqual(bar.absolute_limit_down_price, 9.0)
+
+    def test_single_boundary_missing(self) -> None:
+        """单界缺失：只有 absolute_limit_up_price，down 为 None。"""
+        bar = self._provider({
+            "market_state": "trading", "limit_known": True,
+            "absolute_limit_up_price": 11.0,
+        }).get_bar("A.SZ", self.days[1])
+        self.assertIsNotNone(bar)
+        assert bar is not None
+        self.assertEqual(bar.absolute_limit_up_price, 11.0)
+        self.assertIsNone(bar.absolute_limit_down_price)
+
+    def test_bool_rejected(self) -> None:
+        """bool 类型被 adapter _to_float_price 明确拒绝，不默默变 None。"""
+        with self.assertRaises(ValueError):
+            self._provider({
+                "market_state": "trading", "limit_known": True,
+                "absolute_limit_up_price": True, "absolute_limit_down_price": 9.0,
+            }).get_bar("A.SZ", self.days[1])
+
+    def test_negative_rejected(self) -> None:
+        """负值被 core MarketBar 明确拒绝。"""
+        with self.assertRaises(ValueError):
+            self._provider({
+                "market_state": "trading", "limit_known": True,
+                "absolute_limit_up_price": 11.0, "absolute_limit_down_price": -1.0,
+            }).get_bar("A.SZ", self.days[1])
+
+    def test_nan_rejected(self) -> None:
+        """NaN 被 core MarketBar 明确拒绝。"""
+        with self.assertRaises(ValueError):
+            self._provider({
+                "market_state": "trading", "limit_known": True,
+                "absolute_limit_up_price": float("nan"), "absolute_limit_down_price": 9.0,
+            }).get_bar("A.SZ", self.days[1])
+
+    def test_reversed_order_rejected(self) -> None:
+        """down > up 被 core MarketBar 明确拒绝。"""
+        with self.assertRaises(ValueError):
+            self._provider({
+                "market_state": "trading", "limit_known": True,
+                "absolute_limit_up_price": 9.0, "absolute_limit_down_price": 11.0,
+            }).get_bar("A.SZ", self.days[1])
