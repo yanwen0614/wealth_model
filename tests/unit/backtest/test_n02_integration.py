@@ -19,9 +19,10 @@ def _args(**over):
             "stamp_rate": 0.0005, "transfer_rate": 0.00001, "min_commission": 5.0,
             "benchmark_index": "000300.SH", "index_dir": "idx_dir",
             "model_name": "m", "checkpoint": "c", "bins_version": "b",
-            "topn": [2], "target_size": 7, "sell_buffer": 9,
-            "exit_on_nonpositive": True, "exit_threshold": 0.01,
-            "strong_buy_threshold": 0.02, "min_edge": 0.0, "min_edge_tail_ratio": 0.3}
+             "topn": [2], "target_size": 7, "sell_buffer": 9,
+             "exit_on_nonpositive": True, "exit_threshold": 0.01,
+             "strong_buy_threshold": 0.02, "min_edge": 0.0, "min_edge_tail_ratio": 0.3,
+             "stop_half": None, "stop_full": None}
     base.update(over)
     return SimpleNamespace(**base)
 

@@ -47,6 +47,7 @@ from backtest_core.evaluation import (
 )
 from backtest_core.testing import SCENARIOS, SyntheticMarketProvider, build_downtrend, build_uptrend
 
+from backtest.cnn_adapter import market as market_module
 from backtest.cnn_adapter.cache import load_prediction_cache, save_prediction_cache
 from backtest.cnn_adapter.common import SHANGHAI_TZ
 from backtest.cnn_adapter.market import CnnMarketDataProvider
@@ -126,6 +127,35 @@ def build_provider(provider: SyntheticMarketProvider, code: str, tmpdir: str,
     return CnnMarketDataProvider(path), expected
 
 
+def expected_open_limits(provider: SyntheticMarketProvider, code: str) -> tuple[dict, int]:
+    """期望值按执行日开盘判定；core 场景布尔值表达整日状态，语义不同。"""
+    rows, _ = fixture_rows(provider, code)
+    expected = {}
+    unknown = 0
+    prev_close = None
+    market_pct = market_module._market_and_pct(code)
+    for row in rows:
+        if not row["is_trading"]:
+            continue
+        opening = market_module._finite_decimal(row["open"])
+        prev = market_module._finite_decimal(prev_close)
+        if market_pct is None or prev is None or prev <= 0 or opening is None or opening <= 0:
+            expected[row["kline_time"].date()] = (False, False)
+            unknown += 1
+        else:
+            market, board_pct = market_pct
+            up = market_module._limit_price(prev, board_pct, up=True, min_tick_rule=market == "SZ")
+            down = market_module._limit_price(prev, board_pct, up=False, min_tick_rule=market == "SZ")
+            expected[row["kline_time"].date()] = (
+                market_module._to_cents(opening) >= market_module._to_cents(up),
+                market_module._to_cents(opening) <= market_module._to_cents(down),
+            )
+        close = market_module._finite_decimal(row["close"])
+        if close is not None:
+            prev_close = float(close)
+    return expected, unknown
+
+
 class _TempDirMixin(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="b05c_")
@@ -145,6 +175,7 @@ class TestScenarioContract(_TempDirMixin):
                 scenario = build_scenario(name)
                 code = scenario.instrument_ids()[0]
                 provider, expected_close = build_provider(scenario, code, self.tmp, name)
+                expected_limits, expected_unknown = expected_open_limits(scenario, code)
                 bars = scenario.bars_for(code)
                 for bar in bars:
                     got = provider.get_bar(code, bar.trading_date)
@@ -155,11 +186,10 @@ class TestScenarioContract(_TempDirMixin):
                         self.assert_suspended_bar(got)
                         continue
                     self.assertTrue(got.is_trading)
-                    self.assertEqual(got.limit_up, bar.limit_up)
-                    self.assertEqual(got.limit_down, bar.limit_down)
+                    self.assertEqual((got.limit_up, got.limit_down), expected_limits[bar.trading_date])
                     self.assert_prices(got, bar, expected_close[bar.trading_date])
-                # 首根 bar 无前收：limit 派生记 unknown（占位 False），不静默断言为有效判定
-                self.assertEqual(provider.counters.limit_unknown_count, 1)
+                # 无前收或缺开盘价时 unknown；涨跌停语义按执行日开盘判断。
+                self.assertEqual(provider.counters.limit_unknown_count, expected_unknown)
                 if name in ("missing_price_day", "missing_volume_day"):
                     self.assertEqual(provider.counters.missing_bar_count, 1)
                 else:

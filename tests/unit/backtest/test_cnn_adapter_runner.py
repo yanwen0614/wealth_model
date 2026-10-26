@@ -56,7 +56,7 @@ class _RunnerMixin(_TempDirMixin):
 
         def _fake_engine(*, dates, strategy, market, execution_config,
                          portfolio_config, cost_config, **rest):
-            captured.update({"strategy": strategy, "cost_config": cost_config,
+            captured.update({"dates": dates, "strategy": strategy, "cost_config": cost_config,
                              "portfolio_config": portfolio_config, "rest": rest})
             return fake
 
@@ -84,6 +84,7 @@ class TestRunnerDefaults(_RunnerMixin):
         from backtest.cnn_adapter.order_strategy import CnnOrderStrategy
 
         outcome, captured = self._run_with_capture()
+        self.assertEqual(captured["dates"], captured["rest"]["execution_calendar"])
         self.assertIsInstance(captured["strategy"], CnnOrderStrategy)
         default = CostConfig()
         got = captured["cost_config"]
