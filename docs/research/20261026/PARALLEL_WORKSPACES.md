@@ -19,7 +19,16 @@
 - 唯一编码owner：`ses_e88eb5f7bffepQGeYHK5o7o7EI`，GPT-6 Luna。
 - 已导入主区18个已跟踪改动和2个新文件；差异及blob核验一致，原主区WIP原样保留。
 - 独立venv通过离线locked安装，以copy模式隔离，不链接主区环境。
-- 隔离基线：690项测试、Ruff、Pyright通过；既有语义QA问题仍由该owner按TDD收口。
+- 基线已收口：697项测试、Ruff、Pyright及原独立QA通过，40f9612已快进合入；该owner在同一隔离树继续成交观察器批次。
+
+### CNN分批桥接工作树
+
+- 分支：`openchamber/staged-bridge-20261026`，基线`3fa7f9b`。
+- 路径：`C:/Users/yanwen/.local/share/opencode/worktree/a2c2dea9fdaf0d6b75806767edcddf5ed61bc2f1/staged-bridge-20261026`。
+- 唯一编码owner：`ses_e88a8c46cffeT5Rm5PheHh6ny6`，GPT-6 Luna。
+- 离线缓存不含torch原始wheel，使用已安装主环境的只读快照复制到私有site-packages；不是共享venv软链。
+- Python、Torch、core包路径均核验在私有venv，21项原分批测试及目标Ruff/Pyright通过。
+- 先实现权威快照同步/周期终止规则；实际core协议仅在公开契约冻结后接入，不引用其它代理可变源码。
 
 ## 合入流程
 
