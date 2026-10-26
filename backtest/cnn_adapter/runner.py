@@ -27,7 +27,7 @@ from backtest_core.evaluation import evaluate_account
 from backtest_core.io import DEFAULT_CHUNK_SIZE, ResultStore, RunManifest
 
 from backtest.cnn_adapter.common import SHANGHAI_TZ, npz_fingerprint
-from backtest.cnn_adapter.corporate_actions import CorporateActionProvider
+from backtest.cnn_adapter.corporate_actions import CorporateActionProvider, TaxPolicy
 from backtest.cnn_adapter.execution_audit import (
     ExitOnlyStrategy,
     SuppressedOrder,
@@ -141,9 +141,11 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                         execution_config: ExecutionConfig | None = None,
                         execution_calendar: Sequence[date] | None = None,
                         evaluation_end: date | None = None,
-                        raw_market_path: str | Path | None = None,
-                        corporate_action_provider: CorporateActionProvider | None = None,
-                        period_id: str | None = None,
+                          raw_market_path: str | Path | None = None,
+                          corporate_action_provider: CorporateActionProvider | None = None,
+                          corporate_action_tax_policy: TaxPolicy = "pretax",
+                          require_known_share_tax: bool = False,
+                          period_id: str | None = None,
                         verified_execution_states: Mapping[tuple[str, date], Mapping[str, object]] | None = None,
                         ) -> CnnBacktestOutcome:
     """cnn 订单路径端到端：组装 adapter/策略 → core 引擎 → 整段核验 → 打包结果.
@@ -161,6 +163,8 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
     ``transfer_fee_rate`` 默认 ``0.00001``（过户费万1双边，A股实盘口径；2023-08-28 起印花税为卖出单边万5，
     core 默认佣金万2/min5/印花万5与之一致）；传 ``None`` 回退 core 默认 0.0（无过户费旧口径）。
     滑点一律走 core σ-ADV v1（``CostConfig`` 默认，不做逐项覆盖）。
+    ``corporate_action_tax_policy`` 默认 ``pretax``；20% 选项仅是现金分红压力情景，非实际个人税结果。
+    ``require_known_share_tax`` 开启时，遇到未知送转税务会拒绝运行；默认结果会在 provenance 明示税务覆盖不完整。
     target 模式另有两道买入门槛（均为策略层参数，不进 core）：``strong_buy_threshold`` 全带门槛、
     ``min_edge`` + ``min_edge_tail_ratio`` 尾部门槛（默认后30%）；0.0 均为关闭。
     """
@@ -183,6 +187,29 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
         raise ValueError("corporate_action_provider must be a CorporateActionProvider or None")
     if corporate_action_provider is not None and (period_id is None or not period_id.strip()):
         raise ValueError("company-action accounting requires an explicit period_id")
+    if corporate_action_tax_policy not in ("pretax", "cash_dividend_20pct_stress"):
+        raise ValueError(f"unsupported corporate action tax policy: {corporate_action_tax_policy!r}")
+    if not isinstance(require_known_share_tax, bool):
+        raise TypeError("require_known_share_tax must be bool")
+    if corporate_action_tax_policy != "pretax" and corporate_action_provider is None:
+        raise ValueError("a non-pretax corporate action policy requires a corporate_action_provider")
+    tax_metadata = (corporate_action_provider.tax_metadata(corporate_action_tax_policy)
+                    if corporate_action_provider is not None else {
+                        "corporate_action_tax_policy": "pretax",
+                        "corporate_action_tax_scope": "cash_dividend_only",
+                        "corporate_action_cash_tax_is_actual": "false",
+                        "corporate_action_share_tax_status": "not_applicable",
+                        "corporate_action_share_tax_unknown_events": "none",
+                        "corporate_action_tax_completeness": "cash_dividend_only",
+                        "corporate_action_after_tax_result_status": "not_actual_tax_policy",
+                    })
+    if (require_known_share_tax and
+            tax_metadata["corporate_action_share_tax_status"] == "unknown"):
+        unknown_events = tax_metadata["corporate_action_share_tax_unknown_events"]
+        raise ValueError(f"unknown share tax prevents complete-tax backtest: {unknown_events}")
+    corporate_action_fingerprint = (
+        corporate_action_provider.fingerprint if corporate_action_provider is not None else "none"
+    )
     terminal_plan = None
     execution_days = signal_days
     if execution_calendar is not None:
@@ -269,7 +296,9 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
         terminal_strategy = ExitOnlyStrategy(strategy, terminal_plan)
         strategy = terminal_strategy
     action_hook = (
-        (lambda day: corporate_action_provider.account_operations_for_day(day, period_id=period_id))
+        (lambda day: corporate_action_provider.account_operations_for_day(
+            day, period_id=period_id, tax_policy=corporate_action_tax_policy,
+        ))
         if corporate_action_provider is not None and period_id is not None else None
     )
     result = run_account_backtest_from_orders(
@@ -329,7 +358,10 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                  "execution_start": execution_days[0].isoformat(),
                                  "execution_end": execution_days[-1].isoformat(),
                                  "evaluation_end": terminal_plan.evaluation_date.isoformat() if terminal_plan else None,
-                                 "period_id": period_id,
+                                  "period_id": period_id,
+                                  "corporate_action_tax_policy": corporate_action_tax_policy,
+                                  "corporate_action_fingerprint": corporate_action_fingerprint,
+                                  "require_known_share_tax": require_known_share_tax,
                                  "raw_market_path": str(raw_market_path) if raw_market_path is not None else None,
                                  "mode": mode, "commission_rate_buy": commission_rate_buy,
                                  "commission_rate_sell": commission_rate_sell,
@@ -348,8 +380,10 @@ def run_cnn_backtest(*, pred_cache: Mapping, parquet_path: str,
                                   "ic_gate_min_ic": ic_gate_min_ic})
     provenance = {key: value for key, value in adapter.provenance.items() if value.strip()}
     provenance.update({"run_id": resolved_run_id, "order_entry": ORDER_ENTRY, "top_n": str(top_n),
-                       "initial_capital": str(float(initial_capital)), "config_hash": config_hash,
-                       "data_fingerprint": data_fingerprint, "mode": mode})
+                        "initial_capital": str(float(initial_capital)), "config_hash": config_hash,
+                        "data_fingerprint": data_fingerprint, "mode": mode,
+                        "corporate_action_fingerprint": corporate_action_fingerprint})
+    provenance.update(tax_metadata)
     provenance.update(_label_quality_metadata(pred_cache))
     merged = {**dict(result.provenance), **provenance}
     manifest = RunManifest(schema_version=SCHEMA_VERSION, engine_version=backtest_core.__version__,

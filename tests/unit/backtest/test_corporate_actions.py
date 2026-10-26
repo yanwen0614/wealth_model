@@ -1,16 +1,63 @@
 """公司行动记账投影合成测试；不执行撮合或改写现金余额。"""
 
 import unittest
+from dataclasses import replace
 from datetime import UTC, date, datetime
+from typing import cast
 
 from backtest.cnn_adapter.corporate_actions import (
     CorporateActionEvent,
     CorporateActionLedger,
     CorporateActionProvider,
+    TaxPolicy,
 )
 
 
 class CorporateActionsTest(unittest.TestCase):
+    def test_provider_fingerprint_covers_canonical_event_identity(self):
+        event = CorporateActionEvent(
+            event_id="fingerprint-event", instrument_id="A.SZ", kind="cash_dividend",
+            source_table="dividend", source_row_id="row", source_snapshot_hash="hash-a",
+            source_version="v1", record_date=date(2021, 3, 15), ex_date=date(2021, 3, 16),
+            gross_cash_per_share=0.18,
+        )
+        reordered = CorporateActionEvent(
+            event_id="other-event", instrument_id="B.SZ", kind="cash_dividend",
+            source_table="dividend", source_row_id="row-2", source_snapshot_hash="hash-b",
+            source_version="v1", record_date=date(2021, 3, 15), ex_date=date(2021, 3, 16),
+            gross_cash_per_share=0.12,
+        )
+        first = CorporateActionProvider((event, reordered))
+        same = CorporateActionProvider((reordered, event))
+        changed = CorporateActionProvider((replace(event, source_snapshot_hash="hash-c"), reordered))
+        self.assertEqual(first.fingerprint, same.fingerprint)
+        self.assertNotEqual(first.fingerprint, changed.fingerprint)
+
+    def test_account_operations_apply_cash_tax_policy_and_report_unknown_share_tax(self):
+        event = CorporateActionEvent(
+            event_id="tax-event", instrument_id="A.SZ", kind="capitalization",
+            source_table="dividend", source_row_id="tax-row", source_snapshot_hash="hash",
+            source_version="fixture", record_date=date(2021, 3, 15), ex_date=date(2021, 3, 16),
+            pay_date=date(2021, 3, 18), listing_date=date(2021, 3, 19),
+            gross_cash_per_share=0.18, share_ratio=0.8, ratio_denominator=10,
+            rounding_rule="exact",
+        )
+        provider = CorporateActionProvider((event,))
+        pretax = provider.account_operations_for_day(date(2021, 3, 16), period_id="W1")
+        stress = provider.account_operations_for_day(
+            date(2021, 3, 16), period_id="W1", tax_policy="cash_dividend_20pct_stress",
+        )
+        self.assertEqual(pretax[0].withheld_cash_per_share, 0.0)
+        self.assertEqual(stress[0].withheld_cash_per_share, 0.036)
+        self.assertNotEqual(pretax[0].operation_id, stress[0].operation_id)
+        metadata = provider.tax_metadata("cash_dividend_20pct_stress")
+        self.assertEqual(metadata["corporate_action_share_tax_status"], "unknown")
+        self.assertEqual(metadata["corporate_action_tax_scope"], "cash_dividend_only")
+        exempt = CorporateActionProvider((replace(event, bonus_tax_rule="exempt_capitalization"),))
+        self.assertEqual(exempt.tax_metadata("cash_dividend_20pct_stress")[
+            "corporate_action_share_tax_status"
+        ], "no_unknown_share_tax")
+
     def test_same_event_adapts_independent_period_scoped_phases(self):
         event = CorporateActionEvent(
             event_id="cash-bonus", instrument_id="A.SZ", kind="capitalization",
@@ -70,6 +117,8 @@ class CorporateActionsTest(unittest.TestCase):
                                        tax_policy="cash_dividend_20pct_stress")
         self.assertEqual(stress.cash_tax_stress[event.event_id], 3.6)
         self.assertEqual(stress.available_cash_transfers[event.event_id], 14.4)
+        self.assertEqual(stress.gross_receivables_at_open[event.event_id], 18.0)
+        self.assertEqual(stress.receivables_at_open[event.event_id], 14.4)
 
     def test_bonus_entitlement_uses_record_shares_and_delays_listing(self):
         event = CorporateActionEvent(
@@ -132,7 +181,8 @@ class CorporateActionsTest(unittest.TestCase):
             CorporateActionProvider((event, event))
         ledger = CorporateActionLedger(CorporateActionProvider(()))
         with self.assertRaisesRegex(ValueError, "tax_policy"):
-            ledger.project(date(2021, 1, 1), positions={}, raw_closes={}, tax_policy="true_fifo")
+            ledger.project(date(2021, 1, 1), positions={}, raw_closes={},
+                           tax_policy=cast(TaxPolicy, "true_fifo"))
 
     def test_missed_pay_date_fails_instead_of_silently_dropping_receivable(self):
         event = CorporateActionEvent(

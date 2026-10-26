@@ -131,7 +131,7 @@ dependencies = [
     { name = "pyyaml" },
 ]
 wheels = [
-    { filename = "backtest_core-0.1.0-py3-none-any.whl", hash = "sha256:7fcab4eb0ba5cca7bcc53e20a5e0c2047d5ccdaf308868b32816328b5127de70" },
+    { filename = "backtest_core-0.1.0-py3-none-any.whl", hash = "sha256:5de72c3d9934849d694532f091f02cf7dbb360f5a45f396a99e4abb5bb4e2ffe" },
 ]
 
 [package.metadata]

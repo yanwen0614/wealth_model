@@ -48,6 +48,52 @@ class _MixedOrders:
 
 
 class CorporateActionRunnerE2ETest(unittest.TestCase):
+    def test_cash_tax_stress_flows_through_runner_snapshot_and_provenance(self) -> None:
+        calendar = tuple(build_market("A.SZ", start_date=date(2021, 5, 10), trading_days=11).trading_dates("A.SZ"))
+        entry, record, ex_date, _, pay_date, e_date = calendar[1:7]
+        action = CorporateActionEvent(
+            event_id="cash-tax-stress", instrument_id="A.SZ", kind="cash_dividend",
+            source_table="synthetic", source_row_id="tax-row", source_snapshot_hash="hash",
+            source_version="fixture", record_date=record, ex_date=ex_date, pay_date=pay_date,
+            gross_cash_per_share=0.18,
+        )
+        raw_path = self._write_raw(calendar)
+        verified = {
+            (code, day): {"market_state": "trading", "st_known": True, "reference_known": True,
+                          "limit_known": True, "limit_up": False, "limit_down": False}
+            for code in ("A.SZ", "B.SZ", "C.SZ") for day in calendar
+        }
+        cache = {"exp_ret": np.asarray([1.0, 1.0]), "true_ret": np.full(2, np.nan),
+                 "dates": np.asarray([entry, e_date], dtype="datetime64[D]"),
+                 "codes": np.asarray(["A.SZ", "A.SZ"])}
+        outcome = run_cnn_backtest(
+            pred_cache=cache, parquet_path=str(raw_path), dates=(entry, e_date), top_n=1,
+            initial_capital=100_000.0, run_id="cash-tax-stress", corporate_action_provider=CorporateActionProvider((action,)),
+            period_id="tax-fixture", execution_calendar=calendar, evaluation_end=e_date, raw_market_path=raw_path,
+            verified_execution_states=verified, corporate_action_tax_policy="cash_dividend_20pct_stress",
+            execution_config=ExecutionConfig(execution_mode=ExecutionMode.T1_OPEN, final_liquidation="mark"),
+            commission_rate_buy=0.0, commission_rate_sell=0.0, min_commission=0.0,
+            stamp_tax_rate=0.0, transfer_fee_rate=0.0,
+        )
+        ex = next(item for item in outcome.result.account_snapshots if item.date == ex_date)
+        gross_receivable = cast(float, ex.gross_receivables_value)
+        withholding_payable = cast(float, ex.withholding_payable_value)
+        self.assertEqual(outcome.provenance["corporate_action_tax_policy"], "cash_dividend_20pct_stress")
+        self.assertEqual(outcome.provenance["corporate_action_cash_tax_is_actual"], "false")
+        self.assertAlmostEqual(ex.receivables_value, gross_receivable * 0.8)
+        self.assertAlmostEqual(withholding_payable, gross_receivable * 0.2)
+        self.assertEqual(ex.nav, ex.cash + ex.receivables_value + sum(
+            float(position.market_value or 0.0) for position in ex.positions.values()
+        ))
+        pay_index = next(index for index, item in enumerate(outcome.result.account_snapshots)
+                         if item.date == pay_date)
+        paid, released = outcome.result.account_snapshots[pay_index:pay_index + 2]
+        self.assertAlmostEqual(paid.cash - ex.cash, gross_receivable * 0.8)
+        self.assertAlmostEqual(paid.gross_cash_dividends_paid, gross_receivable)
+        self.assertAlmostEqual(paid.withheld_cash_dividends_paid, withholding_payable)
+        self.assertAlmostEqual(paid.blocked_cash, gross_receivable * 0.8)
+        self.assertAlmostEqual(cast(float, released.available_cash), cast(float, paid.cash))
+
     def test_cnn_runner_fails_closed_on_ex_date_without_raw_close(self) -> None:
         calendar = tuple(build_market("A.SZ", start_date=date(2021, 3, 15), trading_days=9).trading_dates("A.SZ"))
         entry, record, ex_date, _, e_date = calendar[1:6]
@@ -139,6 +185,8 @@ class CorporateActionRunnerE2ETest(unittest.TestCase):
         self.assertEqual(outcome.provenance["labeled_rows"], "0")
         self.assertEqual(outcome.provenance["quality_metrics_status"], "not_available")
         self.assertEqual(outcome.provenance["rank_ic"], "not_available")
+        self.assertEqual(outcome.provenance["corporate_action_tax_policy"], "pretax")
+        self.assertEqual(outcome.provenance["corporate_action_share_tax_status"], "unknown")
         self.assertTrue(any(item.date == e_date for item in outcome.result.account_snapshots))
         e_day_scores = {code: float(score) for code, score, day in zip(codes, cache["exp_ret"], signal_dates)
                         if pd.Timestamp(day).date() == e_date}

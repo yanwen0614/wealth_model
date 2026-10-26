@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from math import isfinite
 from types import MappingProxyType
@@ -105,6 +107,8 @@ class CorporateActionProjection:
     rights_value_unknown: tuple[str, ...]
     order_rejections: Mapping[str, str]
     equity_value: float
+    gross_receivables_at_open: Mapping[str, float]
+    withholding_payable_at_close: Mapping[str, float]
 
 
 class CorporateActionProvider:
@@ -119,10 +123,18 @@ class CorporateActionProvider:
                 raise ValueError(f"duplicate corporate action event_id: {event.event_id}")
             by_id[event.event_id] = event
         self._events = tuple(sorted(by_id.values(), key=lambda item: (item.ex_date, item.instrument_id, item.event_id)))
+        canonical = json.dumps([asdict(event) for event in self._events], sort_keys=True,
+                               separators=(",", ":"), default=str)
+        self._fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @property
     def events(self) -> tuple[CorporateActionEvent, ...]:
         return self._events
+
+    @property
+    def fingerprint(self) -> str:
+        """稳定标识事件内容及每条来源快照，供回测 config 身份追溯。"""
+        return self._fingerprint
 
     def events_for(self, instrument_id: str, effective_date: date) -> tuple[CorporateActionEvent, ...]:
         """返回该代码在指定除权日生效的事件，不进行未来字段推导。"""
@@ -145,10 +157,34 @@ class CorporateActionProvider:
                 known.append(event)
         return tuple(known)
 
-    def account_operations_for_day(self, day: date, *, period_id: str):
+    def tax_metadata(self, tax_policy: TaxPolicy) -> dict[str, str]:
+        if tax_policy not in ("pretax", "cash_dividend_20pct_stress"):
+            raise ValueError(f"unsupported corporate action tax policy: {tax_policy!r}")
+        unknown_shares = tuple(sorted(
+            event.event_id for event in self._events
+            if event.kind in ("bonus", "capitalization") and not (
+                event.kind == "capitalization" and event.bonus_tax_rule == "exempt_capitalization"
+            )
+        ))
+        return {
+            "corporate_action_tax_policy": tax_policy,
+            "corporate_action_tax_scope": "cash_dividend_only",
+            "corporate_action_cash_tax_is_actual": "false",
+            "corporate_action_share_tax_status": "unknown" if unknown_shares else "no_unknown_share_tax",
+            "corporate_action_share_tax_unknown_events": ",".join(unknown_shares) or "none",
+            "corporate_action_tax_completeness": (
+                "incomplete_unknown_share_tax" if unknown_shares else "cash_dividend_only"
+            ),
+            "corporate_action_after_tax_result_status": (
+                "unavailable_unknown_share_tax" if unknown_shares else "not_actual_tax_policy"
+            ),
+        }
+
+    def account_operations_for_day(self, day: date, *, period_id: str, tax_policy: TaxPolicy = "pretax"):
         """转换可严格表达的事件阶段；未知送转结算规则显式 fail closed。"""
         if type(day) is not date or not period_id.strip():
             raise ValueError("day must be a pure date and period_id must be non-empty")
+        self.tax_metadata(tax_policy)
         operations = []
         for event in self._events:
             prefix = f"{period_id}:{event.event_id}"
@@ -167,10 +203,14 @@ class CorporateActionProvider:
                     if event.gross_cash_per_share and event.pay_date is None:
                         raise ValueError(f"{event.event_id}: pay_date is required to book a cash receivable")
                     if event.gross_cash_per_share and event.pay_date is not None:
+                        withheld_per_share = (
+                            event.gross_cash_per_share * 0.2
+                            if tax_policy == "cash_dividend_20pct_stress" else 0.0
+                        )
                         operations.append(CreateCashReceivable(
-                            f"{prefix}:cash-ex:{day.isoformat()}", event.event_id, event.instrument_id,
+                            f"{prefix}:cash-ex:{day.isoformat()}:{tax_policy}", event.event_id, event.instrument_id,
                             f"{prefix}:record:{record_date.isoformat()}", event.gross_cash_per_share,
-                            day, event.pay_date,
+                            day, event.pay_date, withheld_cash_per_share=withheld_per_share,
                         ))
                     if event.share_ratio:
                         if event.listing_date is None or event.ratio_denominator is None or event.rounding_rule is None:
@@ -183,7 +223,9 @@ class CorporateActionProvider:
                             day, event.listing_date,
                         ))
             if event.pay_date == day and event.gross_cash_per_share:
-                operations.append(CashPayment(f"{prefix}:cash-pay:{day.isoformat()}", event.event_id, day))
+                operations.append(CashPayment(
+                    f"{prefix}:cash-pay:{day.isoformat()}:{tax_policy}", event.event_id, day,
+                ))
             if event.listing_date == day and event.share_ratio:
                 operations.append(ListShareEntitlement(f"{prefix}:share-list:{day.isoformat()}", event.event_id, day))
         return tuple(operations)
@@ -214,7 +256,9 @@ class CorporateActionLedger:
                 raise ValueError(f"raw_closes[{code!r}] must be positive and finite")
         record_shares: dict[str, float] = {}
         receivables_open: dict[str, float] = {}
+        gross_receivables_open: dict[str, float] = {}
         receivables_close: dict[str, float] = {}
+        withholding_close: dict[str, float] = {}
         cash_transfers: dict[str, float] = {}
         cash_tax: dict[str, float] = {}
         cash_at_open: dict[str, bool] = {}
@@ -252,15 +296,18 @@ class CorporateActionLedger:
                 continue
             gross = quantity * float(event.gross_cash_per_share or 0.0)
             if gross > 0 and (event.pay_date is None or day <= event.pay_date):
-                receivables_open[event.event_id] = gross
-                cash_at_open[event.event_id] = False
                 stress_tax = gross * 0.2 if tax_policy == "cash_dividend_20pct_stress" else 0.0
+                net = gross - stress_tax
+                gross_receivables_open[event.event_id] = gross
+                receivables_open[event.event_id] = net
+                cash_at_open[event.event_id] = False
                 cash_tax[event.event_id] = stress_tax
                 if event.pay_date == day:
-                    cash_transfers[event.event_id] = gross - stress_tax
+                    cash_transfers[event.event_id] = net
                 else:
-                    receivables_close[event.event_id] = gross - stress_tax
-                    receivable_value += gross - stress_tax
+                    receivables_close[event.event_id] = net
+                    withholding_close[event.event_id] = stress_tax
+                    receivable_value += net
             if event.share_ratio is None or event.share_ratio == 0:
                 if event.kind in ("bonus", "capitalization"):
                     share_rules_unknown.append(event.event_id)
@@ -271,7 +318,7 @@ class CorporateActionLedger:
                 continue
             if event.ratio_denominator is None or event.rounding_rule is None:
                 share_rules_unknown.append(event.event_id)
-            if event.bonus_tax_rule is None:
+            if not (event.kind == "capitalization" and event.bonus_tax_rule == "exempt_capitalization"):
                 bonus_tax_unknown.append(event.event_id)
             if event.listing_date is None or day <= event.listing_date:
                 unlisted[event.event_id] = entitlement
@@ -309,4 +356,6 @@ class CorporateActionLedger:
             rights_value_unknown=tuple(sorted(set(unknown_rights))),
             order_rejections=MappingProxyType(rejections),
             equity_value=raw_value + total_entitlement,
+            gross_receivables_at_open=MappingProxyType(gross_receivables_open),
+            withholding_payable_at_close=MappingProxyType(withholding_close),
         )

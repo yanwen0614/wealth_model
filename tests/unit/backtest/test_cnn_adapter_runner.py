@@ -3,7 +3,8 @@ import os
 import shutil
 import tempfile
 import unittest
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
@@ -58,6 +59,7 @@ class _RunnerMixin(_TempDirMixin):
                          portfolio_config, cost_config, **rest):
             captured.update({"dates": dates, "strategy": strategy, "cost_config": cost_config,
                              "portfolio_config": portfolio_config, "rest": rest})
+            fake.account_snapshots = tuple(SimpleNamespace(date=day, nav=1_000.0) for day in dates)
             return fake
 
         params = {"pred_cache": _make_pred_cache(self), "parquet_path": "dummy.parquet",
@@ -67,6 +69,8 @@ class _RunnerMixin(_TempDirMixin):
         params.update(kwargs)
         with mock.patch.object(runner_mod, "CnnMarketDataProvider",
                                lambda *a, **k: object()), \
+            mock.patch.object(runner_mod, "CnnRawMarketDataProvider",
+                              lambda *a, **k: object()), \
             mock.patch.object(runner_mod, "run_account_backtest_from_orders",
                               _fake_engine), \
             mock.patch.object(runner_mod, "evaluate_account",
@@ -103,6 +107,45 @@ class TestRunnerDefaults(_RunnerMixin):
             self.assertIn(key, source)
         self.assertEqual(len(outcome.config_hash), 40)
         self._default_hash = outcome.config_hash
+
+    def test_tax_unknown_can_be_required_and_action_fingerprint_changes_hash(self):
+        from datetime import date
+
+        from backtest_core.contracts.config import ExecutionConfig
+        from backtest_core.contracts.enums import ExecutionMode
+
+        from backtest.cnn_adapter.corporate_actions import CorporateActionEvent, CorporateActionProvider
+
+        event = CorporateActionEvent(
+            event_id="unknown-bonus", instrument_id="A.SZ", kind="bonus",
+            source_table="dividend", source_row_id="row", source_snapshot_hash="hash-a",
+            source_version="fixture", record_date=date(2025, 3, 3), ex_date=date(2025, 3, 4),
+            pay_date=date(2025, 3, 5), listing_date=date(2025, 3, 6), share_ratio=0.1,
+            ratio_denominator=10, rounding_rule="exact",
+        )
+        first_provider = CorporateActionProvider((event,))
+        execution_calendar = tuple(date(2025, 3, day) for day in range(2, 7))
+        base_params = {
+            "corporate_action_provider": first_provider, "period_id": "W1",
+            "execution_calendar": execution_calendar, "evaluation_end": date(2025, 3, 3),
+            "raw_market_path": "raw.parquet",
+            "execution_config": ExecutionConfig(execution_mode=ExecutionMode.T1_OPEN,
+                                                 final_liquidation="mark"),
+        }
+        outcome, _ = self._run_with_capture(**base_params)
+        self.assertEqual(outcome.provenance["corporate_action_share_tax_status"], "unknown")
+        self.assertEqual(outcome.provenance["corporate_action_tax_completeness"],
+                         "incomplete_unknown_share_tax")
+        second_provider = CorporateActionProvider((replace(event, source_snapshot_hash="hash-b"),))
+        changed_params = {**base_params, "corporate_action_provider": second_provider}
+        changed, _ = self._run_with_capture(**changed_params)
+        self.assertNotEqual(outcome.config_hash, changed.config_hash)
+        self.assertNotEqual(outcome.provenance["corporate_action_fingerprint"],
+                            changed.provenance["corporate_action_fingerprint"])
+        with self.assertRaisesRegex(ValueError, "unknown share tax"):
+            self._run_with_capture(
+                **{**base_params, "require_known_share_tax": True},
+            )
 
     def test_default_hash_stable_across_calls(self):
         first, _ = self._run_with_capture()
