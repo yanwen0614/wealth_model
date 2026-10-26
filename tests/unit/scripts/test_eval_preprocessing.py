@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import pandas as pd
@@ -237,6 +238,44 @@ class TestScalerPathResolution(unittest.TestCase):
 
 
 class TestBuildValLoader(unittest.TestCase):
+    def test_checkpoint_label_modes_reach_both_evaluation_entries(self):
+        args = SimpleNamespace(
+            parquet="x", seq_len=60, horizon=10, batch_size=2, num_workers=0,
+            max_codes=0, max_windows_per_code=None, val_start="2026-01-01",
+            val_end="2026-08-31", feature_cols=None, allow_fit_scaler=False,
+        )
+        scaler = RelativeScaler(FULL_FEATURE_COLS)
+        for mode in (None, "absolute", "excess", "crash_conditioned", "非法模式"):
+            run_cfg: dict[str, Any] = {"preprocessing": _relative_metadata()}
+            if mode is not None:
+                run_cfg["LABEL_MODE"] = mode
+            expected = "absolute" if mode is None else mode
+            with self.subTest(entry="build_val_loader", mode=mode):
+                prep = evaluation.EvalPreprocessing(
+                    "relative", scaler, FULL_FEATURE_COLS, None, run_cfg, None,
+                    list(scaler.feature_cols_out),
+                )
+                with patch.object(evaluation, "ParquetDataset") as dataset:
+                    evaluation.build_val_loader(args, prep)
+                self.assertEqual(dataset.call_args.args[0].label_mode, expected)
+                self.assertEqual(dataset.call_args.args[0].role, "evaluation")
+                self.assertIs(dataset.call_args.kwargs["scaler_stats"], scaler)
+            with self.subTest(entry="run_inference", mode=mode):
+                # 在数据集构造处停止，捕获真实配置，避免模型推理与文件写入。
+                with patch.object(pipeline, "load_checkpoint_config", return_value=({}, run_cfg)), \
+                        patch.object(pipeline, "CNNTransformer"), \
+                        patch.object(pipeline, "load_model_state"), \
+                        patch.object(pipeline.torch.cuda, "is_available", return_value=False), \
+                        patch.object(pipeline, "ParquetDataset", side_effect=InterruptedError) as dataset:
+                    with self.assertRaises(InterruptedError):
+                        pipeline.run_inference(
+                            "checkpoint", "x", args.val_start, args.val_end,
+                            scaler, 2, 0, None, None, "未写入.npz", mode="relative",
+                        )
+                self.assertEqual(dataset.call_args.args[0].label_mode, expected)
+                self.assertEqual(dataset.call_args.args[0].role, "evaluation")
+                self.assertIs(dataset.call_args.kwargs["scaler_stats"], scaler)
+
     def test_loader_relative_passes_stateless_scaler(self):
         args = SimpleNamespace(
             parquet="x", seq_len=60, horizon=5, batch_size=2, num_workers=0, max_codes=0,

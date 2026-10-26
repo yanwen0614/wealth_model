@@ -434,8 +434,8 @@ def main():
         # 仍用全量时间但限制 codes，足够快
         pass
 
-    train_start = None if args.no_val else config['TRAIN_START']
-    train_end = None if args.no_val else config['TRAIN_END']
+    train_start = config['TRAIN_START']
+    train_end = config['TRAIN_END']
     val_start = None if args.no_val else config['VAL_START']
     val_end = None if args.no_val else config['VAL_END']
     test_start = None if args.no_val else config['TEST_START']

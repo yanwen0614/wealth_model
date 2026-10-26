@@ -281,6 +281,7 @@ def build_val_loader(args, preprocessing: EvalPreprocessing) -> tuple[DataLoader
         mkt_factors=run_cfg.get("MKT_FACTORS", False),
         mkt_factor_list=run_cfg.get("MKT_FACTOR_LIST"),
         role="evaluation",
+        label_mode=run_cfg.get("LABEL_MODE", "absolute"),
     )
     scaler_stats = preprocessing.scaler_stats
     if scaler_stats is not None:

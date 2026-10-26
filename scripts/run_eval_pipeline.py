@@ -244,6 +244,7 @@ def run_inference(
             end_date=end,
             feature_cols=feature_cols,
             role="evaluation",
+            label_mode=run_cfg.get("LABEL_MODE", "absolute"),
         ),
         scaler_stats=scaler_stats,
     )

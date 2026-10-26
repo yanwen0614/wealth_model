@@ -151,6 +151,32 @@ class TestTrainRollingScopeT03(unittest.TestCase):
 class TestTrainCLIT06(unittest.TestCase):
     """T06: relative 分支、CLI 解析与 featurenum 实测派生契约。"""
 
+    def test_main_preserves_training_dates_when_validation_disabled(self):
+        cases = (
+            ["--no_val"],
+            ["--no_val", "--train_start", "2019-01-01", "--train_end", "2020-12-31"],
+            ["--train_start", "2019-01-01", "--train_end", "2020-12-31",
+             "--val_start", "2021-01-01", "--val_end", "2021-06-30"],
+        )
+        for cli in cases:
+            with self.subTest(cli=cli):
+                args = parse_args(cli + ["--no_cache", "--num_workers", "0"])
+                expected = make_default_config()
+                train.apply_args_to_config(expected, args)
+                with patch.object(train, "config", make_default_config()), \
+                        patch.object(train, "parse_args", return_value=args), \
+                        patch.object(train, "set_all_seeds"), \
+                        patch.object(train, "LoggerManager"), \
+                        patch.object(train.ParquetDataset, "create_dataloaders",
+                                     side_effect=InterruptedError) as factory:
+                    with self.assertRaises(InterruptedError):
+                        train.main()
+                actual = factory.call_args.kwargs
+                self.assertEqual(actual["train_start"], expected["TRAIN_START"])
+                self.assertEqual(actual["train_end"], expected["TRAIN_END"])
+                for field in ("val_start", "val_end"):
+                    self.assertEqual(actual[field], None if args.no_val else expected[field.upper()])
+
     def test_relative_branch_is_isolated_and_stateless(self):
         config = make_default_config()
         configure_preprocessing(config, "relative")

@@ -401,6 +401,36 @@ class ParquetDataset(Dataset):
           - 训练集拟合 scaler，并保存到 scaler_path（若提供）
           - 验证集复用训练集的 scaler_stats，避免泄露
         """
+        # 仅检查标签日期边界；验证窗口可继续使用训练期历史行作 context。
+        boundaries = {
+            "train_start": train_start, "train_end": train_end,
+            "val_start": val_start, "val_end": val_end,
+        }
+        parsed = {}
+        for field_name, value in boundaries.items():
+            if value is None:
+                parsed[field_name] = None
+                continue
+            try:
+                date = pd.Timestamp(value)
+                if pd.isna(date) or date.tzinfo is not None:
+                    raise ValueError("日期必须有效且不含时区")
+            except (ValueError, TypeError, OverflowError) as exc:
+                raise ValueError(f"非法日期 {field_name}={value!r}") from exc
+            parsed[field_name] = date
+        for prefix in ("train", "val"):
+            start, end = parsed[f"{prefix}_start"], parsed[f"{prefix}_end"]
+            if start is not None and end is not None and start > end:
+                raise ValueError(
+                    f"{prefix}_start={boundaries[f'{prefix}_start']!r} "
+                    f"晚于 {prefix}_end={boundaries[f'{prefix}_end']!r}"
+                )
+        if val_start is not None or val_end is not None:
+            if train_end is None or val_start is None or parsed["train_end"] >= parsed["val_start"]:
+                raise ValueError(
+                    f"无法证明训练/验证切分：要求 train_end < val_start 且均非空，"
+                    f"实际 train_end={train_end!r}, val_start={val_start!r}"
+                )
         # 训练集
         train_cfg = ParquetDataConfig(
             **{**config.__dict__, "start_date": train_start, "end_date": train_end, "scaler_path": scaler_path, "role": "training"}
