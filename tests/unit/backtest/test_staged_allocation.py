@@ -8,23 +8,43 @@ from typing import Any, Literal, cast
 
 from backtest.cnn_adapter.staged_allocation import (
     AllocationError,
+    CoreAccountSnapshot,
     EpisodeStatus,
     ExecutionFeedback,
     Policy,
     StagedAllocationRegistry,
     budget_per_episode,
 )
+from backtest.cnn_adapter.staged_execution_bridge import cash_debit_from_transition
 
 CALENDAR = [date(2021, 1, 4), date(2021, 1, 5)]
 
 
-def registry(cash=1000):
+def registry(cash: float = 1000):
     return StagedAllocationRegistry(initial_cash=cash, calendar_days=CALENDAR)
 
 
-def fill(episode="e1", code="AAA", *, fill_id="f1", cash=948,
-         positions=None, entitlements=frozenset(), orders=frozenset(),
-         amount=50, fees=2, debit=52, shares=2,
+def core_snapshot(
+    snapshot_id: str,
+    sequence: int,
+    available_cash: float,
+    positions: dict[str, int] | None = None,
+    entitlements: frozenset[str] = frozenset(),
+    orders: frozenset[str] = frozenset(),
+    *,
+    cash: float | None = None,
+    locked: dict[str, int] | None = None,
+):
+    return CoreAccountSnapshot(
+        snapshot_id, sequence, available_cash, positions or {}, entitlements, orders,
+        cash=available_cash if cash is None else cash, locked=locked or {},
+    )
+
+
+def fill(episode: str = "e1", code: str = "AAA", *, fill_id: str = "f1",
+         cash: float = 948, positions: dict[str, int] | None = None,
+         entitlements: frozenset[str] = frozenset(), orders: frozenset[str] = frozenset(),
+         amount: float = 50, fees: float = 2, debit: float = 52, shares: int = 2,
          side: Literal["buy", "sell"] = "buy", sequence=1):
     return ExecutionFeedback(
         episode_id=episode, order_id="o1", fill_id=fill_id, event="fill",
@@ -34,10 +54,192 @@ def fill(episode="e1", code="AAA", *, fill_id="f1", cash=948,
         core_snapshot_sequence=sequence,
         positions=positions if positions is not None else {code: shares},
         unlisted_entitlement_codes=entitlements, active_order_codes=orders,
+        cash=cash,
     )
 
 
 class StagedAllocationTests(unittest.TestCase):
+    def test_authoritative_snapshot_sync_updates_account_without_a_fill(self):
+        book = registry()
+        first = CoreAccountSnapshot(
+            "s0", 0, 990, {"OLD": 3}, frozenset({"NEW"}), frozenset({"X"}),
+            cash=1000, locked={"OLD": 2},
+        )
+        self.assertTrue(book.apply_core_snapshot(first))
+        self.assertEqual(book.available_cash, 990)
+        self.assertEqual(book.core_cash, 1000)
+        self.assertEqual(dict(book.positions), {"OLD": 3})
+        self.assertEqual(book.locked, {"OLD": 2})
+        self.assertEqual(book.active_codes, frozenset({"OLD", "NEW", "X"}))
+        self.assertEqual(book.fill_ledger, {})
+
+    def test_nonfill_snapshot_replay_is_noop_and_cannot_roll_state_back(self):
+        book = registry()
+        old = core_snapshot("s0", 0, 1000)
+        new = core_snapshot("s1", 1, 900, {"AAA": 2})
+        self.assertTrue(book.apply_core_snapshot(old))
+        self.assertTrue(book.apply_core_snapshot(new))
+        self.assertFalse(book.apply_core_snapshot(old))
+        self.assertEqual(book.available_cash, 900)
+        self.assertEqual(dict(book.positions), {"AAA": 2})
+
+    def test_nonfill_snapshot_conflicts_and_stale_ids_are_atomic(self):
+        book = registry()
+        first = core_snapshot("s0", 0, 1000)
+        book.apply_core_snapshot(first)
+        before = book.snapshot()
+        conflict = core_snapshot("s0", 0, 900)
+        with self.assertRaisesRegex(AllocationError, "snapshot_id"):
+            book.apply_core_snapshot(conflict)
+        stale = core_snapshot("s-old", 0, 800)
+        with self.assertRaisesRegex(AllocationError, "sequence"):
+            book.apply_core_snapshot(stale)
+        self.assertEqual(book.snapshot(), before)
+
+    def test_authoritative_snapshot_requires_actual_core_cash(self):
+        book = registry()
+        incomplete = CoreAccountSnapshot("missing-cash", 0, 900, {}, frozenset(), frozenset())
+        with self.assertRaisesRegex(AllocationError, "缺少 cash"):
+            book.apply_core_snapshot(incomplete)
+        self.assertIsNone(book.snapshot().core_snapshot_id)
+
+    def test_fill_feedback_requires_actual_core_cash_at_registry_boundary(self):
+        book = registry()
+        book.open_episode("e1", "AAA")
+        before = book.snapshot()
+        with self.assertRaisesRegex(AllocationError, "缺少 cash"):
+            book.apply_feedback(replace(fill(), cash=None))
+        self.assertEqual(book.snapshot(), before)
+        self.assertEqual(book.fill_ledger, {})
+
+    def test_exit_confirmation_requires_fresh_snapshot_without_locked_entitlements_or_orders(self):
+        book = registry()
+        book.open_episode("e1", "AAA")
+        book.apply_core_snapshot(core_snapshot(
+            "held", 1, 900, {"AAA": 2}, locked={"AAA": 2}
+        ))
+        book.mark_exit_pending("e1", CALENDAR[0])
+        book.apply_core_snapshot(core_snapshot(
+            "unlock-pending", 2, 900, locked={"AAA": 1}
+        ))
+        self.assertTrue(book.episodes["e1"].exit_pending)
+        book.apply_core_snapshot(core_snapshot("ca-entitlement", 3, 900, entitlements=frozenset({"AAA"})))
+        self.assertTrue(book.episodes["e1"].exit_pending)
+        book.apply_core_snapshot(core_snapshot("cancel-pending", 4, 900, orders=frozenset({"AAA"})))
+        self.assertTrue(book.episodes["e1"].exit_pending)
+        book.apply_core_snapshot(core_snapshot("flat", 5, 900))
+        self.assertIs(book.episodes["e1"].status, EpisodeStatus.CLOSED)
+
+    def test_state_snapshot_does_not_consume_later_fill_and_fill_replay_is_noop(self):
+        book = registry()
+        book.open_episode("e1", "AAA")
+        snap = core_snapshot("same", 1, 948, {"AAA": 2})
+        self.assertTrue(book.apply_core_snapshot(snap))
+        event = replace(fill(), core_snapshot_id="same", positions={"AAA": 2}, cash=948)
+        self.assertTrue(book.apply_feedback(event))
+        self.assertFalse(book.apply_core_snapshot(snap))
+        self.assertFalse(book.apply_feedback(event))
+        self.assertEqual(len(book.fill_ledger), 1)
+
+    def test_only_unclosed_episodes_consume_slots_and_commitments(self):
+        book = registry()
+        for index in range(7):
+            episode = book.open_episode(f"cycle-{index}", f"C{index}")
+            self.assertEqual(book.snapshot().active_slots, 1)
+            self.assertEqual(book.active_commitments, 200)
+            book.cancel_episode(episode.episode_id)
+            book.apply_core_snapshot(core_snapshot(f"flat-{index}", index, 1000))
+            self.assertEqual(book.snapshot().active_slots, 0)
+            self.assertEqual(book.active_commitments, 0)
+
+    def test_empty_snapshot_does_not_end_active_cycle_before_final_plan_day(self):
+        book = registry()
+        episode = book.open_episode("planned", "AAA")
+        book.set_episode_plan_end("planned", CALENDAR[1])
+        book.apply_core_snapshot(core_snapshot("early-flat", 1, 1000))
+        self.assertIs(book.episodes[episode.episode_id].status, EpisodeStatus.ACTIVE)
+        self.assertEqual(book.snapshot().active_slots, 1)
+        book.advance(CALENDAR[1])
+        book.apply_core_snapshot(core_snapshot("mature-flat", 2, 1000))
+        self.assertIs(book.episodes[episode.episode_id].status, EpisodeStatus.CLOSED)
+
+    def test_cancelled_cycle_keeps_commitment_until_fresh_flat_core_snapshot(self):
+        book = registry()
+        book.open_episode("cancel-me", "AAA", Policy.C70)
+        book.apply_feedback(fill(episode="cancel-me", cash=860, amount=138,
+                                 fees=2, debit=140, positions={"AAA": 2}))
+        book.cancel_episode("cancel-me")
+        self.assertEqual(book.active_commitments, 60)
+        self.assertEqual(book.snapshot().active_slots, 1)
+        book.apply_core_snapshot(core_snapshot("cancel-flat", 2, 860))
+        self.assertEqual(book.active_commitments, 0)
+        self.assertEqual(book.snapshot().active_slots, 0)
+
+    def test_loss_reducing_core_cash_below_fixed_budget_rejects_new_cycle(self):
+        book = registry()
+        book.apply_core_snapshot(core_snapshot("loss", 1, 199))
+        with self.assertRaisesRegex(AllocationError, "free_cash"):
+            book.open_episode("too-small", "AAA")
+        self.assertEqual(book.available_cash, 199)
+
+    def test_old_fill_replay_after_close_does_not_change_new_cycle(self):
+        book = registry()
+        book.open_episode("old", "AAA")
+        old_fill = replace(fill(fill_id="old-fill"), episode_id="old")
+        book.apply_feedback(old_fill)
+        book.mark_exit_pending("old", CALENDAR[0])
+        close = replace(fill(fill_id="old-close", side="sell", cash=996,
+                             amount=50, fees=2, debit=0, positions={}, sequence=2),
+                        episode_id="old")
+        book.apply_feedback(close)
+        new_episode = book.open_episode("new", "AAA")
+        before = book.snapshot()
+        self.assertFalse(book.apply_feedback(old_fill))
+        self.assertEqual(book.snapshot(), before)
+        self.assertIn(new_episode.episode_id, book.episodes)
+
+    def test_cash_reconciliation_allows_only_tiny_absolute_float_tail(self):
+        cash_before = 10_000_000.0
+        book = registry(cash_before)
+        book.open_episode("e1", "AAA")
+        amount, fees = 10.125, 0.37
+        cash_after = cash_before - amount - fees
+        debit = cash_debit_from_transition(cash_before, cash_after, "buy")
+        self.assertNotEqual(debit, amount + fees)
+        self.assertLess(abs(debit - (amount + fees)), 1e-8)
+        accepted = fill(amount=amount, fees=fees, debit=debit,
+                        cash=cash_after, positions={"AAA": 1})
+        accepted = replace(accepted, cash=cash_after)
+        self.assertTrue(book.apply_feedback(accepted))
+        self.assertEqual(book.fill_ledger["f1"].fees, fees)
+        self.assertEqual(book.episodes["e1"].cumulative_cash_debit, debit)
+        self.assertEqual(book.core_cash, cash_after)
+
+    def test_sell_cash_credit_never_becomes_episode_cash_debit(self):
+        self.assertEqual(cash_debit_from_transition(100, 150, "sell"), 0)
+
+    def test_cash_reconciliation_rejects_one_cent_without_mutating_state(self):
+        book = registry()
+        book.open_episode("e1", "AAA")
+        before = book.snapshot()
+        invalid = fill(fill_id="cent", amount=10.125, fees=0.37,
+                       debit=10.505, cash=989.495, positions={"AAA": 1})
+        with self.assertRaisesRegex(AllocationError, "cash_debit"):
+            book.apply_feedback(invalid)
+        self.assertEqual(book.snapshot(), before)
+        self.assertEqual(book.fill_ledger, {})
+
+    def test_c70_rejects_float_tail_over_cap_without_negative_commitment(self):
+        book = registry()
+        book.open_episode("c70", "AAA", Policy.C70)
+        invalid = fill(episode="c70", fill_id="over-tail", amount=138.00000000001,
+                       fees=2, debit=140.00000000001, cash=859.99999999999,
+                       positions={"AAA": 1})
+        with self.assertRaisesRegex(AllocationError, "C70"):
+            book.apply_feedback(invalid)
+        self.assertEqual(book.episodes["c70"].commitment, 200)
+        self.assertEqual(book.episodes["c70"].cumulative_cash_debit, 0)
+
     def test_only_feedback_is_the_real_fill_api_and_cash_is_named_available(self):
         book = registry()
         self.assertTrue(hasattr(book, "apply_feedback"))
@@ -222,10 +424,13 @@ class StagedAllocationTests(unittest.TestCase):
         book = registry()
         book.open_episode("e1", "AAA")
         source_positions = {"AAA": 2}
-        feedback = fill(positions=source_positions)
+        source_locked = {"AAA": 2}
+        feedback = replace(fill(positions=source_positions), locked=source_locked)
         book.apply_feedback(feedback)
         source_positions["EVIL"] = 1
+        source_locked["EVIL"] = 1
         self.assertEqual(dict(book.positions), {"AAA": 2})
+        self.assertEqual(dict(book.locked), {"AAA": 2})
         with self.assertRaises(AllocationError):
             book.apply_feedback(feedback)
 
@@ -313,6 +518,6 @@ class StagedAllocationTests(unittest.TestCase):
         for index, shares in enumerate((-1, 1.5, nan, inf)):
             with self.subTest(shares=shares):
                 with self.assertRaises(AllocationError):
-                    book.apply_feedback(fill(positions={"AAA": shares},
+                    book.apply_feedback(fill(positions=cast(Any, {"AAA": shares}),
                                              fill_id=f"bad-position-{index}"))
         self.assertEqual(len(book.fill_ledger), 0)
