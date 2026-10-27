@@ -521,3 +521,14 @@ class StagedAllocationTests(unittest.TestCase):
                     book.apply_feedback(fill(positions=cast(Any, {"AAA": shares}),
                                              fill_id=f"bad-position-{index}"))
         self.assertEqual(len(book.fill_ledger), 0)
+
+    def test_exit_pending_blocks_only_same_code_and_needs_snapshot_to_close(self):
+        book = registry()
+        book.open_episode("exit-a", "AAA")
+        book.mark_exit_pending("exit-a", CALENDAR[0])
+        self.assertIs(book.episodes["exit-a"].status, EpisodeStatus.ACTIVE)
+        other = book.open_episode("other-code", "BBB")
+        self.assertEqual(other.code, "BBB")
+        with self.assertRaisesRegex(AllocationError, "旧 episode"):
+            book.open_episode("same-code", "AAA")
+        self.assertEqual(book.snapshot().active_slots, 2)

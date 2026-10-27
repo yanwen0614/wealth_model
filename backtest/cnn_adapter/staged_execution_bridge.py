@@ -69,7 +69,16 @@ class StagedExecutionBridge:
         if update.phase is ExecutionPhase.FILL:
             applied = self._apply_fill(update, snapshot)
         else:
+            phase = update.phase.value
+            if phase in ("submitted", "terminal"):
+                self._registry.validate_order_update(
+                    update.order_id, update.episode_id, phase, update.order_status,
+                )
             applied = self._registry.apply_core_snapshot(snapshot)
+            if phase in ("submitted", "terminal"):
+                self._registry.apply_order_update(
+                    update.order_id, update.episode_id, phase, update.order_status,
+                )
         self._seen_events[update.event_id] = update
         return applied
 
@@ -92,6 +101,7 @@ class StagedExecutionBridge:
             unlisted_entitlements=state.unlisted_entitlements,
             pending_cash=state.pending_cash,
             active_orders=active_orders,
+            trading_date=update.trading_date,
         )
 
     def _apply_fill(self, update: ExecutionUpdate, snapshot: CoreAccountSnapshot) -> bool:

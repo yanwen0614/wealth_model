@@ -32,6 +32,41 @@ class EpisodeStatus(StrEnum):
     CLOSED = "closed"
 
 
+class TrancheStatus(StrEnum):
+    PLANNED = "planned"
+    DECIDED_ELIGIBLE = "decided_eligible"
+    INELIGIBLE = "ineligible"
+    SCHEDULED = "scheduled"
+    SUBMITTED = "submitted"
+    PARTIAL_FILLING = "partial_filling"
+    FILLED = "filled"
+    PARTIAL = "partial"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+_TERMINAL_TRANCHES = frozenset({
+    TrancheStatus.INELIGIBLE, TrancheStatus.FILLED, TrancheStatus.PARTIAL,
+    TrancheStatus.REJECTED, TrancheStatus.CANCELLED, TrancheStatus.EXPIRED,
+})
+
+
+@dataclass(frozen=True)
+class PlannedTranche:
+    episode_id: str
+    tranche_id: str
+    decision_date: date
+    budget: float
+    limit_price: float | None = None
+    status: TrancheStatus = TrancheStatus.PLANNED
+    order_id: str | None = None
+    requested_shares: int = 0
+    filled_shares: int = 0
+    cash_debit: float = 0.0
+    reason: str | None = None
+
+
 @dataclass(frozen=True)
 class ExecutionFeedback:
     """单笔成交及成交后 core 权威账户快照。"""
@@ -72,6 +107,7 @@ class CoreAccountSnapshot:
     unlisted_entitlements: Mapping[str, object] = field(default_factory=dict)
     pending_cash: Mapping[str, float] = field(default_factory=dict)
     active_orders: Mapping[str, object] = field(default_factory=dict)
+    trading_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +120,8 @@ class Episode:
     cumulative_cash_debit: float = 0.0
     exit_pending: bool = False
     exit_date: date | None = None
+    plan_id: str | None = None
+    plan_start_date: date | None = None
     plan_end_date: date | None = None
     status: EpisodeStatus = EpisodeStatus.ACTIVE
 
@@ -119,6 +157,8 @@ class AllocationRegistry:
         self._available_cash = float(initial_cash)
         self._cash = float(initial_cash)
         self._episodes: dict[str, Episode] = {}
+        self._tranches: dict[tuple[str, str], PlannedTranche] = {}
+        self._order_tranches: dict[str, tuple[str, str]] = {}
         self._seen_fills: dict[str, ExecutionFeedback] = {}
         self._seen_snapshots: dict[str, tuple[object, ...]] = {}
         self._snapshot_sources: dict[str, str] = {}
@@ -170,6 +210,10 @@ class AllocationRegistry:
         return MappingProxyType(dict(self._episodes))
 
     @property
+    def tranches(self) -> Mapping[tuple[str, str], PlannedTranche]:
+        return MappingProxyType(dict(self._tranches))
+
+    @property
     def active_codes(self) -> frozenset[str]:
         return frozenset(
             {code for code, shares in self._positions.items() if shares > 0}
@@ -209,18 +253,133 @@ class AllocationRegistry:
             raise AllocationError("五个预算槽已占满")
         if self.free_cash < self.tranche_budget:
             raise AllocationError("free_cash 不足一个完整 C/5")
-        if any(e.exit_pending for e in self._episodes.values()):
-            raise AllocationError("存在未由 core 快照解除的 exit pending")
         selected_policy = Policy(policy)
         cap = self.tranche_budget * (0.7 if selected_policy is Policy.C70 else 1.0)
         episode = Episode(episode_id, code, selected_policy, self.tranche_budget, cap)
         self._episodes[episode_id] = episode
         return episode
 
+    def initialize_plan(self, episode_id: str, plan_id: str, start_day: date, end_day: date,
+                        tranches: Mapping[str, tuple[date, float]]) -> None:
+        episode = self._episodes[episode_id]
+        if episode.status is not EpisodeStatus.ACTIVE or episode.plan_id is not None:
+            raise AllocationError("plan 只能初始化一次 ACTIVE episode")
+        if not plan_id or any(item.plan_id == plan_id for item in self._episodes.values()):
+            raise AllocationError("plan_id 必须唯一且非空")
+        if (start_day not in self.calendar_days or end_day not in self.calendar_days
+                or end_day < start_day or not tranches):
+            raise AllocationError("plan 日期或 tranche 列表无效")
+        if any(not key or day not in self.calendar_days or not start_day <= day <= end_day
+               or isinstance(amount, bool) or not isinstance(amount, (int, float))
+               or not isfinite(amount) or amount <= 0 for key, (day, amount) in tranches.items()):
+            raise AllocationError("tranche 身份、日期或预算无效")
+        if sum(amount for _, amount in tranches.values()) > episode.commitment:
+            raise AllocationError("tranche 预算超过完整 B 承诺")
+        self._episodes[episode_id] = replace(
+            episode, plan_id=plan_id, plan_start_date=start_day, plan_end_date=end_day,
+        )
+        for tranche_id, (day, amount) in tranches.items():
+            self._tranches[(episode_id, tranche_id)] = PlannedTranche(
+                episode_id, tranche_id, day, float(amount),
+            )
+
+    def decide_tranche(self, episode_id: str, tranche_id: str, *, eligible: bool,
+                       reason: str | None = None) -> None:
+        key = (episode_id, tranche_id)
+        tranche = self._tranches[key]
+        if tranche.status is not TrancheStatus.PLANNED or self.current_day != tranche.decision_date:
+            raise AllocationError("tranche 决策状态或交易日不匹配")
+        status = TrancheStatus.DECIDED_ELIGIBLE if eligible else TrancheStatus.INELIGIBLE
+        self._tranches[key] = replace(tranche, status=status, reason=reason)
+
+    def schedule_tranche(self, episode_id: str, tranche_id: str, order_id: str,
+                         shares: int, limit_price: float) -> None:
+        key = (episode_id, tranche_id)
+        tranche = self._tranches[key]
+        if tranche.status is not TrancheStatus.DECIDED_ELIGIBLE:
+            raise AllocationError("只有合格 tranche 可以排单")
+        if (not order_id or order_id in self._order_tranches or isinstance(shares, bool)
+                or not isinstance(shares, int) or shares <= 0
+                or isinstance(limit_price, bool) or not isinstance(limit_price, (int, float))
+                or not isfinite(limit_price) or limit_price <= 0):
+            raise AllocationError("订单身份、整股数量或限价无效")
+        self._tranches[key] = replace(
+            tranche, status=TrancheStatus.SCHEDULED, order_id=order_id,
+            requested_shares=shares, limit_price=float(limit_price),
+        )
+        self._order_tranches[order_id] = key
+
+    def fail_tranche(self, episode_id: str, tranche_id: str, reason: str) -> None:
+        key = (episode_id, tranche_id)
+        tranche = self._tranches[key]
+        if tranche.status is not TrancheStatus.DECIDED_ELIGIBLE or not reason:
+            raise AllocationError("仅已合格 tranche 可记录订单失败")
+        self._tranches[key] = replace(tranche, status=TrancheStatus.REJECTED, reason=reason)
+        self._sync_exit_state()
+
+    def validate_order_update(self, order_id: str | None, episode_id: str | None,
+                              phase: str, order_status: str | None) -> None:
+        if order_id not in self._order_tranches:
+            return
+        key = self._order_tranches[order_id]
+        tranche = self._tranches[key]
+        if episode_id != key[0]:
+            raise AllocationError("core order episode 与 tranche 归属不一致")
+        if phase == "submitted" and tranche.status not in (
+            TrancheStatus.SCHEDULED, TrancheStatus.SUBMITTED,
+        ):
+            raise AllocationError("core submitted 与 tranche 状态不一致")
+        if phase == "terminal" and order_status not in ("filled", "partial", "rejected"):
+            raise AllocationError("core terminal 缺少已知订单终态")
+        if phase == "terminal":
+            if tranche.status not in (TrancheStatus.SUBMITTED, TrancheStatus.PARTIAL_FILLING):
+                raise AllocationError("core terminal 与 tranche 状态不一致")
+            if order_status == "filled" and tranche.filled_shares != tranche.requested_shares:
+                raise AllocationError("filled 终态与 core fill 股数不一致")
+            if order_status == "partial" and not 0 < tranche.filled_shares < tranche.requested_shares:
+                raise AllocationError("partial 终态缺少真实部分成交")
+
+    def apply_order_update(self, order_id: str | None, episode_id: str | None,
+                           phase: str, order_status: str | None) -> None:
+        self.validate_order_update(order_id, episode_id, phase, order_status)
+        if order_id not in self._order_tranches:
+            return
+        key = self._order_tranches[order_id]
+        tranche = self._tranches[key]
+        if phase == "submitted":
+            self._tranches[key] = replace(tranche, status=TrancheStatus.SUBMITTED)
+        elif phase == "terminal":
+            assert order_status is not None
+            status = {
+                "filled": TrancheStatus.FILLED,
+                "partial": TrancheStatus.PARTIAL,
+                "rejected": TrancheStatus.REJECTED,
+            }[order_status]
+            self._tranches[key] = replace(tranche, status=status)
+            self._sync_exit_state()
+
+    def validate_buy_fill(self, feedback: ExecutionFeedback) -> None:
+        if feedback.order_id not in self._order_tranches:
+            return
+        key = self._order_tranches[feedback.order_id]
+        tranche = self._tranches[key]
+        if (feedback.episode_id != key[0] or tranche.status not in (
+            TrancheStatus.SUBMITTED, TrancheStatus.PARTIAL_FILLING,
+        )):
+            raise AllocationError("fill 与已提交 tranche 状态或归属不一致")
+        if feedback.side != "buy":
+            raise AllocationError("tranche 订单只允许买入 fill")
+        if tranche.filled_shares + feedback.shares_delta > tranche.requested_shares:
+            raise AllocationError("累计 fill 股数超过固定订单股数")
+        if tranche.cash_debit + feedback.cash_debit > tranche.budget:
+            raise AllocationError("tranche 累计现金借记超过预算")
+
     def mark_exit_pending(self, episode_id: str, requested_day: date) -> None:
         if requested_day not in self.calendar_days:
             raise AllocationError("退出日期不在显式 calendar 中")
         episode = self._episodes[episode_id]
+        if episode.status is EpisodeStatus.CLOSED:
+            raise AllocationError("CLOSED episode 不可重新进入 EXIT_PENDING")
         self._episodes[episode_id] = replace(
             episode, exit_pending=True, exit_date=requested_day
         )
@@ -233,6 +392,27 @@ class AllocationRegistry:
             raise AllocationError("仅 ACTIVE episode 可登记计划结束日")
         self._episodes[episode_id] = replace(episode, plan_end_date=final_day)
 
+    def cancel_future_tranches(self, episode_id: str, from_day: date, reason: str) -> None:
+        if from_day not in self.calendar_days or not reason:
+            raise AllocationError("tranche 取消日期或原因无效")
+        for key, tranche in tuple(self._tranches.items()):
+            if (key[0] == episode_id and tranche.decision_date >= from_day
+                    and tranche.status in (TrancheStatus.PLANNED, TrancheStatus.DECIDED_ELIGIBLE)):
+                self._tranches[key] = replace(
+                    tranche, status=TrancheStatus.CANCELLED, reason=reason,
+                )
+        self._sync_exit_state()
+
+    def finalize_close(self, day: date) -> None:
+        if day not in self.calendar_days or day < self.current_day:
+            raise AllocationError("finalize_close 日期必须单调且属于 calendar")
+        for key, tranche in tuple(self._tranches.items()):
+            if tranche.status is TrancheStatus.PLANNED and tranche.decision_date < day:
+                self._tranches[key] = replace(
+                    tranche, status=TrancheStatus.EXPIRED, reason="decision_day_missed",
+                )
+        self._sync_exit_state()
+
     def advance(self, day: date) -> None:
         if day not in self.calendar_days or day < self.current_day:
             raise AllocationError("advance 日期必须来自 calendar 且不得倒退")
@@ -241,7 +421,17 @@ class AllocationRegistry:
     def cancel_episode(self, episode_id: str) -> None:
         # 取消只记录流程状态，预算承诺和 slot 保留至周期结束。
         episode = self._episodes[episode_id]
+        if episode.status is EpisodeStatus.CLOSED:
+            raise AllocationError("CLOSED episode 不可再次取消")
         self._episodes[episode_id] = replace(episode, status=EpisodeStatus.CANCELLED)
+        for key, tranche in tuple(self._tranches.items()):
+            if (key[0] == episode_id and tranche.status in (
+                TrancheStatus.PLANNED, TrancheStatus.DECIDED_ELIGIBLE,
+            )):
+                self._tranches[key] = replace(
+                    tranche, status=TrancheStatus.CANCELLED, reason="episode_cancelled",
+                )
+        self._sync_exit_state()
 
     def apply_core_snapshot(self, snapshot: CoreAccountSnapshot) -> bool:
         """用新的 core 权威快照同步账户；相同快照重放为 no-op。"""
@@ -262,6 +452,8 @@ class AllocationRegistry:
     def _validate_core_snapshot(snapshot: CoreAccountSnapshot, *, require_cash: bool = False) -> None:
         if not isinstance(snapshot.snapshot_id, str) or not snapshot.snapshot_id:
             raise AllocationError("core_snapshot_id 缺失")
+        if snapshot.trading_date is not None and type(snapshot.trading_date) is not date:
+            raise AllocationError("core snapshot trading_date 必须是 date 或 None")
         if not isinstance(snapshot.sequence, int) or isinstance(snapshot.sequence, bool) or snapshot.sequence < 0:
             raise AllocationError("core snapshot sequence 必须为非负整数")
         if require_cash and snapshot.cash is None:
@@ -407,6 +599,8 @@ class AllocationRegistry:
             held = self._positions.get(episode.code, 0)
             if feedback.shares_delta <= 0 or feedback.shares_delta > held:
                 raise AllocationError("卖出 fill 与当前 core 持仓不一致")
+        if feedback.order_id in self._order_tranches and feedback.side != "buy":
+            raise AllocationError("tranche 订单只允许买入 fill")
         if feedback.side == "buy":
             total = episode.cumulative_cash_debit + feedback.cash_debit
             if total > episode.investment_cap:
@@ -414,6 +608,7 @@ class AllocationRegistry:
                 raise AllocationError(f"{label} 累计现金借记超过投资上限")
             if feedback.cash_debit > episode.commitment:
                 raise AllocationError("真实现金借记超过 episode 未投入承诺")
+            self.validate_buy_fill(feedback)
         payload = self._snapshot_payload(snapshot)
         existing_payload = self._seen_snapshots.get(snapshot.snapshot_id)
         if existing_payload is not None and existing_payload != payload:
@@ -437,6 +632,15 @@ class AllocationRegistry:
             + (feedback.cash_debit if feedback.side == "buy" else 0.0),
         )
         self._episodes[episode.episode_id] = episode
+        tranche_key = self._order_tranches.get(order_id)
+        if tranche_key is not None:
+            tranche = self._tranches[tranche_key]
+            self._tranches[tranche_key] = replace(
+                tranche,
+                status=TrancheStatus.PARTIAL_FILLING,
+                filled_shares=tranche.filled_shares + feedback.shares_delta,
+                cash_debit=tranche.cash_debit + feedback.cash_debit,
+            )
         self._last_fill_id = fill_id
         self._last_order_id = order_id
         if not state_snapshot_already_applied:
@@ -458,6 +662,7 @@ class AllocationRegistry:
             tuple(sorted(snapshot.unlisted_entitlements.items())),
             tuple(sorted(snapshot.pending_cash.items())),
             tuple(sorted(snapshot.active_orders.items())),
+            snapshot.trading_date,
         )
 
     def _commit_core_snapshot(
@@ -491,11 +696,23 @@ class AllocationRegistry:
     def _sync_exit_state(self) -> None:
         active = self.active_codes
         for episode_id, episode in tuple(self._episodes.items()):
+            required_snapshot_day = episode.exit_date or (
+                episode.plan_end_date if episode.plan_end_date is not None and
+                self.current_day >= episode.plan_end_date else self.current_day
+            )
+            snapshot_current = (
+                self._core_snapshot is not None
+                and (self._core_snapshot.trading_date is not None
+                     and self._core_snapshot.trading_date >= required_snapshot_day
+                     or (self._core_snapshot.trading_date is None and episode.plan_id is None))
+            )
             expired = episode.plan_end_date is not None and self.current_day >= episode.plan_end_date
+            tranches = [item for key, item in self._tranches.items() if key[0] == episode_id]
+            plan_complete = all(item.status in _TERMINAL_TRANCHES for item in tranches)
             should_close = (
                 episode.status is EpisodeStatus.CANCELLED or episode.exit_pending or expired
             )
-            if should_close and episode.code not in active:
+            if (should_close and plan_complete and snapshot_current and episode.code not in active):
                 self._episodes[episode_id] = replace(
                     episode, exit_pending=False, exit_date=None,
                     status=EpisodeStatus.CLOSED,
