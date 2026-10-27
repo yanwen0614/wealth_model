@@ -11,7 +11,8 @@
 import json
 import logging
 import warnings
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -23,6 +24,46 @@ MODEL_KEY = "model"
 OPTIMIZER_KEY = "optimizer"
 SCHEDULER_KEY = "scheduler"
 CHECKPOINT_KEYS = (MODEL_KEY, OPTIMIZER_KEY, SCHEDULER_KEY, "epoch", "config")
+
+# 受限 allowlist：仅覆盖 torch.save 序列化 NumPy 标量（如 scheduler 步进后写入
+# optimizer.param_groups[*].lr 的 numpy.float64）所必需的解码全局对象。
+# NumPy 2.x 使用 numpy._core.multiarray，保留 numpy 1.x 导入路径兼容；项目依赖
+# 下限为 NumPy 2.4。未知对象仍被 weights_only 拒绝。
+def _numpy_multiarray_scalar():
+    try:
+        from numpy._core import multiarray  # numpy>=2
+    except ImportError:
+        from numpy.core import multiarray  # numpy<2
+    return multiarray.scalar
+
+
+_NUMPY_SAFE_GLOBALS = tuple(g for g in (
+    _numpy_multiarray_scalar(),
+    np.dtype,
+    type(np.dtype(np.float64)),
+))
+
+
+@contextmanager
+def _numpy_safe_globals():
+    """受限放行 NumPy 标量解码全局对象（weights_only 语义下其余仍拒绝）。"""
+    if not _NUMPY_SAFE_GLOBALS or not hasattr(torch.serialization, "safe_globals"):
+        raise RuntimeError("checkpoint 安全兼容要求 PyTorch >= 2.6（weights_only + safe_globals）")
+    with torch.serialization.safe_globals(cast(Any, list(_NUMPY_SAFE_GLOBALS))):
+        yield
+
+
+def _native_scalars(obj: Any) -> Any:
+    """递归把 NumPy 标量转 Python 标量，新保存的 checkpoint 不再携带 numpy 全局对象。"""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {key: _native_scalars(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_native_scalars(value) for value in obj]
+    if isinstance(obj, tuple):
+        return tuple(_native_scalars(value) for value in obj)
+    return obj
 
 
 def is_checkpoint_dict(obj: Any) -> bool:
@@ -49,11 +90,15 @@ def save_checkpoint(path: str, model: nn.Module,
                     scheduler: Any | None = None,
                     epoch: int | None = None,
                     config: dict | None = None) -> None:
-    """存 dict 格式 checkpoint（含 optimizer/scheduler/epoch/config）。"""
+    """存 dict 格式 checkpoint（含 optimizer/scheduler/epoch/config）。
+
+    optimizer/scheduler state 中的 NumPy 标量（lr 等）原生化为 Python 标量，
+    新保存文件不再依赖 NumPy 解码全局对象。
+    """
     payload = {
         MODEL_KEY: model.state_dict(),
-        OPTIMIZER_KEY: optimizer.state_dict() if optimizer is not None else None,
-        SCHEDULER_KEY: scheduler.state_dict() if scheduler is not None else None,
+        OPTIMIZER_KEY: _native_scalars(optimizer.state_dict()) if optimizer is not None else None,
+        SCHEDULER_KEY: _native_scalars(scheduler.state_dict()) if scheduler is not None else None,
         "epoch": epoch,
         "config": _json_safe_config(config),
     }
@@ -64,13 +109,12 @@ def load_checkpoint(path: str, map_location: Any = "cpu") -> Any:
     """读 checkpoint（新 dict / 旧裸 state_dict 均可）。
 
     ``weights_only`` 语义兼容：新 torch（≥2.6 默认 True）对纯张量 payload 安全；
-    老版本无此参数时回退不传。dict 内仅含 state_dict/标量，无任意代码对象。
+    仅支持 PyTorch >=2.6。历史文件 optimizer 内的 NumPy 标量经受限
+    allowlist（仅 :data:`_NUMPY_SAFE_GLOBALS`）放行，其余未知对象仍被拒绝。
     """
     kwargs: dict = {"map_location": map_location}
-    try:
+    with _numpy_safe_globals():
         return torch.load(path, weights_only=True, **kwargs)
-    except TypeError:  # 老 torch 无 weights_only 参数
-        return torch.load(path, **kwargs)
 
 
 def extract_state_dict(obj: Any) -> Any:

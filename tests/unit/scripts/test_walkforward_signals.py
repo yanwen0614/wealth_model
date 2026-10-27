@@ -90,6 +90,19 @@ def _write_checkpoint(path: str, feature_cols=None, featurenum=None) -> ModelCon
     return model_config
 
 
+def _rewrite_as_legacy_numpy_lr_checkpoint(path: str, model_config: ModelConfig) -> None:
+    """构造 W2 同形旧 dict：optimizer param_groups.lr 为 numpy.float64。"""
+    state = torch.load(path, map_location="cpu", weights_only=True)["model"]
+    model = CNNTransformer(model_config)
+    model.load_state_dict(state, strict=True)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+    optimizer.param_groups[0]["lr"] = np.float64(3e-4)
+    torch.save({
+        "model": model.state_dict(), "optimizer": optimizer.state_dict(),
+        "scheduler": None, "epoch": 5, "config": {},
+    }, path)
+
+
 class TestWalkforwardSignals(unittest.TestCase):
     def test_f4_schema_is_exactly_ordered_ohlc(self):
         self.assertEqual(F4_RAW_FEATURES, ("open", "high", "low", "close"))
@@ -316,6 +329,7 @@ class TestWalkforwardSignals(unittest.TestCase):
             parquet, checkpoint = f"{temp_dir}/f4.parquet", f"{temp_dir}/f4.pth"
             frame.to_parquet(parquet, index=False)
             model_config = _write_checkpoint(checkpoint, F4_RAW_FEATURES)
+            _rewrite_as_legacy_numpy_lr_checkpoint(checkpoint, model_config)
             start, end = frame.iloc[59].kline_time, frame.iloc[74].kline_time
             calendar = pd.date_range(frame.iloc[0].kline_time, periods=78)
             dataset = ParquetDataset(ParquetDataConfig(

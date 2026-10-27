@@ -5,10 +5,11 @@ from typing import Any, cast
 
 import numpy as np
 import torch
-from criterion.gate_loss import GateLoss
 from sklearn.metrics import confusion_matrix
 from torch import nn, optim
 from tqdm import tqdm
+
+from criterion.gate_loss import GateLoss
 
 from .batch import _compute_loss, _unpack_batch, _unpack_outputs
 from .checkpoint import load_model_state
