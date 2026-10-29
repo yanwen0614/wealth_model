@@ -144,7 +144,8 @@ def _raw_record(row: Mapping, expected_code: str, day: date) -> RawMarketRecord:
 
 def normalize_raw_market_frame(frame: pd.DataFrame, *, instrument_id: str, signal_start: date,
                                signal_end: date, execution_end: date,
-                               history_bars: int = 20) -> RawMarketWindow:
+                                history_bars: int = 20,
+                                allow_empty_window: bool = False) -> RawMarketWindow:
     """校验一份单标的 raw 日线并裁出所需历史、信号期和执行/buffer期。"""
     if not isinstance(frame, pd.DataFrame):
         raise ValueError(f"frame must be a pandas DataFrame, got {type(frame)!r}")  # noqa: TRY004
@@ -163,7 +164,7 @@ def normalize_raw_market_frame(frame: pd.DataFrame, *, instrument_id: str, signa
     keys = [(str(row["code"]), day) for row, day in raw_rows]
     if len(keys) != len(set(keys)):
         raise ValueError("raw market frame contains duplicate (code, date) keys")
-    if {code for code, _ in keys} != {instrument_id}:
+    if keys and {code for code, _ in keys} != {instrument_id}:
         raise ValueError(f"raw market frame codes must equal {instrument_id!r}")
     raw_rows.sort(key=lambda item: item[1])
     records = tuple(_raw_record(row, instrument_id, day)
@@ -171,7 +172,7 @@ def normalize_raw_market_frame(frame: pd.DataFrame, *, instrument_id: str, signa
     signal = tuple(record for record in records if signal_start <= record.trading_date <= signal_end)
     execution_buffer = tuple(record for record in records
                              if signal_end < record.trading_date <= execution_end)
-    if not signal:
+    if not signal and not allow_empty_window:
         raise ValueError(f"no raw market rows for {instrument_id} in requested period")
     candidates = tuple(record for record in records if record.trading_date < signal_start
                        and _has_valid_raw_bar(record))
@@ -188,7 +189,9 @@ def _has_valid_raw_bar(record: RawMarketRecord) -> bool:
 
 def read_raw_market_inputs(path: str | Path, *, instrument_id: str, signal_start: date,
                            signal_end: date, execution_end: date,
-                           history_bars: int = 20) -> RawMarketWindow:
+                            history_bars: int = 20,
+                            allow_empty_window: bool = False,
+                            read_statistics: dict[str, int] | None = None) -> RawMarketWindow:
     """按代码和截止日分批扫描parquet，只在内存保留所需窗口行。"""
     if not instrument_id or any(type(day) is not date
                                 for day in (signal_start, signal_end, execution_end)):
@@ -214,11 +217,16 @@ def read_raw_market_inputs(path: str | Path, *, instrument_id: str, signal_start
         cutoff = cutoff.replace(tzinfo=ZoneInfo(time_type.tz))
     expression = (ds.field("code") == instrument_id) & (ds.field("kline_time") < cutoff)
     scanner = dataset.scanner(columns=columns, filter=expression, batch_size=4096)
+    if read_statistics is not None:
+        read_statistics.update(scanned_rows=0, batches=0)
     previous_day: date | None = None
     history: list[RawMarketRecord] = []
     signal: list[RawMarketRecord] = []
     execution_buffer: list[RawMarketRecord] = []
     for batch in scanner.to_batches():
+        if read_statistics is not None:
+            read_statistics["scanned_rows"] += batch.num_rows
+            read_statistics["batches"] += 1
         for row in batch.to_pylist():
             day = _to_date(row["kline_time"])
             if previous_day is not None and day <= previous_day:
@@ -235,6 +243,6 @@ def read_raw_market_inputs(path: str | Path, *, instrument_id: str, signal_start
                 signal.append(record)
             elif signal_end < day <= execution_end:
                 execution_buffer.append(record)
-    if not signal:
+    if not signal and not allow_empty_window:
         raise ValueError(f"no raw market rows for {instrument_id} in requested signal period")
     return RawMarketWindow(instrument_id, tuple(history), tuple(signal), tuple(execution_buffer))

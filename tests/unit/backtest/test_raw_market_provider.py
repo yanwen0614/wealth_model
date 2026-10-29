@@ -24,6 +24,14 @@ class _Buy:
 
 
 class RawMarketProviderTest(unittest.TestCase):
+    def test_window_cutoff_cannot_expose_later_cache_bars(self):
+        provider = CnnRawMarketDataProvider(self.path, signal_start=self.days[0],
+            signal_end=self.days[1], execution_end=self.days[2], history_bars=21)
+        with self.assertRaisesRegex(ValueError, "截止日"):
+            provider.get_bar("A.SZ", self.days[3])
+        with self.assertRaisesRegex(ValueError, "截止日"):
+            provider.get_history("A.SZ", self.days[3], 21)
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / "raw.parquet"

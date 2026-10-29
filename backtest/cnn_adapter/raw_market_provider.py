@@ -37,6 +37,8 @@ class CnnRawMarketDataProvider:
         execution_end: date,
         corporate_action_dates: frozenset[tuple[str, date]] = frozenset(),
         verified_states: Mapping[tuple[str, date], Mapping[str, object]] | None = None,
+        history_bars: int = 20,
+        allow_empty_window: frozenset[str] = frozenset(),
     ) -> None:
         if signal_end < signal_start or execution_end < signal_end:
             raise ValueError("date window must satisfy signal_start <= signal_end <= execution_end")
@@ -44,8 +46,12 @@ class CnnRawMarketDataProvider:
         self.signal_start = signal_start
         self.signal_end = signal_end
         self.execution_end = execution_end
+        if type(history_bars) is not int or history_bars < 1:
+            raise ValueError("history_bars 必须为正整数")
+        self.history_bars = history_bars
+        self.allow_empty_window = allow_empty_window
         self.corporate_action_dates = corporate_action_dates
-        self.verified_states = verified_states or {}
+        self.verified_states = verified_states if verified_states is not None else {}
         self._records: dict[str, dict[date, RawMarketRecord]] = {}
         self._bars: dict[tuple[str, date], MarketBar] = {}
 
@@ -60,10 +66,14 @@ class CnnRawMarketDataProvider:
         window = read_raw_market_inputs(
             source, instrument_id=instrument_id, signal_start=self.signal_start,
             signal_end=self.signal_end, execution_end=self.execution_end,
+            history_bars=self.history_bars,
+            allow_empty_window=instrument_id in self.allow_empty_window,
         )
         self._records[instrument_id] = {row.trading_date: row for row in window.records}
 
     def get_bar(self, instrument_id: str, trading_date: date) -> MarketBar | None:
+        if trading_date > self.execution_end:
+            raise ValueError("拒绝读取窗口截止日之后的行情")
         key = (instrument_id, trading_date)
         if key in self._bars:
             return self._bars[key]
@@ -95,6 +105,8 @@ class CnnRawMarketDataProvider:
         return bar
 
     def get_history(self, instrument_id: str, end_date: date, lookback_days: int) -> Sequence[MarketBar]:
+        if end_date > self.execution_end:
+            raise ValueError("拒绝读取窗口截止日之后的历史")
         if isinstance(lookback_days, bool) or not isinstance(lookback_days, int) or lookback_days < 1:
             raise ValueError(f"lookback_days must be a positive int, got {lookback_days!r}")
         self._load(instrument_id)
