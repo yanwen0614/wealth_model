@@ -22,6 +22,22 @@ def _row(day: date, *, volume: int = 10_000, amount: float = 100_000_000.0) -> d
 
 
 class RawMarketInputsTest(unittest.TestCase):
+    def test_explicit_empty_window_preserves_schema_and_duplicate_failures(self):
+        day = date(2021, 1, 4)
+        frame = pd.DataFrame([_row(day - timedelta(days=1))])
+        window = normalize_raw_market_frame(frame, instrument_id="000001.SZ", signal_start=day,
+            signal_end=day, execution_end=day, allow_empty_window=True, history_bars=21)
+        self.assertFalse(window.signal)
+        self.assertEqual(len(window.history), 1)
+        with self.assertRaisesRegex(ValueError, "missing required"):
+            normalize_raw_market_frame(frame.drop(columns="volume"), instrument_id="000001.SZ",
+                signal_start=day, signal_end=day, execution_end=day,
+                allow_empty_window=True, history_bars=21)
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            normalize_raw_market_frame(pd.concat([frame, frame]), instrument_id="000001.SZ",
+                signal_start=day, signal_end=day, execution_end=day,
+                allow_empty_window=True, history_bars=21)
+
     def test_units_prices_unknown_states_and_bounded_history(self):
         start = date(2026, 1, 5)
         days = tuple(start + timedelta(days=offset) for offset in range(5))
@@ -64,7 +80,7 @@ class RawMarketInputsTest(unittest.TestCase):
                                             signal_end=day, execution_end=day)
         self.assertEqual(window.signal[0].source_volume, exact_volume)
         self.assertEqual(window.signal[0].volume_shares, exact_volume // 100)
-        frame = pd.DataFrame([_row(day, volume=float(exact_volume))])
+        frame = pd.DataFrame([{**_row(day), "volume": float(exact_volume)}])
         with self.assertRaisesRegex(ValueError, "not exactly representable"):
             normalize_raw_market_frame(frame, instrument_id="000001.SZ", signal_start=day,
                                        signal_end=day, execution_end=day)
