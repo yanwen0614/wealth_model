@@ -1,0 +1,2 @@
+# 钩子脚本由 sh.exe 执行，必须保持 LF，避免 core.autocrlf 转成 CRLF 后 shebang 失效
+scripts/githooks/* text eol=lf

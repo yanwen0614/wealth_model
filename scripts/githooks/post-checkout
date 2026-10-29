@@ -1,0 +1,100 @@
+#!/bin/sh
+# post-checkout —— 新建 worktree / 切换分支后，把 .venv 链接到主 worktree 的 .venv
+#
+# 安装（每个 clone 一次；钩子文件随仓库分发，该配置是本地的）：
+#   git config core.hooksPath "$(git rev-parse --show-toplevel)/scripts/githooks"
+# 必须用绝对路径：相对路径按"当前 worktree"解析，在不含钩子文件的旧分支里会失效。
+#
+# 触发：$3 = 1（含 git worktree add / git checkout / git switch）
+# 行为：
+#   1) 仅当本 worktree 完全没有 .venv（无目录也无链接）时才创建，绝不覆盖已有内容；
+#   2) 把 .venv 写进本仓库 info/exclude（幂等），使新建树在 git status 里保持干净；
+#   3) Windows 优先真 symlink（pwsh 7 → powershell 5.1），都失败才回退 junction 并告警；
+#      其他平台 ln -s；任何失败只提示，始终 exit 0，绝不影响 checkout。
+#
+# ⚠ 安全要点（已实测，勿删）：
+#   真 symlink 下 `git worktree remove -f` 只删链接，主 .venv 完好；
+#   junction 下 `git worktree remove -f` 会删穿并把主 .venv 内容清空！
+#   因此 junction 仅作最后手段；本脚本在创建 junction 时会打印规避方法。
+#
+# 共享语义：uv sync / pip install 会改写主 worktree 的 .venv，依赖变更请在主 worktree 做。
+
+[ "$3" = "1" ] || exit 0
+
+wt=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -n "$wt" ] || exit 0
+
+# 1) 让 .venv 在所有 worktree 的 git status 中隐身（info/exclude 由各 worktree 共享）。
+#    不能只依赖仓库 .gitignore：worktree 检出的是目标分支的版本，可能还没有该规则；
+#    且规则须写 ".venv" 而非 ".venv/"——带斜杠匹配不到 symlink 形式的 .venv。
+exclude=$(git rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)
+if [ -n "$exclude" ]; then
+    if [ ! -f "$exclude" ] || ! grep -qxF '.venv' "$exclude" 2>/dev/null; then
+        mkdir -p "$(dirname "$exclude")" 2>/dev/null
+        printf '.venv\n' >>"$exclude" 2>/dev/null
+    fi
+fi
+
+# 已有 .venv（真实目录、symlink、junction、坏链接）一律不动
+if [ -e "$wt/.venv" ] || [ -L "$wt/.venv" ]; then
+    exit 0
+fi
+
+# 2) 主 worktree = git worktree list --porcelain 的首条
+main=$(git worktree list --porcelain 2>/dev/null | awk 'NR==1 && /^worktree /{sub(/^worktree /,""); print; exit}')
+[ -n "$main" ] || exit 0
+
+[ "$(cd "$wt" 2>/dev/null && pwd -P)" = "$(cd "$main" 2>/dev/null && pwd -P)" ] && exit 0
+if [ ! -d "$main/.venv" ]; then
+    printf '[hooks] 主 worktree 无 .venv，跳过：%s\n' "$main/.venv" >&2
+    exit 0
+fi
+
+link="$wt/.venv"
+target="$main/.venv"
+kind=""
+
+# 用指定 PowerShell 创建 symlink；成功返回 0
+try_symlink() {
+    ps=$1
+    command -v "$ps" >/dev/null 2>&1 || return 1
+    lw=$(cygpath -w "$link") || return 1
+    tw=$(cygpath -w "$target") || return 1
+    "$ps" -NoProfile -NonInteractive -Command \
+        "\$ErrorActionPreference='Stop'; \$null = New-Item -ItemType SymbolicLink -Path '$lw' -Target '$tw'" \
+        >/dev/null 2>&1 || return 1
+    [ -L "$link" ] || return 1
+    return 0
+}
+
+case "$(uname -s 2>/dev/null)" in
+MINGW* | MSYS* | CYGWIN*)
+    # Windows symlink 需开发者模式或管理员；pwsh 7 在开发者模式下可用，5.1 通常不行
+    try_symlink pwsh && kind=symlink
+    [ -z "$kind" ] && try_symlink powershell.exe && kind=symlink
+    if [ -z "$kind" ] && command -v powershell.exe >/dev/null 2>&1; then
+        lw=$(cygpath -w "$link")
+        tw=$(cygpath -w "$target")
+        powershell.exe -NoProfile -NonInteractive -Command \
+            "\$ErrorActionPreference='Stop'; \$null = New-Item -ItemType Junction -Path '$lw' -Target '$tw'" \
+            >/dev/null 2>&1 && kind=junction
+    fi
+    ;;
+*)
+    ln -s "$target" "$link" >/dev/null 2>&1 && kind=symlink
+    ;;
+esac
+
+if [ -z "$kind" ] || { [ ! -e "$link" ] && [ ! -L "$link" ]; }; then
+    printf '[hooks] .venv 链接创建失败，请手动处理：%s -> %s\n' "$link" "$target" >&2
+    exit 0
+fi
+
+printf '[hooks] .venv 已链接（%s）-> %s\n' "$kind" "$target" >&2
+if [ "$kind" = "junction" ]; then
+    printf '[hooks] ⚠ 当前为 junction 回退（无 symlink 权限）。删除本 worktree 时切勿用\n' >&2
+    printf '[hooks]   `git worktree remove -f`——它会删穿并清空主 .venv。\n' >&2
+    printf '[hooks]   请先删除本树 .venv 链接，或用不带 -f 的 remove（git 会拒绝并提示）。\n' >&2
+fi
+
+exit 0

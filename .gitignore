@@ -1,4 +1,9 @@
 data.ipynb
+# uv 虚拟环境：真实目录靠内部 .gitignore 自排除；worktree 里的 .venv 链接
+# （symlink/junction）必须在此显式忽略，否则显示为 ?? .venv。
+# 规则不能写成 .venv/——带斜杠只匹配目录，匹配不到 symlink 形式的 .venv。
+# 链接由 scripts/githooks/post-checkout 自动创建。
+.venv
 *.pth
 !logs/KEEP/baseline/*.pth
 *.npy
