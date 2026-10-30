@@ -29,7 +29,7 @@
 ## 已确认的执行授权
 
 - 完整补证：授权上述已有接口查询及必要联网回取，覆盖状态、价格界、生命周期、差集行情和公司行动；结果单独保存，不回写原库或覆盖旧产物。
-- 唯一采集owner：Luna会话 `ses_e85280320ffeTyIp1A3Ts7hkE5`，独立工作树 `state-acquisition-20261027`。
+- 唯一采集owner：Luna会话 `ses_e84ec2092ffeNoZqYCh5R2DgPb`，复用独立工作树 `state-acquisition-20261027`；旧会话已停止并交接，不并行写入。
 - 独立数据根：`C:/Users/yanwen/AppData/Local/Temp/opencode/state_acquisition_20261027/`；原始响应、derived状态与manifest分开。
 - 先执行可隔离副作用的小批预检，通过后按既有权限/配额串行推进；仍未知或请求失败保持unknown。此授权不购买服务或扩充套餐。
 
