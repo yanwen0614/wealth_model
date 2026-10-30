@@ -10,6 +10,8 @@ from datetime import date
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
 
 from backtest.cnn_adapter import market as market_module
 from backtest.cnn_adapter.runner import run_cnn_backtest
@@ -69,7 +71,54 @@ def _baseline_close_limits(self, instrument_id, cache, position):
         market_module._to_cents(close) <= market_module._to_cents(lower)
 
 
-def _run_one(preds, parquet: Path, out_dir: Path, label: str, baseline: bool):
+def _verify_label_endpoints(parquet: Path, raw, label_mode: str, cutoff: str) -> dict:
+    """用对应 code 的交易行逐样本核验 open[t+1] 到 open[t+11]，验证后复权收益标签。"""
+    sample_dates = pd.to_datetime(raw["dates"]).date
+    first_sample = min(sample_dates)
+    start = pd.Timestamp(year=first_sample.year, month=first_sample.month, day=first_sample.day)
+    end = pd.Timestamp(cutoff)
+    frame = pq.read_table(
+        parquet, columns=["code", "kline_time", "open", "is_trading"],
+        filters=[("kline_time", ">=", start), ("kline_time", "<=", end)],
+    ).to_pandas()
+    frame = frame[frame["is_trading"]].copy()
+    frame["kline_time"] = pd.to_datetime(frame["kline_time"]).dt.date
+    frame = frame.sort_values(["code", "kline_time"])
+    returns: dict[tuple[str, date], float] = {}
+    for code, group in frame.groupby("code", sort=False):
+        days = group["kline_time"].tolist()
+        opens = group["open"].to_numpy(dtype=np.float64)
+        for index in range(len(days) - 11):
+            base, target = opens[index + 1], opens[index + 11]
+            if np.isfinite(base) and np.isfinite(target) and base > 0:
+                returns[(str(code), days[index])] = float(target / base - 1.0)
+    daily: dict[date, list[float]] = {}
+    for (code, day), value in returns.items():
+        daily.setdefault(day, []).append(value)
+    means = {day: float(np.mean(values)) for day, values in daily.items()}
+    codes = np.asarray(raw["codes"]).astype(str)
+    actual = np.asarray(raw["true_ret"], dtype=np.float64)
+    errors = []
+    missing = 0
+    for code, day, observed in zip(codes, sample_dates, actual):
+        raw_return = returns.get((code, day))
+        if raw_return is None or day not in means:
+            missing += 1
+            continue
+        expected = raw_return - means[day] if label_mode == "excess" else raw_return
+        errors.append(abs(float(observed) - expected))
+    max_error = max(errors, default=0.0)
+    if missing or len(errors) != len(actual) or max_error > 3e-6:
+        raise ValueError(f"label endpoint mismatch: matched={len(errors)}/{len(actual)}, "
+                         f"missing={missing}, max_abs_error={max_error}")
+    return {"formula": "open[t+11] / open[t+1] - 1; H10", "label_mode": label_mode,
+            "signal_start": min(sample_dates), "signal_end": max(sample_dates),
+            "endpoint_cutoff": cutoff, "matched_samples": len(errors), "missing_samples": missing,
+            "max_abs_error": max_error}
+
+
+def _run_one(preds, parquet: Path, out_dir: Path, label: str, baseline: bool,
+             checkpoint: Path, bins_version: str):
     provider_cls = market_module.CnnMarketDataProvider
     original = provider_cls._derive_limits
     if baseline:
@@ -80,8 +129,8 @@ def _run_one(preds, parquet: Path, out_dir: Path, label: str, baseline: bool):
             sell_buffer=5, initial_capital=1_000_000.0,
             commission_rate_buy=0.0002, commission_rate_sell=0.0002,
             min_commission=5.0, stamp_tax_rate=0.0005, transfer_fee_rate=0.00001,
-            model_name="cnn_transformer", checkpoint="unknown",
-            bins_version="unknown", eval_script_version="scripts/run_backtest@n01",
+            model_name="cnn_transformer", checkpoint=str(checkpoint),
+            bins_version=bins_version, eval_script_version="scripts/run_backtest@n01",
         )
     finally:
         provider_cls._derive_limits = original
@@ -128,6 +177,8 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--expected-start", required=True)
     parser.add_argument("--expected-end", required=True)
+    parser.add_argument("--label-cutoff", required=True)
+    parser.add_argument("--evaluation-label-mode", choices=("absolute", "excess"), default="absolute")
     args = parser.parse_args()
     raw = np.load(args.preds, allow_pickle=False)
     preds = load_preds(str(args.preds))
@@ -138,11 +189,19 @@ def main() -> None:
                          f"{(args.expected_start, args.expected_end)}")
     args.out.mkdir(parents=True, exist_ok=True)
     config = json.loads(args.run_config.read_text(encoding="utf-8"))
+    bins_version = hashlib.sha256(
+        json.dumps(config["BINS"], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
+    endpoint_audit = _verify_label_endpoints(
+        args.parquet, raw, args.evaluation_label_mode, args.label_cutoff)
     stat = args.parquet.stat()
     identity = {
         "window": args.window, "prediction_path": args.preds,
         "prediction_sha256": _sha256(args.preds), "prediction_rows": len(raw["dates"]),
         "prediction_start": start, "prediction_end": end,
+        "label_endpoint_audit": endpoint_audit,
+        "training_label_mode_config": config.get("LABEL_MODE"),
+        "evaluation_label_mode": args.evaluation_label_mode,
         "checkpoint_path": args.checkpoint, "checkpoint_sha256": _sha256(args.checkpoint),
         "run_config_path": args.run_config, "run_config": config,
         "parquet_path": args.parquet, "parquet_size_bytes": stat.st_size,
@@ -156,8 +215,10 @@ def main() -> None:
                   "transfer_fee": 0.00001},
     }
     _write_json(args.out / "identity.json", identity)
-    before = _run_one(preds, args.parquet, args.out / "before_close_based", args.window, True)
-    after = _run_one(preds, args.parquet, args.out / "after_open_based", args.window, False)
+    before = _run_one(preds, args.parquet, args.out / "before_close_based", args.window, True,
+                       args.checkpoint, bins_version)
+    after = _run_one(preds, args.parquet, args.out / "after_open_based", args.window, False,
+                     args.checkpoint, bins_version)
     old_rows = [json.loads(line) for line in
                 (args.out / "before_close_based" / "daily_account.jsonl").read_text().splitlines()]
     new_rows = [json.loads(line) for line in
