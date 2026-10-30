@@ -39,6 +39,7 @@ def sha(path, expected=None):
 
 def verify_reviewed(*, reviewed_root=None, hashes_path=None):
     """校验既审16文件；默认路径缺失或字节不符即 fail-closed，不提供降级通道。"""
+    _assert_clean_interpreter()
     root = REVIEWED if reviewed_root is None else Path(reviewed_root)
     manifest = REVIEW_HASHES if hashes_path is None else Path(hashes_path)
     hashes = json.loads(manifest.read_text(encoding="utf-8"))
@@ -64,17 +65,29 @@ def review_identity_available():
         return True
     try:
         review_identity()
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, RuntimeError):
         return False
     return True
 
 
-if any(name == "backtest" or name.startswith("backtest.") for name in sys.modules):
-    raise RuntimeError("须在干净解释器先导入受限入口，禁止混合不同树的 backtest 模块")
+# 解释器污染只在 import 期记录，不再直接抛错：整包同进程收集（如 pytest）时
+# 其它测试模块可能先导入主区 backtest；真正的隔离门在研究入口处强制执行。
+_BACKTEST_PREIMPORTED = any(name == "backtest" or name.startswith("backtest.") for name in sys.modules)
+
+
+def _assert_clean_interpreter():
+    """研究入口硬门：解释器已混入其它 backtest 树时拒绝，避免静默用错树。"""
+    if _BACKTEST_PREIMPORTED:
+        raise RuntimeError("须在干净解释器先导入受限入口，禁止混合不同树的 backtest 模块")
+
+
+# 注意：历史上的模块级"干净解释器"硬校验已延迟到 _assert_clean_interpreter()，
+# 由 verify_reviewed() 在每个真实研究入口处强制执行；import 期只记录不抛错，
+# 否则整包同进程收集（如 pytest）时其它测试模块先导入主区 backtest 会导致导入即崩。
 sys.path.insert(0, str(REVIEWED))
 
-# 本导入块必须位于 sys.path.insert(REVIEWED) 之后，否则会先导入主区 backtest.*
-# 并触发上方 RuntimeError；故不能按 isort 默认规则上移排序（W1 树原貌）。
+# 本导入块必须位于 sys.path.insert(REVIEWED) 之后，否则会先导入主区 backtest.*；
+# 故不能按 isort 默认规则上移排序（W1 树原貌）。
 import numpy as np  # noqa: I001
 import pyarrow as pa
 import pyarrow.parquet as pq
