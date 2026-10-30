@@ -36,8 +36,10 @@
   `docs/prediction_target_and_tree_2026.md`（α/m+损失+择时+树定位总收口）、
   `docs/archive/`（冻结A/七路关闭/大扫除编目`logs_manifest.csv`）。
 - 研究报告：`research/m_research/REPORT.md`（m方向幅度不可行、仅波动
-  IC+0.18显著、双塔证伪+预注册§5）、`logs/tree_verify/REPORT.md`、
-  `logs/tree_rebuild/SUMMARY.md`、`paper_jkx/{README,STATE_FREEZE}`（已停止）。
+  IC+0.18显著、双塔证伪+预注册§5）、`logs/tree_verify/REPORT.md`（已恢复）、
+  `paper_jkx/{README,STATE_FREEZE}`（已停止）。
+  > **2026-10-30 变更**：`logs/tree_rebuild/SUMMARY.md` 已不可恢复（目录删除且会话库无记录），
+  > 不要再引用。`logs/tree_verify/REPORT.md` 已从会话库完整恢复回原位（gitignore 忽略，不入库）。
 
 ## 4. 实验治理（注册表为准，此处只留规则）
 
@@ -52,6 +54,11 @@
   `bt_2026_final_*/`（2026 target -7%，rolling -40~-49%）。
 - 树：`logs/tree_verify/preds_p1/p2_*.npz`（16个，close+openopen双口径）+
   `metrics_table/bt_table.json`（VAL 0.10~0.11/TEST 0.07~0.08，target噪声区）。
+  > **2026-10-30 变更**：`logs/tree_verify/` 与 `logs/tree_rebuild/` 目录已删除（释放 3.21 GB），
+  > 上述 npz 与 metrics json 均不在原位。文本证据另存
+  > `D:/code/cnn_full_20260905/logs_tree_evidence_20261030/`；npz 为可再生产物，需重跑
+  > tree_verify 脚本才能复得。`research/alpha_attribution/scripts/alpha_m.py` 的 8 个
+  > `logs/tree_verify/preds_*.npz` 硬编码路径因此已断，复跑前需重新生成预测缓存。
 - m研究：`logs/m_research/`（naked +42.6%→门+7.2%，双塔+51.4%→+9.3%）。
 - 本轮：`%TEMP%/{unified_recalc,market_neutral}/`（树胜A显著+0.048，
   树-B不显著，spread全不显著；IC恒等maxdiff 0）。

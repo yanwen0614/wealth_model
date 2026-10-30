@@ -28,6 +28,7 @@
 | `CLEANUP_PLAN_20261030.md` / `CLEANUP_RESULT_20261030.md` | Temp 目录清理方案与结果（含 uv 缓存回收 8.17 GiB） |
 | `worktree_retirement_20261030/REPORT.md` | 四棵工作树退役记录 |
 | `recovered_w1_20261030/` | 恢复过程的**身份与校验记录**（REPORT + MANIFEST + verification + scan_records + raw_patches_index + rebuild_v5） |
+| **代码清理（2026-10-30）** | 三批删除，共约 19.5 GB 可再生/已证伪产物：①`research/goal/`（旧栈只读快照，93 个已跟踪文件，提交 `0d85715`，结论已由 `research/goal_repro/` 新栈重做）；②`logs/tree_verify/` + `logs/tree_rebuild/`（3.21 GB 可再生 npz，小文本证据 63 个另存 `D:/code/cnn_full_20260905/logs_tree_evidence_20261030/`，**⚠️ `REPORT.md`/`SUMMARY.md` 两个 md 被保全脚本漏掉 .md 扩展名而误删，恢复状态待确认**）；③`paper_jkx/logs/`（16.27 GB JKX 七路产物，48 个小文本证据另存 `D:/code/cnn_full_20260905/paper_jkx_logs_small_evidence/`，结论见 `docs/archive/paper_jkx_2024-2026_seven_routes.md`）。失败的实验清单与"为什么可以删"见 `00-必读/五个问题白话回答.md` 第 3.1 节 |
 
 > `recovered_w1_20261030/` 只保留 6 个记录文件。18 个恢复出的源码已随 `8cd25a9` 进入主仓库（逐字节相同，无需在文档里留副本）；739 个恢复中间产物（`work/` 调试输出、`raw_patches/` 621 个补丁、`evidence2.json` 6.2 MB、`scripts_used/`）已移出仓库，完整副本在 `D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/`（SHA256SUMS 覆盖）。
 

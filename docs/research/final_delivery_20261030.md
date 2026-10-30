@@ -73,7 +73,7 @@
 | 2021 B1/S1/S2/C70 | F4信号；2021 W1/W2；每策略模拟账户初始¥1,000,000，固定五槽、每槽¥200,000，政策事前并列 | W2有完整机械账本；W1碎股事件中断。每个策略均受其固定分批/持仓政策约束 | W2仅历史机械基线；W1无完整收益；八窗均INCOMPLETE |
 | 2025 A/B | 5135码信号宇宙；2025候选本地状态仅174码、行情172码；账户各自执行top5资格筛选 | A/B因未知公司行动登记日fail-closed中断；账本保留中断时账户状态，但无主期末NAV、无buffer末NAV/全年终值 | NOT_EVALUABLE；不能比较A/B年度绩效 |
 
-goal、goal_repro、m_research与归因研究主报告现位于主区：`research/goal/REPORT.md`、`research/goal_repro/REPORT.md`、`research/m_research/REPORT.md`、`research/alpha_attribution/README.md`；这些目录已在 `ce7d1c6` 中随主区存续，不依赖任何研究工作树。m线以沪深300缺失窗口的EQW proxy为基准，且2026 OHLC缺失；其结果不能替代沪深300同期联合验收。F60数据检查发现73条 `is_trading=True` 但OHLC为0，研究已过滤并对市场输入增加非正价格拒绝，仍不代表全部行情源PIT已认证。
+goal_repro、m_research与归因研究主报告现位于主区：`research/goal_repro/REPORT.md`、`research/m_research/REPORT.md`、`research/alpha_attribution/README.md`；这些目录已在 `ce7d1c6` 中随主区存续，不依赖任何研究工作树。`research/goal/`（旧栈只读快照，39 特征/H5）已于 2026-10-30 删除，其结论由 `goal_repro/` 在新栈重做验证。m线以沪深300缺失窗口的EQW proxy为基准，且2026 OHLC缺失；其结果不能替代沪深300同期联合验收。F60数据检查发现73条 `is_trading=True` 但OHLC为0，研究已过滤并对市场输入增加非正价格拒绝，仍不代表全部行情源PIT已认证。
 
 ## 4. 2021 W1/W2回放结果与边界
 
@@ -167,7 +167,7 @@ W2现金股息采用20% `cash_dividend_20pct_stress`压力政策，不是已证�
 | W1前缀与ceil根因 | `.../w1_real_prefix_independent_audit_20261029/REPORT.md`；`.../w1_ceil_failure_root_cause_20261029/ROOT_CAUSE.md`；`.../w1_prefix_independent_qa_20261028/reverify4/REPORT.md`；源码已在主区（`backtest/cnn_adapter/fractional_scenarios.py`、`prefix_attestor.py`、`prefix_ledger_verifier.py` 等） |
 | 2025输入与中断 | `.../validation_2025_local_inputs_20261029/FINAL_REPORT.md`；`.../validation_2025_ab_real_20261029_v2/annual/A/summary.json`及`.../annual/B/summary.json`；`.../validation_2025_restricted_independent_qa_20261029/reverify3/REPORT.md`；源码已在主区（`backtest/cnn_adapter/validation_2025_*.py`、`scripts/run_2025_restricted.py` 等） |
 | 000601/000506事件核验 | `.../validation_2025_000601_official_20261029/FINDINGS.md`；`.../validation_2025_000506_official_20261029/evidence.md`；`.../validation_2025_ca_evidence_adapter_20261029/REPORT.md` |
-| 模型、目标与m_t研究 | 主区`research/goal/REPORT.md`、`research/goal_repro/REPORT.md`、`research/m_research/REPORT.md`、`research/alpha_attribution/README.md`；主区`docs/prediction_target_and_tree_2026.md` |
+| 模型、目标与m_t研究 | 主区`research/goal_repro/REPORT.md`、`research/m_research/REPORT.md`、`research/alpha_attribution/README.md`；主区`docs/prediction_target_and_tree_2026.md`（`research/goal/` 已于 2026-10-30 删除） |
 | 2026-10-30工作树退役与CA合入记录 | 主区`docs/research/worktree_consolidation_20261030/README.md`；主区`scripts/research/README.md`；`79cc2b7`（CA收口）与退役当时的 merge commit `997bc71`（父 `ce7d1c6` + `79cc2b7`），后续HEAD以 `git log` 为准 |
 | 研究源码回收（2026-10-30） | 主区提交 `8cd25a9`（18文件，6382行）；证据目录 `C:/Users/yanwen/AppData/Local/Temp/opencode/recovered_w1_20261030/`（`MANIFEST.json`/`REPORT.md`/`raw_patches/`/`recovered/`） |
 | 更早一轮（2026-10-28）退役记录 | `C:/Users/yanwen/AppData/Local/Temp/opencode/worktree_retirement_20261028/REPORT.md`（含三份ZIP位置、SHA及退役记录；仅对应2026-10-28那批子树） |

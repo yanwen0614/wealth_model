@@ -7,17 +7,17 @@
 
 ## 总表（一行一个实验，结论只写这里，各目录README只留复跑方法）
 
-| 实验 | 回答的问题 | 方法/口径 | 结论 | 状态 | 入口 |
-|---|---|---|---|---|---|
-| goal_repro | goal三链在新数据还成立吗 | 现行栈F53/H10重做R1基线/R2可交易/R3连续性 | 信号存在且更强；rolling亏、target保收益；惯性>硬切 | ✅已完成 | `goal_repro/REPORT.md` |
-| m_research | m_t能预测吗 | 12方法×EXT37维×expanding WF×诚实滞后门+双塔 | 方向/幅度不可行；仅波动IC+0.18显著【未验证引擎】；双塔方向门证伪 | ✅完成，方向线❄️关闭 | `m_research/REPORT.md` |
-| precision | 涨精确能买到吗 | precision-coverage/交集/否决，只看VAL2025 | VAL 0.59→0.63~0.64（容量6~13%）；2026全塌，不跨regime | ✅完成，规则包⏳待验收 | `precision/` |
-| alpha_attribution | 钱从哪来 | r=m_t+α全模型分解 | 2025靠m；2026主/JKX α归零，唯树头部α守住 | ✅完成（归因证据） | `alpha_attribution/` |
-| unified_recalc | 横向对比口径齐吗 | 交集日期+同脚本+bootstrap | 树胜A显著、与B相当；spread/NAV是噪声 | ✅完成（纠偏） | `unified_recalc/` |
-| market_neutral | α对冲m后能变现吗 | 纸面topN-bottomN（引擎无空头，只能纸面） | LS存在性成立，但纸面≠可交易 | ✅完成（开口验证） | `market_neutral/` |
-| goal（快照） | — | 旧栈源码存档，复现不用旧栈 | READ ONLY | ❄️冻结 | `goal/` |
+| 实验 | 回答的问题 | 方法/口径 | 结论 | 状态 | 入口 | 代码状态 |
+|---|---|---|---|---|---|---|
+| goal_repro | goal三链在新数据还成立吗 | 现行栈F53/H10重做R1基线/R2可交易/R3连续性 | 信号存在且更强；rolling亏、target保收益；惯性>硬切 | ✅已完成 | `goal_repro/REPORT.md` | 保留 |
+| m_research | m_t能预测吗 | 12方法×EXT37维×expanding WF×诚实滞后门+双塔 | 方向/幅度不可行；仅波动IC+0.18显著【未验证引擎】；双塔方向门证伪 | ✅完成，方向线❄️关闭 | `m_research/REPORT.md` | 保留 |
+| precision | 涨精确能买到吗 | precision-coverage/交集/否决，只看VAL2025 | VAL 0.59→0.63~0.64（容量6~13%）；2026全塌，不跨regime | ✅完成，规则包⏳待验收 | `precision/` | 保留 |
+| alpha_attribution | 钱从哪来 | r=m_t+α全模型分解 | 2025靠m；2026主/JKX α归零，唯树头部α守住 | ✅完成（归因证据） | `alpha_attribution/` | 保留 |
+| unified_recalc | 横向对比口径齐吗 | 交集日期+同脚本+bootstrap | 树胜A显著、与B相当；spread/NAV是噪声 | ✅完成（纠偏） | `unified_recalc/` | 保留 |
+| market_neutral | α对冲m后能变现吗 | 纸面topN-bottomN（引擎无空头，只能纸面） | LS存在性成立，但纸面≠可交易 | ✅完成（开口验证） | `market_neutral/` | 保留 |
+| goal（快照） | — | 旧栈源码存档，复现不用旧栈 | 存档自述 READ ONLY；结论已由 goal_repro 在新栈重做 | ❌已删除（2026-10-30） | 已删除（代码已移除，结论见 `goal_repro/`） | 已删除 |
 
-图例：✅已完成 / ❄️冻结关闭 / ⏳待干净样本验收 / 🧪候选。
+图例：✅已完成 / ❄️冻结关闭 / ⏳待干净样本验收 / 🧪候选。代码状态：`保留`（still on disk，可复跑）/ `已删除`（目录已移除，结论由保留目录承载）。
 
 ## 待验收队列（预注册冻结后、2026-09后新数据一次性考试）
 
@@ -32,7 +32,15 @@
   `docs/lambda_ablation_20260906.md`（F45/close-close时代）、
   `docs/retail_winrate_research_summary_20260920.md`（75%不可达四路验证）、
   `docs/full_train_todo.md`（换卡后执行，未执行）、`docs/archive/`（冻结A/七路关闭/大扫除编目）。
-- logs侧报告（不入库，只读）：`logs/tree_verify/REPORT.md`（树同口径验证全量表）、
-  `logs/tree_rebuild/SUMMARY.md`（重建复现）、`logs/m_research/`（门控/双塔引擎指标）。
+- logs侧报告（不入库，只读）：`logs/tree_verify/`（树同口径验证全量表）与 `logs/tree_rebuild/`（重建复现）
+  **已于 2026-10-30 删除**（含约 3.21 GB 可再生 npz）。文本证据（json/txt/log 共 63 个文件）另存于
+  `D:/code/cnn_full_20260905/logs_tree_evidence_20261030/`。
+  - `logs/tree_verify/REPORT.md`（177 行 / 12,295 字节）：**已从会话数据库完整恢复**并回写原位
+    （`logs/tree_verify/REPORT.md`，受 `.gitignore` 忽略，故不入库；恢复来源 opencode.db 的 read 快照，
+    SHA256 四重校验一致）。
+  - `logs/tree_rebuild/SUMMARY.md`：**不可恢复**——数据库三层扫描（含 WAL）无任何读写记录，
+    且原会话已过 7 天保留期清除。该文件内容永久缺失，不要再引用。
+  仍在盘上的 logs 侧报告：`logs/m_research/`（门控/双塔引擎指标）。
+  结论性内容另见 `docs/research/review_20261030/`（含 `20-专项审计/` 与 `30-清理与退役/`）。
 - TEMP是工作草稿区（`%TEMP%/opencode/`下h10/rv/t3/t4/t6等百余文件），只有被本表
   点名收录的脚本+小json才算交付，其余一律视为草稿、不得引用验收。
