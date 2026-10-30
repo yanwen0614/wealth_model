@@ -121,8 +121,8 @@ wheels = [
 
 [[package]]
 name = "backtest-core"
-version = "0.1.0"
-source = { path = "wheels/backtest_core-0.1.0-py3-none-any.whl" }
+version = "0.1.1"
+source = { path = "wheels/backtest_core-0.1.1-py3-none-any.whl" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
@@ -131,7 +131,7 @@ dependencies = [
     { name = "pyyaml" },
 ]
 wheels = [
-    { filename = "backtest_core-0.1.0-py3-none-any.whl", hash = "sha256:76cc80e5fa8fa39513a21876137a5e1c99e001b7c74801a78b76345554d72470" },
+    { filename = "backtest_core-0.1.1-py3-none-any.whl", hash = "sha256:bbb061c243acaa0c47882172287fe6a6c03266a7321ff8ca10f07db349d36818" },
 ]
 
 [package.metadata]
@@ -355,7 +355,7 @@ dev = [
 requires-dist = [
     { name = "alembic", marker = "extra == 'server'", specifier = ">=1.18.5" },
     { name = "amazingdata", marker = "extra == 'source'", path = "wheels/AmazingData-1.1.8-cp312-none-any.whl" },
-    { name = "backtest-core", path = "wheels/backtest_core-0.1.0-py3-none-any.whl" },
+    { name = "backtest-core", path = "wheels/backtest_core-0.1.1-py3-none-any.whl" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.136" },
     { name = "gitpython", marker = "extra == 'tools'", specifier = ">=3.1" },
     { name = "gymnasium", marker = "extra == 'rl'", specifier = ">=1.2" },

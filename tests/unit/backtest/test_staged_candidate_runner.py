@@ -8,9 +8,12 @@ WindowDefinition signal/buffer 从 execution_calendar 派生。
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import os
+import sys
 import unittest
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -580,6 +583,98 @@ class TestFixRegression(unittest.TestCase):
             self.assertEqual(terminals[0]["order_status"], "partial")
             self.assertEqual(terminals[0]["attempt_id"], row["attempt_id"])
         self.assertEqual(len(rows), len(outcome.result.order_results))
+
+
+class TestStopAfterClose(unittest.TestCase):
+    """core stop_after_close 在 staged 层的接线：真实停止行为 + 挂单留存。"""
+
+    def setUp(self) -> None:
+        self.fx = MiniFixture()
+        self.tmp = TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.p, self.sha = self.fx.write_parquet(self.tmp_path)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_stop_at_evaluation_end_matches_baseline(self) -> None:
+        """停止日 = E 日时，E 日净值与基线一致（主区间指标不受停止影响）。"""
+        base_out = self.tmp_path / "base"
+        stop_out = self.tmp_path / "stop"
+        base = run_staged_window(
+            window=self.fx.window(), config=self.fx.config(self.sha),
+            signal_parquet_path=self.p, market=self.fx.market, output_dir=base_out)
+        stopped = run_staged_window(
+            window=self.fx.window(), config=self.fx.config(self.sha),
+            signal_parquet_path=self.p, market=self.fx.market, output_dir=stop_out,
+            stop_after_close=self.fx.evaluation_end)
+        self.assertEqual(base.provenance["main_nav_end"], stopped.provenance["main_nav_end"])
+        self.assertEqual(stopped.provenance["stop_after_close"],
+                         self.fx.evaluation_end.isoformat())
+        self.assertIn("pending_orders", stopped.provenance)
+        self.assertNotIn("stop_after_close", base.provenance)
+
+    def test_stop_really_halts_before_buffer_days(self) -> None:
+        """停止后不得进入 buffer 日：快照止于 E，buffer 成交归零。"""
+        base_out = self.tmp_path / "base2"
+        stop_out = self.tmp_path / "stop2"
+        base = run_staged_window(
+            window=self.fx.window(), config=self.fx.config(self.sha),
+            signal_parquet_path=self.p, market=self.fx.market, output_dir=base_out)
+        stopped = run_staged_window(
+            window=self.fx.window(), config=self.fx.config(self.sha),
+            signal_parquet_path=self.p, market=self.fx.market, output_dir=stop_out,
+            stop_after_close=self.fx.evaluation_end)
+        buffer_days = set(self.fx.buffer_dates_list)
+        # 基线确实跑到了 buffer，停止版没有
+        self.assertTrue(any(s.date in buffer_days for s in base.result.account_snapshots))
+        self.assertFalse(any(s.date in buffer_days for s in stopped.result.account_snapshots))
+        self.assertEqual(max(s.date for s in stopped.result.account_snapshots),
+                         self.fx.evaluation_end)
+        self.assertFalse(any(t.execution_time.date() in buffer_days
+                             for t in stopped.result.trades))
+        # 未执行挂单被 core 留存，且都是发往 buffer 日的
+        pending = json.loads(stopped.provenance["pending_orders"] or "[]")
+        self.assertTrue(pending)
+        self.assertTrue(all(p["execution_date"] in
+                            {d.isoformat() for d in buffer_days} for p in pending))
+        # daily_registry 只写实际观测到的交易日，不伪造 buffer 回调
+        rows = [json.loads(x) for x in
+                (stop_out / "daily_registry.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual({r["date"] for r in rows},
+                         {s.date.isoformat() for s in stopped.result.account_snapshots})
+
+    def test_stop_requires_evaluation_end(self) -> None:
+        earlier = self.fx.execution_calendar[1]
+        self.assertLess(earlier, self.fx.evaluation_end)
+        with self.assertRaisesRegex(ValueError, "stop_after_close 必须等于 evaluation_end"):
+            run_staged_window(
+                window=self.fx.window(), config=self.fx.config(self.sha),
+                signal_parquet_path=self.p, market=self.fx.market,
+                output_dir=self.tmp_path / "bad", stop_after_close=earlier)
+
+    def test_config_hash_changes_with_stop_date(self) -> None:
+        """停止日必须进入身份哈希，避免不同停止日撞同一 identity。"""
+        out_a = self.tmp_path / "a"
+        out_b = self.tmp_path / "b"
+        with_stop = run_staged_window(
+            window=self.fx.window(), config=self.fx.config(self.sha),
+            signal_parquet_path=self.p, market=self.fx.market, output_dir=out_a,
+            stop_after_close=self.fx.evaluation_end)
+        without = run_staged_window(
+            window=self.fx.window(), config=self.fx.config(self.sha),
+            signal_parquet_path=self.p, market=self.fx.market, output_dir=out_b)
+        self.assertNotEqual(with_stop.config_hash, without.config_hash)
+
+    def test_cli_exposes_stop_after_close(self) -> None:
+        """CLI 必须真正暴露该参数，能力不能只存在于 core 签名里。"""
+        from backtest.cnn_adapter import staged_candidate_runner
+
+        argv = ["runner", "--help"]
+        with patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as buf:
+            with self.assertRaises(SystemExit):
+                staged_candidate_runner.main()
+        self.assertIn("--stop-after-close", buf.getvalue())
 
 
 if __name__ == "__main__":

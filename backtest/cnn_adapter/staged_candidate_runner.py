@@ -535,8 +535,22 @@ def run_staged_window(*, window: WindowDefinition, config: StagedWindowConfig,
                       corporate_action_snapshot: CorporateActionSnapshot | None = None,
                       quantity_rule_resolver: Callable[[date, str], QuantityRule] | None = None,
                       prepared_inputs: Any = None, output_dir: str | Path | None = None,
-                      mode: Literal["reset", "continuous"] = "reset") -> StagedWindowOutcome:
-    """每次新建真实账户，任何退出路径保存已收到的原始回调。"""
+                      mode: Literal["reset", "continuous"] = "reset",
+                      stop_after_close: date | None = None) -> StagedWindowOutcome:
+    """每次新建真实账户，任何退出路径保存已收到的原始回调。
+
+    ``stop_after_close``（可选，默认 None 行为零变化）：透传 core 同名参数，
+    在指定交易日 close snapshot 落账即停止，不进入后续交易日执行，未执行挂单
+    写入 ``provenance["pending_orders"]``。core 要求该日必须等于 ``evaluation_end``
+    且执行模式为 T1_OPEN；本层先按窗口约束校验，避免把错误参数送进 core。
+    """
+    if stop_after_close is not None:
+        ensure_calendar_date(stop_after_close, "stop_after_close")
+        if stop_after_close != window.evaluation_end:
+            raise ValueError(
+                "stop_after_close 必须等于 evaluation_end "
+                f"({window.evaluation_end.isoformat()})，收到 {stop_after_close.isoformat()}"
+            )
     audit: dict = {"mechanical_status": "INCOMPLETE", "window": _plain(window)}
     out = Path(output_dir) if output_dir is not None else None
     if out is not None:
@@ -548,7 +562,7 @@ def run_staged_window(*, window: WindowDefinition, config: StagedWindowConfig,
             cost_config_resolver=cost_config_resolver,
             corporate_action_snapshot=corporate_action_snapshot,
             quantity_rule_resolver=quantity_rule_resolver, prepared_inputs=prepared_inputs,
-            output_dir=out, mode=mode, audit=audit)
+            output_dir=out, mode=mode, audit=audit, stop_after_close=stop_after_close)
         audit["mechanical_status"] = outcome.mechanical_status
         return outcome
     except Exception as error:
@@ -614,6 +628,7 @@ def _run_staged_window_impl(
     audit: dict,
     output_dir: str | Path | None = None,
     mode: Literal["reset", "continuous"] = "reset",
+    stop_after_close: date | None = None,
 ) -> StagedWindowOutcome:
     """执行单窗分批候选运行。
 
@@ -741,6 +756,7 @@ def _run_staged_window_impl(
         model_id=f"staged_{config.policy.value}",
         initial_capital=config.initial_capital,
         signal_time_of_day=time(15, 0),
+        stop_after_close=stop_after_close,
     )
     # 构建 provenance
     for account_snapshot in result.account_snapshots:
@@ -780,6 +796,9 @@ def _run_staged_window_impl(
         "corporate_action_provider": corporate_action_provider.fingerprint
         if corporate_action_provider is not None else "none",
     }
+    if stop_after_close is not None:
+        prov["stop_after_close"] = stop_after_close.isoformat()
+        prov["pending_orders"] = str(result.provenance.get("pending_orders", ""))
     # 排名摘要：全部 code/rank per signal day
     rank_summary = _full_rank_rows(snapshots)
     prov["rank_full"] = json.dumps(rank_summary, sort_keys=True)
@@ -920,6 +939,7 @@ def _run_staged_window_impl(
         "cost_config": cost.model_dump(),
         "anchor_date": window.anchor_date.isoformat(),
         "evaluation_end": window.evaluation_end.isoformat(),
+        "stop_after_close": None if stop_after_close is None else stop_after_close.isoformat(),
         "execution_calendar": [d.isoformat()
                                for d in window.execution_calendar],
     })
@@ -1026,7 +1046,11 @@ def _write_outputs(
     _write_jsonl(out_path / "decisions_orders_fills.jsonl", trade_rows)
     _write_jsonl(out_path / "execution_updates.jsonl", recorder.updates)
     _write_jsonl(out_path / "registry_transitions.jsonl", recorder.transitions)
-    _write_jsonl(out_path / "daily_registry.jsonl", [recorder.daily[d] for d in window.execution_calendar])
+    # stop_after_close 生效时 core 在停止日收盘即退出，之后（buffer）无决策记录，
+    # 只写出实际观测到的交易日，避免用空值伪造未执行的回调。
+    _write_jsonl(out_path / "daily_registry.jsonl",
+                 [recorder.daily[d] for d in window.execution_calendar
+                  if d in recorder.daily])
     _write_jsonl(out_path / "order_results.jsonl", [
         {**_plain(item), "remaining_shares": item.order.shares - item.filled_shares
          if item.order.shares is not None else None}
@@ -1106,6 +1130,9 @@ def main() -> None:
     parser.add_argument("--input-config", required=True, help="外部冻结输入配置")
     parser.add_argument("--prepared-manifest", help="复用已准备的共同只读输入")
     parser.add_argument("--research-mode", choices=["exploration", "strict"], default="exploration")
+    parser.add_argument("--stop-after-close", type=date.fromisoformat, default=None,
+                        help="收盘后停止日（必须等于 --evaluation-end；仅 T1_OPEN，"
+                             "未执行挂单写入 provenance.pending_orders）")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,

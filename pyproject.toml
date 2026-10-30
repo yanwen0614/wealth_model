@@ -92,7 +92,7 @@ torchvision = [
 ]
 amazingdata = { path = "wheels/AmazingData-1.1.8-cp312-none-any.whl" }
 tgw = { path = "wheels/tgw-1.0.8.7-py3-none-any.whl" }
-backtest-core = { path = "wheels/backtest_core-0.1.0-py3-none-any.whl" }
+backtest-core = { path = "wheels/backtest_core-0.1.1-py3-none-any.whl" }
 
 [dependency-groups]
 dev = [

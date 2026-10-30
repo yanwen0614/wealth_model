@@ -727,7 +727,8 @@ def run_single_from_cli(args, window):
         period_id=name, require_known_share_tax=args.research_mode == "strict")
     return run_staged_window(window=prepared.window, config=cfg, signal_parquet_path=prepared.signal_path,
         market=market, corporate_action_snapshot=snapshot, quantity_rule_resolver=_quantity_resolver(config, {}),
-        prepared_inputs=prepared, output_dir=args.output_dir)
+        prepared_inputs=prepared, output_dir=args.output_dir,
+        stop_after_close=getattr(args, "stop_after_close", None))
 
 
 def main(argv=None):
