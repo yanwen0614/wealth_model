@@ -30,4 +30,4 @@
 - 计划约定（原文，非事实陈述）：「不删除 logs/KEEP、数据目录或用户证据；ignored 数据先逐项审阅。归档或校验失败时保留原树并标记阻塞。」
 - **该约定在 T06 实际执行时未被遵守**：三棵研究树的未跟踪研究代码在未建立归档、未逐项审阅的情况下随树删除。
 - 计划约定：每轮修复记录问题、变更、证据及独立复审结果；本地交付，不推送。本次执行未产生修复轮记录（无修复轮），交付亦未推送。
-- 2026-10-30 事后恢复：`8cd25a9`（18 文件）、`ff7e606`（I001 收口）。恢复出的是 2026-10-29 08:00 会话中止时的真实未完成状态，按当前 HEAD 部分测试仍报错（`test_fractional_scenarios` 10 errors 等），详见 `docs/research/final_delivery_20261030.md` 第 2 节。
+- 2026-10-30 事后恢复：`8cd25a9`（18 文件）、`ff7e606`（I001 收口）、`436cb73`（修 `fractional_scenarios` 十错与补 `announcement_visibility` 键，7 个依赖未回收接口的用例改为显式 skip）。恢复出的是 2026-10-29 08:00 会话中止时的真实未完成状态；按当前 HEAD 仍有失败项（`test_prefix_attestor`/`test_prefix_ledger_verifier` 各 1 error，`test_2025_restricted*`/`test_ca_evidence_adapter` 因缺契约文件报错），`test_fractional_scenarios` 为 OK(skipped=7) 而非全通过。详见 `docs/research/final_delivery_20261030.md` 第 2 节。
