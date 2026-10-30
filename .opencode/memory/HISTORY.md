@@ -48,3 +48,4 @@
 [2026-10-30 21:16] 整理项目文档：建立 docs/README.md 文档地图、迁入 33 份 Temp 过程草稿到 source_drafts、固化本轮整理全部结论与待办到项目记忆
 [2026-10-30 22:17] 工程整理最终轮：文档地图建立、docs/research/review_20261030 重组（q1~q5删）、backtest/cnn_adapter/拆3子包（ca/w1_prefix/validation_2025）、paper_jkx/logs和tree_verify/tree_rebuild删除（共19.5GB）、T18轮转递归扫描修复、14条放弃路线代码删除（b9254bb）、训练数据黑名单机制（排除0只）、Temp md全部迁入仓库、核心HEAD更新至c879dee
 [2026-10-30 23:05] 主区 6 个最后脏文件全部提交：审计脚本标签端点核验 07d1831、三份 20261026 研究文档 a5a7bf2、memory 随同一并入库；工作区清零
+[2026-10-31 00:02] 完成 P0：opencode.db 冷备份（自包含单文件/integrity ok）与 4 个 scaler pkl 异盘+身份 JSON，均落 G:\backups\cnn_full_20261030\

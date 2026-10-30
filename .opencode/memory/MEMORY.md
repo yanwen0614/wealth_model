@@ -22,14 +22,19 @@
 - 使用 `git mv` 保留文件历史。30 处 import 同步更新，3 处硬编码路径（`prefix_attestor.py`）修正子包层级。
 - 测试结果与基线一致：1002 tests, 2 failures / 10 errors / 40 skipped（2 failures 为 pin 不符故意保留）。
 
-### 2026-10-30 工程整理最终状态（HEAD a5a7bf2）
-- **仓库**：cnn main `a5a7bf2`（含本轮所有整理提交，未 push），core `df38c2e` 已推送同步。
-- **本轮提交链**（10-27~30 共 30+ 提交）：从 `ab1138b`（quantity_rules 补入库）起，经仓库复原/行尾修复/测试修复/文档入库/死代码删除/模块重组织/T18修复等，到 `a5a7bf2` 止。
+### 2026-10-30 工程整理最终状态（HEAD 88fd64b）
+- **仓库**：cnn main `88fd64b` 已推送 `origin/main`（2026-10-31，与远端同 hash），core `df38c2e` 已推送同步。主区无未提交改动。
+- **本轮提交链**（10-27~30 共 30+ 提交）：从 `ab1138b`（quantity_rules 补入库）起，经仓库复原/行尾修复/测试修复/文档入库/死代码删除/模块重组织/T18修复等，最后 `07d1831`/`a5a7bf2`/`88fd64b` 收 WIP。
 - **测试基线**：CI 门全绿（ruff 零告警、core 718 OK、CNN 最小门 58 OK）。CNN 本地全量 1002 项：2 failures / 10 errors / 40 skipped（2 failures 为故意保留的 pin 告警，其余归因测试滞后/可选依赖/Windows 文件锁，无引擎错误）。
 - **证据保全**：7 个根已复制到 `D:/code/cnn_full_20260905/evidence_tmp_20261030/`（5,863 文件 / 13.4 GB / SHA256SUMS / 4812/4812 校验通过）；第 7 根 `recovered_w1_20261030` 由项目内补拷，逐文件哈希 1:1 全对。Temp 原件未删。
 - **大清理**：`paper_jkx/logs/` 删除 16.27 GB（48 个小文本证据另存 `D:/code/cnn_full_20260905/paper_jkx_logs_small_evidence/`）；`logs/tree_verify/`+`logs/tree_rebuild/` 删除 3.21 GB（63 个评估结果另存）；`uv cache prune` 释放 8.17 GB。共释放约 19.5 GB。
 - **死代码删除**：14 条放弃路线专属代码 30 文件删除（`b9254bb`）；`docs/`、主链路、frozen、config 默认值一律不动。
-- **WIP 收尾**：原"用户所有勿动"的 6 个脏文件已于 2026-10-30 全部提交——审计脚本 `07d1831`、三份 20261026 研究文档 `a5a7bf2`、memory 一并入库。主区现无未提交改动。
+
+### P0 冷备份已完成（2026-10-31 00:01）
+- 位置 **`G:\backups\cnn_full_20261030\`**（C 盘 → G 盘异卷），含 `README.md` 恢复说明。
+- **opencode.db**：`sqlite3.Connection.backup()`（源 `mode=ro`，pages=4096，耗时 340s），**不用文件级复制**（WAL 活动期会拿到不一致快照）。已 `wal_checkpoint(TRUNCATE)`+`journal_mode=DELETE` 收尾为**自包含单文件** 3,836,485,632 B，sha256 `ec9218b8…`，`integrity_check=ok`。备份快照滞后源库 8 messages/32 parts（= 拷贝期间本会话写入），session 数一致 892。
+- **scaler pkl（4 个，非 2 个）**：全部复制并逐文件 sha256 1:1 匹配 + `SCALER_IDENTITIES.json` 身份凭证。实测口径：`scaler_per_code.pkl`=**v4_per_code 52→53**（5126 股，mask `g9_observed_mask`）；`scaler_per_code_legacy39_2026.pkl`=**v3_per_code 39→45**（6 个 G9 mask，D3 复现唯一载体）；`scaler_per_code_old.pkl`=v2_per_code 39→45（仅 20 股）；`scaler.pkl`=早期标量（无 version 字段）。
+- 脚本留在 `C:\Users\yanwen\AppData\Local\Temp\opencode\p0_*.py`（未入库，按用户要求不入工作区）。
 
 ### 八项不可复现的定论（2026-10-30，fill_gap_analysis 复核）
 - **不能补（3）**：B3 证明链（pin 指向从未落盘字节）、B4 八分支重执行（依赖树删+路径硬编码+A1 碎股无解）、C2 2025 重跑（换根造不出已删树）。三项均与 N1~N6 不做清单强冲突。
@@ -65,6 +70,7 @@
 - `<用户目录>/.local/share/opencode/opencode.db`（约 3.8 GB，SQLite，必须 `mode=ro`）。
 - 以 `read` 工具最后读到 EOF 的快照为基线，按 `time_created` 重放其后 `apply_patch`/`edit`（跳过 `status != completed`）。**不要用 `patchText` 直接重放**：存储层会重排缩进并静默丢行（实测 616 行 vs 正确 646 行）。
 - 本轮 18 文件靠此法恢复，已验证与 `8cd25a9` 逐字节相同。但不可重复到从未被会话读写过的文件。
+- **已有冷备份**（2026-10-31）：`G:\backups\cnn_full_20261030\opencode_db\opencode_20261030_235223.db`。
 
 ### Git worktree 共享 .venv 钩子（2026-10-30）
 - `scripts/githooks/post-checkout` 在 worktree add/checkout 后链接主区 `.venv`；安装须 `git config core.hooksPath` 用**绝对路径**。
@@ -110,9 +116,8 @@
 - 四棵工作树已于 2026-10-30 全部退役（CA、W1、2025、core），无保留 ZIP 归档。core `stop_after_close` 补丁（a176be9）已在 core 主区合并提交。
 - 三棵旧树归档 ZIP 仍存于 `C:/Users/yanwen/AppData/Local/Temp/opencode/worktree_retirement_20261028/`。
 
-## 待办与已知缺口（2026-10-30 工程整理后）
-- **P0 未完成**：opencode.db 冷备份（3.84 GB 无备份，是未提交文件的最后恢复手段）；2 个 scaler pkl 异盘保全（`logs/KEEP/scaler_per_code*.pkl` 共 19.4 MB，被 .gitignore 忽略，**不要直接提交进 git**，用备份+身份 JSON）。
-- **P1 未完成**：CA snapshot 的 `asof_announcement_dates` 能力（**过滤键必须是 announcement/known_at，绝不能是 ex_date**——300502 是公告在前 ex 在后的反例）；补 2 个真缺接口；pin 标 UNREPRODUCIBLE；core wheel 对齐（CNN `.venv` 内 wheel == core `893fc96`，不含 `a176be9` 的 `stop_after_close`，CNN 全树 0 处引用）；行业中性复测（E0 默认值证据已被行业归因抽掉但未改默认）；quant 数据源 `AD_HOST` 8600 端口不可达。
+## 待办与已知缺口（2026-10-31 更新）
+- **P0 已完成（2026-10-31）**：opencode.db 冷备份 + 4 个 scaler pkl 异盘保全（含身份 JSON），均在 `G:\backups\cnn_full_20261030\`。
+- **P1 未完成**：CA snapshot 的 `asof_announcement_dates` 能力（**过滤键必须是 announcement/known_at，绝不能是 ex_date**——300502 是公告在前 ex 在后的反例）；补 2 个真缺接口；pin 标 UNREPRODUCIBLE；core wheel 对齐（CNN `.venv` 内 wheel == core `893fc96`，不含 `a176be9` 的 `stop_after_close`，CNN 全树 0 处引用）；行业中性复测（E0 默认值证据已被行业归因抽掉但未改默认）；quant 数据源 `AD_HOST` 8600 端口不可达；T18 同类"假设目录层级"扫描逻辑复查（`collect_rotation_plan` 已改 `os.walk`）。
 - **P2 候选**：A=W2 证据资格补强（unknown 双极端敏感度，8~12h）；B=干净考试 harness 空跑（1~2d）；C=≤10 只低换手政策族（3~5d，下限 6 只是资金效率要求，峰值仍须 ≤10）。
-- **已修复**：T18 轮转递归扫描（`collect_rotation_plan` 递归扫全层级，dry-run 10 keep / 15 delete / 0.93 GB，已执行 `prune_old_runs`）。
 - **仓库卫生**：`docs/agent/` 下 2026-09 旧任务目录多数无状态标记；`scripts/frozen/` 为只读快照禁 import。
