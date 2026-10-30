@@ -7,8 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
-from backtest.cnn_adapter.corporate_action_snapshot_loader import CorporateActionSnapshot
+from backtest.cnn_adapter.ca.corporate_action_context import CorporateActionContext
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import CorporateActionSnapshot
 from backtest.cnn_adapter.staged_candidate_runner import run_staged_window
 from tests.unit.backtest.test_staged_candidate_runner import MiniFixture
 
@@ -239,17 +239,17 @@ class ProductionIntegrationTests(unittest.TestCase):
     def test_provider_requests_21_history_and_does_not_swallow_schema(self):
         from datetime import date
 
-        from backtest.cnn_adapter.raw_market_inputs import RawMarketWindow
-        from backtest.cnn_adapter.raw_market_provider import CnnRawMarketDataProvider
+        from backtest.cnn_adapter.ca.raw_market_inputs import RawMarketWindow
+        from backtest.cnn_adapter.ca.raw_market_provider import CnnRawMarketDataProvider
         day = date(2021, 1, 4)
-        with patch("backtest.cnn_adapter.raw_market_provider.read_raw_market_inputs") as read:
+        with patch("backtest.cnn_adapter.ca.raw_market_provider.read_raw_market_inputs") as read:
             read.return_value = RawMarketWindow("AAA", (), (), ())
             provider = CnnRawMarketDataProvider("fake", signal_start=day, signal_end=day,
                 execution_end=day, history_bars=21, allow_empty_window=frozenset({"AAA"}))
             self.assertIsNone(provider.get_bar("AAA", day))
             self.assertEqual(read.call_args.kwargs["history_bars"], 21)
             self.assertTrue(read.call_args.kwargs["allow_empty_window"])
-        with patch("backtest.cnn_adapter.raw_market_provider.read_raw_market_inputs",
+        with patch("backtest.cnn_adapter.ca.raw_market_provider.read_raw_market_inputs",
                    side_effect=ValueError("损坏 schema")):
             with self.assertRaisesRegex(ValueError, "schema"):
                 provider._records.clear()

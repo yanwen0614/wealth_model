@@ -114,7 +114,7 @@ class TestRunnerDefaults(_RunnerMixin):
         from backtest_core.contracts.config import ExecutionConfig
         from backtest_core.contracts.enums import ExecutionMode
 
-        from backtest.cnn_adapter.corporate_actions import CorporateActionEvent, CorporateActionProvider
+        from backtest.cnn_adapter.ca.corporate_actions import CorporateActionEvent, CorporateActionProvider
 
         event = CorporateActionEvent(
             event_id="unknown-bonus", instrument_id="A.SZ", kind="bonus",

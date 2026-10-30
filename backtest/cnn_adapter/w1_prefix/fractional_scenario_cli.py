@@ -9,9 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..staged_production_inputs import file_sha256
 from .fractional_prefix_gate import validate_prefix_proof
 from .fractional_scenarios import OFFICIAL_PDF_SHA256
-from .staged_production_inputs import file_sha256
 
 V12_MANIFEST_SHA256 = "a8ad2b0bafebee235c9052eeba7a77db4404c6e0fbbbb40fe42457f3a8064441"
 POLICIES = ("B1", "S1", "S2", "C70")
@@ -75,7 +75,7 @@ def write_attestation_plan(prepared_path: Path, input_config: Path, pdf_path: Pa
     config = json.loads(input_config.read_text(encoding="utf-8"))
     if config != prepared.get("config"):
         raise ValueError("attestation plan config differs from frozen manifest")
-    from .staged_production_inputs import _build_prefix_experiment_identity
+    from ..staged_production_inputs import _build_prefix_experiment_identity
     experiment_identity = _build_prefix_experiment_identity(prepared_path, prepared, prepared_sha)
     file_sha256(pdf_path, OFFICIAL_PDF_SHA256)
     from .prefix_attestor import fixed_source_sha256
@@ -219,7 +219,7 @@ def main() -> None:
                           prefix_only=args.run_prefixes,
                           conditional_only=args.run_conditional_simulations)
         if args.run_prefixes and all(item["status"] == "COMPLETE" for item in results):
-            attestor = [sys.executable, "-B", "-m", "backtest.cnn_adapter.prefix_attestor",
+            attestor = [sys.executable, "-B", "-m", "backtest.cnn_adapter.w1_prefix.prefix_attestor",
                         "--plan", str(args.attestation_plan),
                         "--attestation", str(args.attestation_root)]
             completed = subprocess.run(attestor, cwd=Path.cwd(), check=True,

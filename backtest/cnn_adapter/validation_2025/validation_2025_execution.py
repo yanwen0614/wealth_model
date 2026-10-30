@@ -15,17 +15,17 @@ import pyarrow.parquet as pq
 from backtest_core.contracts.config import CostConfig
 from backtest_core.contracts.protocols import MarketDataProvider
 
-from backtest.cnn_adapter.corporate_action_snapshot_loader import (
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import (
     CorporateActionSnapshot,
     load_corporate_action_snapshot,
 )
-from backtest.cnn_adapter.historical_costs import resolve_historical_costs
-from backtest.cnn_adapter.quantity_rules import QuantityRule
-from backtest.cnn_adapter.raw_market_inputs import (
+from backtest.cnn_adapter.ca.raw_market_inputs import (
     normalize_raw_market_frame,
     read_raw_market_inputs,
 )
-from backtest.cnn_adapter.raw_market_provider import CnnRawMarketDataProvider
+from backtest.cnn_adapter.ca.raw_market_provider import CnnRawMarketDataProvider
+from backtest.cnn_adapter.historical_costs import resolve_historical_costs
+from backtest.cnn_adapter.quantity_rules import QuantityRule
 from backtest.cnn_adapter.staged_allocation import Policy, budget_per_episode
 from backtest.cnn_adapter.staged_candidate_runner import (
     StagedWindowConfig,
@@ -34,7 +34,7 @@ from backtest.cnn_adapter.staged_candidate_runner import (
     run_staged_window,
 )
 from backtest.cnn_adapter.staged_production_inputs import _quantity_resolver
-from backtest.cnn_adapter.validation_2025_bridge import _validate_config, load_npz_signal
+from backtest.cnn_adapter.validation_2025.validation_2025_bridge import _validate_config, load_npz_signal
 
 
 def _verify_bridge_rows(path: Path, signal, *, npz_sha: str, checkpoint_sha: str,
@@ -371,7 +371,7 @@ def run_prepared_accounts(*, manifest: Mapping[str, Any], base_dir: Path,
             or signal_profiles["A"].codes != signal_profiles["B"].codes
             or signal_profiles["A"].true_ret != signal_profiles["B"].true_ret):
         raise ValueError("A/B原始NPZ身份未逐行一致")
-    from backtest.cnn_adapter.validation_2025_bridge import derive_buy_eligibility
+    from backtest.cnn_adapter.validation_2025.validation_2025_bridge import derive_buy_eligibility
     from scripts.run_2025_ab_execution import _load_candidate_states
 
     states_path = Path(artifacts["verified_states"]["path"])

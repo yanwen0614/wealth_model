@@ -156,16 +156,25 @@ def _dir_size_bytes(path: str) -> int:
 def collect_rotation_plan(log_dir: str, *, keep_last_n: int = DEFAULT_KEEP_LAST_N,
                           max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
                           exclude: str | None = None) -> dict:
-    """dry-run 轮转清单：只列顶层 run_*，KEEP/当次永不进待删，不删任何文件。"""
+    """dry-run 轮转清单：递归找 run_*，KEEP/当次永不进待删，不删任何文件。
+
+    递归而非只看顶层：实际训练把 run_* 放在 logs/<分组>/run_* 二级目录，
+    早期只扫顶层导致 2 GiB 上限从未触发（实测 logs 已 5 GiB 仍返回空计划）。
+    """
     exclude_abs = os.path.abspath(exclude) if exclude else None
     runs: list[str] = []
-    for name in sorted(os.listdir(log_dir)) if os.path.isdir(log_dir) else []:
-        full = os.path.join(log_dir, name)
-        if not os.path.isdir(full) or not name.startswith(RUN_PREFIX):
-            continue
-        if KEEP_DIRNAME in os.path.abspath(full).split(os.sep):
-            continue
-        runs.append(full)
+    if os.path.isdir(log_dir):
+        for root, dirnames, _ in os.walk(log_dir):
+            # 不深入 KEEP，也不把 KEEP 本身当候选
+            dirnames[:] = [d for d in dirnames if d != KEEP_DIRNAME]
+            for name in dirnames:
+                if not name.startswith(RUN_PREFIX):
+                    continue
+                full = os.path.join(root, name)
+                if KEEP_DIRNAME in os.path.abspath(full).split(os.sep):
+                    continue
+                runs.append(full)
+            dirnames[:] = [d for d in dirnames if not d.startswith(RUN_PREFIX)]
     runs.sort(key=lambda p: (os.path.getmtime(p), os.path.basename(p)))
     keep = runs[-keep_last_n:] if keep_last_n > 0 else []
     delete = [p for p in runs[: max(0, len(runs) - len(keep))]]

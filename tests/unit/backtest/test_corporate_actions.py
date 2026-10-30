@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import cast
 
-from backtest.cnn_adapter.corporate_actions import (
+from backtest.cnn_adapter.ca.corporate_actions import (
     CorporateActionEvent,
     CorporateActionLedger,
     CorporateActionProvider,

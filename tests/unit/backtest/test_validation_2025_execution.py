@@ -17,16 +17,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from backtest_core.testing import SyntheticMarketProvider, make_bar
 
-from backtest.cnn_adapter.corporate_action_snapshot_loader import CorporateActionSnapshot
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import CorporateActionSnapshot
 from backtest.cnn_adapter.quantity_rules import MappingQuantityRuleResolver, QuantityRule
 from backtest.cnn_adapter.staged_allocation import Policy
 from backtest.cnn_adapter.staged_candidate_runner import WindowDefinition
-from backtest.cnn_adapter.validation_2025_bridge import (
+from backtest.cnn_adapter.validation_2025.validation_2025_bridge import (
     convert_npz_to_frozen_parquet,
     derive_buy_eligibility,
     load_npz_signal,
 )
-from backtest.cnn_adapter.validation_2025_execution import (
+from backtest.cnn_adapter.validation_2025.validation_2025_execution import (
     FROZEN_PROTOCOL,
     _load_local_raw_manifest,
     run_ab_core,
@@ -270,11 +270,11 @@ class RunPreparedCoreTests(unittest.TestCase):
                     "open": 10., "high": 10., "low": 10., "close": 10.,
                     "volume": 100_000_000, "amount": 1_000_000_000_000,
                     "is_trading": True} for day in calendar])
-            with (patch("backtest.cnn_adapter.validation_2025_execution.load_corporate_action_snapshot",
+            with (patch("backtest.cnn_adapter.validation_2025.validation_2025_execution.load_corporate_action_snapshot",
                         return_value=snapshot),
-                  patch("backtest.cnn_adapter.validation_2025_execution._quantity_resolver",
+                  patch("backtest.cnn_adapter.validation_2025.validation_2025_execution._quantity_resolver",
                         return_value=quantity),
-                  patch("backtest.cnn_adapter.validation_2025_execution.pd.read_hdf",
+                  patch("backtest.cnn_adapter.validation_2025.validation_2025_execution.pd.read_hdf",
                         side_effect=read_hdf)):
                 result = run_prepared_accounts(manifest=manifest, base_dir=root,
                     verified=verified, bridge_payload=bridge_payload, run_root=root / "prepared-runs")

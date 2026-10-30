@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backtest.cnn_adapter.corporate_action_snapshot_loader import (
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import (
     descriptor_from_row,
     load_corporate_action_snapshot,
 )

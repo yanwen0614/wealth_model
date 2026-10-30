@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from backtest.cnn_adapter.prefix_ledger_verifier import (
+from backtest.cnn_adapter.w1_prefix.prefix_ledger_verifier import (
     W1_PREFIX_REQUIRED_LEDGERS,
     compare_jsonl,
     generate_prefix_proof,
@@ -66,7 +66,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
     def _create_machine_proof_inputs(self):
         from backtest_core.engine import run_account_backtest_from_orders
 
-        import backtest.cnn_adapter.prefix_ledger_verifier as verifier
+        import backtest.cnn_adapter.w1_prefix.prefix_ledger_verifier as verifier
 
         baseline_hashes, audit_hashes, artifacts_hashes = {}, {}, {}
         signal_path = self.root / "signal_W1.parquet"
@@ -88,7 +88,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
         self._write_json(prepared_path, prepared_body)
         prepared_path.with_suffix(".sha256").write_text(
             self._sha(prepared_path), encoding="ascii")
-        import backtest.cnn_adapter.prefix_attestor as attestor
+        import backtest.cnn_adapter.w1_prefix.prefix_attestor as attestor
         attestor.PREPARED_MANIFEST_SHA256 = self._sha(prepared_path)
         attestor.OFFICIAL_PDF_SHA256 = self._sha(pdf_path)
         signal_sha = self._sha(signal_path)
@@ -129,7 +129,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
 
     def _write_external_attestation(self, verifier, signal_path: Path,
                                     prepared_path: Path, prereg_path: Path):
-        import backtest.cnn_adapter.prefix_attestor as attestor
+        import backtest.cnn_adapter.w1_prefix.prefix_attestor as attestor
         source_hashes = attestor.fixed_source_sha256()
         config_path, pdf_path = self.root / "config.json", self.root / "official.pdf"
         input_hashes = {str(path.resolve()): self._sha(path) for path in
@@ -184,7 +184,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
             "runtime_core_sha256": core_sha, "runtime_import_path": str(Path(core_path).resolve()),
             "pit": "UNKNOWN", "actual_after_tax_target_eligible": False}
         experiment["experiment_config_sha256"] = verifier._canonical_sha(experiment)
-        resolver_path = Path(verifier.__file__).with_name("historical_costs.py")
+        resolver_path = Path(verifier.__file__).resolve().parents[1] / "historical_costs.py"
         resolver_sha = self._sha(resolver_path)
         from backtest.cnn_adapter.staged_candidate_runner import (
             _signal_content_fingerprint,
@@ -297,7 +297,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
         self.assertFalse(result["rows_identical"])
 
     def test_cutoff_ledger_rejects_2021_06_08_even_if_manifest_is_rehashed(self) -> None:
-        import backtest.cnn_adapter.prefix_ledger_verifier as verifier
+        import backtest.cnn_adapter.w1_prefix.prefix_ledger_verifier as verifier
 
         rows = [{"date": "2021-06-07", "sequence_no": 1}]
         self._write_required_pair(rows)
@@ -308,7 +308,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
             verifier._prefix_records(path)
 
     def test_cutoff_access_gate_rejects_2021_06_08_quantity_rule_read(self) -> None:
-        import backtest.cnn_adapter.prefix_ledger_verifier as verifier
+        import backtest.cnn_adapter.w1_prefix.prefix_ledger_verifier as verifier
 
         branch = self.replay / "W1_B1_floor"
         branch.mkdir()
@@ -325,7 +325,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
                 self.baseline, self.baseline, W1_PREFIX_REQUIRED_LEDGERS)
 
     def test_blocked_record_is_not_gate_pass(self) -> None:
-        from backtest.cnn_adapter.fractional_prefix_gate import TRUSTED_PREFIX_PROOF_SHA256
+        from backtest.cnn_adapter.w1_prefix.fractional_prefix_gate import TRUSTED_PREFIX_PROOF_SHA256
 
         record_path = self.root / "blocked.json"
         digest = write_blocked_prefix_record(record_path)
@@ -339,7 +339,7 @@ class PrefixLedgerVerifierTests(unittest.TestCase):
 
     def test_proof_generator_rejects_missing_controlled_12_run_outputs(self) -> None:
         proof_path = self.root / "proof.json"
-        import backtest.cnn_adapter.prefix_ledger_verifier as verifier
+        import backtest.cnn_adapter.w1_prefix.prefix_ledger_verifier as verifier
         with (patch.object(verifier, "BASELINE_ROOT", self.baseline),
               patch.object(verifier, "PREFIX_OUTPUT_ROOT", self.replay),
               self.assertRaises(FileNotFoundError)):

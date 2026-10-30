@@ -13,8 +13,8 @@ from backtest_core.engine.account import apply_account_actions
 from backtest_core.engine.account_runner import run_account_backtest_from_orders
 from backtest_core.testing import SyntheticMarketProvider, make_bar
 
-from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
-from backtest.cnn_adapter.corporate_action_snapshot_loader import (
+from backtest.cnn_adapter.ca.corporate_action_context import CorporateActionContext
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import (
     CorporateActionSnapshot,
     descriptor_from_row,
 )

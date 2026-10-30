@@ -91,8 +91,8 @@ sys.path.insert(0, str(REVIEWED))
 import numpy as np  # noqa: I001
 import pyarrow as pa
 import pyarrow.parquet as pq
-from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
-from backtest.cnn_adapter.corporate_action_snapshot_loader import (
+from backtest.cnn_adapter.ca.corporate_action_context import CorporateActionContext
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import (
     CorporateActionSnapshot,
     descriptor_from_row,
     load_corporate_action_snapshot,
@@ -122,7 +122,7 @@ from backtest_core.engine import run_account_backtest_from_orders
 from backtest_core.testing.synthetic import SyntheticMarketProvider, make_bar
 
 from backtest.cnn_adapter.historical_costs import resolve_historical_costs
-from backtest.cnn_adapter.raw_market_provider import CnnRawMarketDataProvider
+from backtest.cnn_adapter.ca.raw_market_provider import CnnRawMarketDataProvider
 from backtest.cnn_adapter.staged_allocation import AllocationRegistry, Policy
 from backtest.cnn_adapter.staged_execution_bridge import StagedExecutionBridge
 from backtest.cnn_adapter.staged_order_strategy import MappingRankingSource

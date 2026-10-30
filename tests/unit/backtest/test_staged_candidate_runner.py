@@ -26,7 +26,7 @@ from backtest_core.contracts.enums import Side
 from backtest_core.contracts.market import MarketBar
 from backtest_core.testing.synthetic import SyntheticMarketProvider, make_bar
 
-from backtest.cnn_adapter.corporate_actions import CorporateActionProvider
+from backtest.cnn_adapter.ca.corporate_actions import CorporateActionProvider
 from backtest.cnn_adapter.staged_allocation import Policy
 from backtest.cnn_adapter.staged_candidate_runner import (
     StagedWindowConfig,

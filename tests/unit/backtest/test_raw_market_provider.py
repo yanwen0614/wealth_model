@@ -14,8 +14,8 @@ from backtest_core.contracts.enums import ExecutionMode, ReasonCode, Side
 from backtest_core.contracts.order import OrderIntent
 from backtest_core.engine.account_runner import run_account_backtest_from_orders
 
-from backtest.cnn_adapter.raw_market_inputs import read_raw_market_inputs
-from backtest.cnn_adapter.raw_market_provider import CnnRawMarketDataProvider
+from backtest.cnn_adapter.ca.raw_market_inputs import read_raw_market_inputs
+from backtest.cnn_adapter.ca.raw_market_provider import CnnRawMarketDataProvider
 
 
 class _Buy:
@@ -87,7 +87,7 @@ class RawMarketProviderTest(unittest.TestCase):
             directory, signal_start=self.days[0], signal_end=self.days[2], execution_end=self.days[3],
         )
         with patch(
-            "backtest.cnn_adapter.raw_market_provider.read_raw_market_inputs",
+            "backtest.cnn_adapter.ca.raw_market_provider.read_raw_market_inputs",
             wraps=read_raw_market_inputs,
         ) as reader:
             self.assertIsNotNone(provider.get_bar("A.SZ", self.days[1]))

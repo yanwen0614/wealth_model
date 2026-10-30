@@ -26,7 +26,7 @@ from backtest.cnn_adapter.staged_candidate_runner import (
     load_frozen_signal_parquet,
     run_staged_window,
 )
-from backtest.cnn_adapter.validation_2025_bridge import (
+from backtest.cnn_adapter.validation_2025.validation_2025_bridge import (
     EligibilityDecision,
     FrozenParquetResult,
     NpzSignal,
@@ -172,7 +172,7 @@ class CoreMiniLedgerTests(unittest.TestCase):
             eligibility = {(date(2025, 1, 2), "000001.SZ"):
                            EligibilityDecision(True, "trading", ())}
 
-            with patch("backtest.cnn_adapter.validation_2025_bridge.pq.ParquetWriter",
+            with patch("backtest.cnn_adapter.validation_2025.validation_2025_bridge.pq.ParquetWriter",
                        side_effect=OSError("simulated disk failure")):
                 with self.assertRaisesRegex(OSError, "simulated disk failure"):
                     convert_npz_to_frozen_parquet(
@@ -376,7 +376,7 @@ class CoreMiniLedgerTests(unittest.TestCase):
             config = root / "model.json"
             config.write_text('{"HORIZON":5}', encoding="utf-8")
             with self.assertRaisesRegex(Validation2025Error, "HORIZON=10"):
-                from backtest.cnn_adapter.validation_2025_bridge import _validate_config
+                from backtest.cnn_adapter.validation_2025.validation_2025_bridge import _validate_config
                 _validate_config(config, hashlib.sha256(config.read_bytes()).hexdigest())
 
     def test_window_anchors_before_first_signal_and_uses_common_benchmark_days(self):

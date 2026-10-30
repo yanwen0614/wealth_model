@@ -41,9 +41,9 @@ from backtest_core.engine import run_account_backtest_from_orders
 from backtest_core.evaluation import evaluate_account
 from pydantic import BaseModel
 
-from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
-from backtest.cnn_adapter.corporate_action_snapshot_loader import CorporateActionSnapshot
-from backtest.cnn_adapter.corporate_actions import (
+from backtest.cnn_adapter.ca.corporate_action_context import CorporateActionContext
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import CorporateActionSnapshot
+from backtest.cnn_adapter.ca.corporate_actions import (
     CorporateActionProvider,
     TaxPolicy,
 )

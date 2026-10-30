@@ -26,17 +26,17 @@ from backtest_core.engine.account import apply_account_actions, apply_sell, unlo
 from backtest_core.engine.account_runner import run_account_backtest_from_orders
 from backtest_core.testing import SyntheticMarketProvider, make_bar
 
-from backtest.cnn_adapter.corporate_action_snapshot_loader import load_corporate_action_snapshot
-from backtest.cnn_adapter.fractional_scenario_cli import execute, validate_prefix_proof
-from backtest.cnn_adapter.fractional_scenarios import (
+from backtest.cnn_adapter.ca.corporate_action_snapshot_loader import load_corporate_action_snapshot
+from backtest.cnn_adapter.staged_allocation import Policy
+from backtest.cnn_adapter.staged_candidate_runner import StagedWindowConfig, WindowDefinition, run_staged_window
+from backtest.cnn_adapter.w1_prefix.fractional_scenario_cli import execute, validate_prefix_proof
+from backtest.cnn_adapter.w1_prefix.fractional_scenarios import (
     EVENT_ID,
     OFFICIAL_PDF_SHA256,
     SOURCE_ROWS_SHA256,
     Scenario,
     W1FractionalScenarioContext,
 )
-from backtest.cnn_adapter.staged_allocation import Policy
-from backtest.cnn_adapter.staged_candidate_runner import StagedWindowConfig, WindowDefinition, run_staged_window
 
 SOURCE_ROOT = Path(r"C:\Users\yanwen\AppData\Local\Temp\opencode\staged_execution_input_snapshot_20261027_v1")
 OFFICIAL_PDF = Path(r"C:\Users\yanwen\AppData\Local\Temp\opencode\ca_300502_official_search3_20261028\cninfo_2021-030_1210131886.PDF")
@@ -75,7 +75,7 @@ class FractionalScenarioTests(unittest.TestCase):
             "2021-06-03", "2021-06-04", "2021-06-07", "2021-06-08",
             "2021-06-09", "2021-06-10", "2021-06-11"))
         context = W1FractionalScenarioContext.__new__(W1FractionalScenarioContext)
-        from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
+        from backtest.cnn_adapter.ca.corporate_action_context import CorporateActionContext
 
         snapshot = self.snapshot()
         pdf_sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
@@ -94,7 +94,7 @@ class FractionalScenarioTests(unittest.TestCase):
         return context
 
     def test_w1_cutoff_context_can_be_built_without_proof_but_full_context_cannot(self):
-        from backtest.cnn_adapter.fractional_scenarios import W1FractionalScenarioContext
+        from backtest.cnn_adapter.w1_prefix.fractional_scenarios import W1FractionalScenarioContext
 
         snapshot = self.snapshot()
         args = {"period_id": "W1", "reset_anchor": date(2020, 12, 31),
@@ -107,7 +107,7 @@ class FractionalScenarioTests(unittest.TestCase):
             W1FractionalScenarioContext(snapshot, **args)
 
     def test_conditional_full_window_requires_explicit_mode_and_keeps_unknown_status(self):
-        from backtest.cnn_adapter.fractional_scenarios import W1FractionalScenarioContext
+        from backtest.cnn_adapter.w1_prefix.fractional_scenarios import W1FractionalScenarioContext
 
         context = W1FractionalScenarioContext(self.snapshot(), period_id="W1",
             reset_anchor=date(2020, 12, 31), scenario="floor",
@@ -170,8 +170,8 @@ class FractionalScenarioTests(unittest.TestCase):
                 code = 1 if calls % 2 else 0
                 return subprocess.CompletedProcess(argv, code, "out", "err")
 
-            with (patch("backtest.cnn_adapter.fractional_prefix_gate.TRUSTED_PREFIX_PROOF_SHA256", digest),
-                  patch("backtest.cnn_adapter.fractional_scenario_cli.subprocess.run", side_effect=run)):
+            with (patch("backtest.cnn_adapter.w1_prefix.fractional_prefix_gate.TRUSTED_PREFIX_PROOF_SHA256", digest),
+                  patch("backtest.cnn_adapter.w1_prefix.fractional_scenario_cli.subprocess.run", side_effect=run)):
                 results = execute(commands, root, proof, digest)
             self.assertEqual(len(results), 8)
             self.assertEqual([item["status"] for item in results],
@@ -186,14 +186,14 @@ class FractionalScenarioTests(unittest.TestCase):
             digest = self.write_self_reported_proof(proof)
             commands = [{"branch": "W1_B1_floor", "output_dir": str(root / "branch"),
                          "argv": ["python", "-B"]}]
-            with patch("backtest.cnn_adapter.fractional_scenario_cli.subprocess.run") as run:
+            with patch("backtest.cnn_adapter.w1_prefix.fractional_scenario_cli.subprocess.run") as run:
                 with self.assertRaisesRegex(ValueError, "prefix proof"):
                     execute(commands, root, proof, digest)
             run.assert_not_called()
             self.assertFalse(root.exists())
 
     def test_fractional_batch_cli_rejects_before_reading_inputs(self):
-        from backtest.cnn_adapter import fractional_scenario_cli
+        from backtest.cnn_adapter.w1_prefix import fractional_scenario_cli
 
         argv = ["fractional", "--prepared-manifest", "missing-manifest.json",
                 "--input-config", "missing-config.json", "--official-pdf", "missing.pdf",
@@ -203,7 +203,7 @@ class FractionalScenarioTests(unittest.TestCase):
                 fractional_scenario_cli.main()
 
     def test_prefix_cli_runs_and_attests_without_preexisting_proof(self):
-        from backtest.cnn_adapter import fractional_scenario_cli
+        from backtest.cnn_adapter.w1_prefix import fractional_scenario_cli
 
         argv = ["fractional", "--prepared-manifest", "manifest.json", "--input-config", "config.json",
             "--official-pdf", "official.pdf", "--output-root", "outputs", "--run-prefixes",
@@ -221,7 +221,7 @@ class FractionalScenarioTests(unittest.TestCase):
         self.assertIn("prefix_attestor", attest.call_args.args[0][3])
 
     def test_cutoff_command_set_is_buildable_without_existing_proof(self):
-        from backtest.cnn_adapter.fractional_scenario_cli import build_commands
+        from backtest.cnn_adapter.w1_prefix.fractional_scenario_cli import build_commands
 
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -234,7 +234,7 @@ class FractionalScenarioTests(unittest.TestCase):
             prepared.write_text(json.dumps({"schema_version": "staged_prepared_v1",
                 "config": config, "output_dir": str(root)}), encoding="utf-8")
             input_config.write_text(json.dumps(config), encoding="utf-8")
-            with patch("backtest.cnn_adapter.fractional_scenario_cli.file_sha256",
+            with patch("backtest.cnn_adapter.w1_prefix.fractional_scenario_cli.file_sha256",
                        return_value="a" * 64):
                 commands = build_commands(prepared, input_config, OFFICIAL_PDF,
                     root / "outputs", prefix_only=True)
@@ -248,12 +248,12 @@ class FractionalScenarioTests(unittest.TestCase):
                 self.assertFalse(any(flag in argv for flag in
                     ("--prepared-core-path", "--prepared-core-sha256",
                      "--runtime-core-path", "--runtime-core-sha256")))
-            with patch("backtest.cnn_adapter.fractional_scenario_cli.subprocess.run",
+            with patch("backtest.cnn_adapter.w1_prefix.fractional_scenario_cli.subprocess.run",
                        side_effect=lambda argv, **kwargs:
                            subprocess.CompletedProcess(argv, 0, "", "")):
                 results = execute(commands, root / "outputs", prefix_only=True)
             self.assertEqual(len(results), 8)
-            with patch("backtest.cnn_adapter.fractional_scenario_cli.file_sha256",
+            with patch("backtest.cnn_adapter.w1_prefix.fractional_scenario_cli.file_sha256",
                        return_value="a" * 64):
                 conditional = build_commands(prepared, input_config, OFFICIAL_PDF,
                     root / "conditional", conditional_only=True)
@@ -263,7 +263,7 @@ class FractionalScenarioTests(unittest.TestCase):
                 self.assertIn("--conditional-simulation", argv)
                 self.assertNotIn("--prefix-stop-after-close", argv)
                 self.assertNotIn("--prefix-proof", argv)
-            with patch("backtest.cnn_adapter.fractional_scenario_cli.subprocess.run",
+            with patch("backtest.cnn_adapter.w1_prefix.fractional_scenario_cli.subprocess.run",
                        side_effect=lambda argv, **kwargs:
                            subprocess.CompletedProcess(argv, 0, "", "")):
                 results = execute(conditional, root / "conditional",
@@ -561,7 +561,7 @@ class FractionalScenarioTests(unittest.TestCase):
             self.assertNotIn("300502.SZ", closed.state.positions)
 
     def test_default_context_still_rejects_noninteger_event(self):
-        from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
+        from backtest.cnn_adapter.ca.corporate_action_context import CorporateActionContext
 
         context = CorporateActionContext(
             self.snapshot(), period_id="W1-production", reset_anchor=date(2021, 6, 3),

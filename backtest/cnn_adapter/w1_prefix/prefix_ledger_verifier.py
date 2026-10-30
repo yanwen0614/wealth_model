@@ -11,12 +11,12 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from backtest.cnn_adapter.fractional_prefix_gate import (
+from backtest.cnn_adapter.w1_prefix.fractional_prefix_gate import (
     BASE_HEAD,
     TRUSTED_PREFIX_ATTESTATOR_SHA256,
     TRUSTED_PREFIX_PROOF_SHA256,
 )
-from backtest.cnn_adapter.prefix_attestor import _fixed_inputs, fixed_source_sha256
+from backtest.cnn_adapter.w1_prefix.prefix_attestor import _fixed_inputs, fixed_source_sha256
 
 VERIFIER_VERSION = "prefix-ledger-verifier-v1"
 PREFIX_CUTOFF = date(2021, 6, 7)

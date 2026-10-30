@@ -8,7 +8,7 @@ from pathlib import Path
 
 from backtest_core.contracts.market import MarketBar
 
-from backtest.cnn_adapter.raw_market_inputs import RawMarketRecord, read_raw_market_inputs
+from backtest.cnn_adapter.ca.raw_market_inputs import RawMarketRecord, read_raw_market_inputs
 
 
 def _to_float_price(value: object, field: str) -> float | None:

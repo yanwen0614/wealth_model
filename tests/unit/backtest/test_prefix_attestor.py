@@ -14,7 +14,7 @@ from tempfile import TemporaryDirectory
 
 class PrefixAttestorTests(unittest.TestCase):
     def test_fixed_source_inventory_accepts_exact_files_and_rejects_tampering(self) -> None:
-        from backtest.cnn_adapter.prefix_attestor import _check_fixed_paths, fixed_source_sha256
+        from backtest.cnn_adapter.w1_prefix.prefix_attestor import _check_fixed_paths, fixed_source_sha256
 
         inventory = fixed_source_sha256()
         self.assertEqual(len(inventory), 15)
@@ -27,7 +27,7 @@ class PrefixAttestorTests(unittest.TestCase):
                 _check_fixed_paths({str(changed): inventory[str(source)]}, "source")
 
     def test_attestor_requires_complete_dual_core_experiment_identity(self) -> None:
-        from backtest.cnn_adapter.prefix_attestor import _validate_prefix_experiment_identity
+        from backtest.cnn_adapter.w1_prefix.prefix_attestor import _validate_prefix_experiment_identity
 
         required = ("experiment_id", "prepared_manifest_sha256", "prepared_core_path",
                     "prepared_core_sha256", "runtime_core_path", "runtime_core_sha256",
@@ -40,7 +40,7 @@ class PrefixAttestorTests(unittest.TestCase):
                 _validate_prefix_experiment_identity(incomplete)
 
     def test_external_attestor_rejects_post_cutoff_quantity_state_lookup(self) -> None:
-        from backtest.cnn_adapter.prefix_attestor import _access_record
+        from backtest.cnn_adapter.w1_prefix.prefix_attestor import _access_record
 
         with TemporaryDirectory() as temporary:
             path = Path(temporary) / "quantity_rule_usage.jsonl"
@@ -64,7 +64,7 @@ class PrefixAttestorTests(unittest.TestCase):
                 for name in ("prefix_market_access.jsonl", "prefix_ranking_access.jsonl",
                              "quantity_rule_usage.jsonl", "prefix_fee_policy.jsonl"):
                     (directory / name).write_bytes(b"")
-            source = Path(__file__).resolve().parents[3] / "backtest/cnn_adapter/prefix_attestor.py"
+            source = Path(__file__).resolve().parents[3] / "backtest/cnn_adapter/w1_prefix/prefix_attestor.py"
             input_path = root / "prepared.json"
             input_path.write_text("fixed", encoding="utf-8")
             plan = {"schema_version": "w1_prefix_attestation_test_plan_v1",
@@ -76,7 +76,7 @@ class PrefixAttestorTests(unittest.TestCase):
             plan_path.write_text(json.dumps(plan), encoding="utf-8")
             repo = Path(__file__).resolve().parents[3]
             process = subprocess.run([sys.executable, "-B", "-m",
-                "backtest.cnn_adapter.prefix_attestor", "--plan", str(plan_path),
+                "backtest.cnn_adapter.w1_prefix.prefix_attestor", "--plan", str(plan_path),
                 "--attestation", str(attestation)], cwd=repo, capture_output=True,
                 text=True, check=True)
             record = json.loads(attestation.read_text(encoding="utf-8"))

@@ -12,8 +12,8 @@ from pathlib import Path
 from backtest_core.contracts.account import AccountState
 from backtest_core.engine.account import apply_account_actions, mark_to_market, release_pending_cash
 
-from backtest.cnn_adapter.corporate_actions import CorporateActionEvent, CorporateActionProvider
-from backtest.cnn_adapter.raw_market_inputs import read_raw_market_inputs
+from backtest.cnn_adapter.ca.corporate_actions import CorporateActionEvent, CorporateActionProvider
+from backtest.cnn_adapter.ca.raw_market_inputs import read_raw_market_inputs
 
 EVENTS = (("000001.SZ", date(2021, 5, 14)), ("300896.SZ", date(2021, 3, 16)))
 

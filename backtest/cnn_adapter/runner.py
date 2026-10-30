@@ -26,8 +26,9 @@ from backtest_core.engine import run_account_backtest_from_orders
 from backtest_core.evaluation import evaluate_account
 from backtest_core.io import DEFAULT_CHUNK_SIZE, ResultStore, RunManifest
 
+from backtest.cnn_adapter.ca.corporate_actions import CorporateActionProvider, TaxPolicy
+from backtest.cnn_adapter.ca.raw_market_provider import CnnRawMarketDataProvider
 from backtest.cnn_adapter.common import SHANGHAI_TZ, npz_fingerprint
-from backtest.cnn_adapter.corporate_actions import CorporateActionProvider, TaxPolicy
 from backtest.cnn_adapter.execution_audit import (
     ExitOnlyStrategy,
     SuppressedOrder,
@@ -37,7 +38,6 @@ from backtest.cnn_adapter.execution_audit import (
 from backtest.cnn_adapter.market import CnnMarketDataProvider
 from backtest.cnn_adapter.order_strategy import CnnOrderStrategy
 from backtest.cnn_adapter.predictions import PREDICTED_HORIZON, CnnPredictionAdapter
-from backtest.cnn_adapter.raw_market_provider import CnnRawMarketDataProvider
 from backtest.cnn_adapter.target_strategy import CnnTargetOrderStrategy
 
 __all__ = ["CnnBacktestOutcome", "run_cnn_backtest", "write_cnn_result"]

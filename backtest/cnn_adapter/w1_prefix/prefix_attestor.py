@@ -13,7 +13,7 @@ from typing import Any
 from .fractional_prefix_gate import TRUSTED_PREFIX_ATTESTATOR_SHA256
 
 ATTESTATION_SCHEMA = "w1_prefix_external_attestation_v1"
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 CORE_SOURCE = Path(r"C:\Users\yanwen\AppData\Local\Temp\opencode\backtest-core-w1-stop-20261028\src\backtest_core\engine\account_runner.py")
 PREPARED_MANIFEST_SHA256 = "a8ad2b0bafebee235c9052eeba7a77db4404c6e0fbbbb40fe42457f3a8064441"
 OFFICIAL_PDF_SHA256 = "c09dfd553ff195857bef6a04a6b9ea57674865dd1e1b4b3fec666c4ee35277bd"
@@ -24,11 +24,11 @@ ACCESS_FILES = ("prefix_market_access.jsonl", "prefix_ranking_access.jsonl",
 def fixed_source_sha256() -> dict[str, str]:
     """返回代码审阅冻结的 runner/core 源码 SHA 清单。"""
     relative = ("staged_candidate_runner.py", "staged_production_inputs.py",
-        "fractional_scenarios.py", "fractional_scenario_cli.py",
-        "prefix_ledger_verifier.py", "historical_costs.py",
-        "corporate_action_context.py", "corporate_action_snapshot_loader.py",
+        "w1_prefix/fractional_scenarios.py", "w1_prefix/fractional_scenario_cli.py",
+        "w1_prefix/prefix_ledger_verifier.py", "historical_costs.py",
+        "ca/corporate_action_context.py", "ca/corporate_action_snapshot_loader.py",
         "quantity_rules.py", "staged_allocation.py", "staged_order_strategy.py",
-        "staged_execution_bridge.py", "raw_market_provider.py", "raw_market_inputs.py")
+        "staged_execution_bridge.py", "ca/raw_market_provider.py", "ca/raw_market_inputs.py")
     hashes = (
         "37fcf150a0c3646b44afbfe1d3c9ae2bd1e0cac7067779e4c0e050c2081bf54b",
         "cef7b7bb2b7e21ce31f58929a07f2531e6f5e25aa5b6239475d45f05d0675f84",

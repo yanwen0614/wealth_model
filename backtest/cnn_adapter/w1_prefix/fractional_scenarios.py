@@ -12,8 +12,8 @@ from typing import Literal, cast
 
 from backtest_core.contracts.execution_feedback import ExecutionUpdate
 
-from .corporate_action_context import CorporateActionContext
-from .corporate_action_snapshot_loader import ActionDescriptor, CorporateActionSnapshot
+from ..ca.corporate_action_context import CorporateActionContext
+from ..ca.corporate_action_snapshot_loader import ActionDescriptor, CorporateActionSnapshot
 from .fractional_prefix_gate import validate_prefix_proof
 
 Scenario = Literal["floor", "ceil"]

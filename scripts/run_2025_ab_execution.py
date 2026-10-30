@@ -14,7 +14,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from backtest.cnn_adapter.staged_candidate_runner import WindowDefinition
-from backtest.cnn_adapter.validation_2025_bridge import (
+from backtest.cnn_adapter.validation_2025.validation_2025_bridge import (
     NpzSignal,
     Validation2025Error,
     assert_ab_equivalent,
@@ -24,7 +24,7 @@ from backtest.cnn_adapter.validation_2025_bridge import (
     file_sha256,
     load_npz_signal,
 )
-from backtest.cnn_adapter.validation_2025_execution import (
+from backtest.cnn_adapter.validation_2025.validation_2025_execution import (
     FROZEN_PROTOCOL,
     run_prepared_accounts,
 )

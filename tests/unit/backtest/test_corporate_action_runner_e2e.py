@@ -14,11 +14,11 @@ from backtest_core.contracts.order import OrderIntent, OrderStatus
 from backtest_core.engine.account_runner import run_account_backtest_from_orders
 from backtest_core.testing import build_market
 
-from backtest.cnn_adapter.corporate_actions import CorporateActionEvent, CorporateActionProvider
+from backtest.cnn_adapter.ca.corporate_actions import CorporateActionEvent, CorporateActionProvider
+from backtest.cnn_adapter.ca.raw_market_provider import CnnRawMarketDataProvider
 from backtest.cnn_adapter.execution_audit import ExitOnlyStrategy, audit_execution, build_terminal_plan
 from backtest.cnn_adapter.order_strategy import CnnOrderStrategy
 from backtest.cnn_adapter.predictions import CnnPredictionAdapter
-from backtest.cnn_adapter.raw_market_provider import CnnRawMarketDataProvider
 from backtest.cnn_adapter.runner import run_cnn_backtest
 from scripts.generate_walkforward_signals import _signal_record, prediction_cache_arrays
 

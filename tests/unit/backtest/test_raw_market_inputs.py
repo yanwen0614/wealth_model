@@ -9,7 +9,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from backtest.cnn_adapter.raw_market_inputs import (
+from backtest.cnn_adapter.ca.raw_market_inputs import (
     normalize_raw_market_frame,
     read_raw_market_inputs,
 )

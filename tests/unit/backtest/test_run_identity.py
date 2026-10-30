@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from backtest.cnn_adapter.run_identity import (
+from backtest.cnn_adapter.w1_prefix.run_identity import (
     RunIdentity,
     _file_evidence,
     capture_run_identity,
@@ -59,7 +59,7 @@ class RunIdentityTests(unittest.TestCase):
         self, label: str = "candidate", repositories: dict[str, Path] | None = None,
     ) -> object:
         modules = {key: value for key, value in self.files.items()}
-        modules["run_identity"] = Path(__file__).parents[3] / "backtest/cnn_adapter/run_identity.py"
+        modules["run_identity"] = Path(__file__).parents[3] / "backtest/cnn_adapter/w1_prefix/run_identity.py"
         imported = {
             "backtest.cnn_adapter.historical_costs": self.imported_path_override or self.files["historical_costs"],
             "backtest.cnn_adapter.execution_audit": self.files["execution_audit"],
@@ -72,11 +72,11 @@ class RunIdentityTests(unittest.TestCase):
             name: type("SyntheticModule", (), {"__file__": str(path)})()
             for name, path in imported.items()
         }
-        imported_modules["backtest.cnn_adapter.run_identity"] = sys.modules[
-            "backtest.cnn_adapter.run_identity"
+        imported_modules["backtest.cnn_adapter.w1_prefix.run_identity"] = sys.modules[
+            "backtest.cnn_adapter.w1_prefix.run_identity"
         ]
-        with patch("backtest.cnn_adapter.run_identity._run_git", side_effect=self._git), patch(
-            "backtest.cnn_adapter.run_identity._distribution_version", return_value="1.2.3"
+        with patch("backtest.cnn_adapter.w1_prefix.run_identity._run_git", side_effect=self._git), patch(
+            "backtest.cnn_adapter.w1_prefix.run_identity._distribution_version", return_value="1.2.3"
         ), patch.dict(sys.modules, imported_modules, clear=False):
             return capture_run_identity(
                 branch_label=label,
@@ -139,11 +139,11 @@ class RunIdentityTests(unittest.TestCase):
         wrong = self.root / "wrong"
         wrong.mkdir()
         self.git_root_override = self.repo
-        with patch("backtest.cnn_adapter.run_identity._run_git", side_effect=self._git):
+        with patch("backtest.cnn_adapter.w1_prefix.run_identity._run_git", side_effect=self._git):
             with self.assertRaises(ValueError):
                 self._capture(repositories={"cnn": wrong, "core": self.core_repo})
         self.git_root_override = None
-        with patch("backtest.cnn_adapter.run_identity._run_git", side_effect=self._git):
+        with patch("backtest.cnn_adapter.w1_prefix.run_identity._run_git", side_effect=self._git):
             nested = self.repo / "nested_core"
             nested.mkdir()
             with self.assertRaises(ValueError):
