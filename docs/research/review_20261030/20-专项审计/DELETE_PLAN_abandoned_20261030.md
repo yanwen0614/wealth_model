@@ -1,7 +1,7 @@
 # 已放弃路线死代码删除计划（2026-10-30）
 
 性质：**诊断（diagnosis only）**。本文件写完时尚未删除任何文件。
-依据：`docs/research/review_20261030/10-五问探索/q1_failed_research_report.md`（14 条彻底放弃路线的代码载体）。
+依据：`docs/research/review_20261030/00-必读/五个问题白话回答.md` 第 3 节（14 条彻底放弃路线）与 `git show 3d422bb:'docs/research/review_20261030/10-五问探索/q1_failed_research_report.md'`（原始盘点，已删除但可自 git 取回）。
 Owner 口径：结论保留，相关代码可以删。
 
 ## 0. 红线自查（本计划的硬约束）

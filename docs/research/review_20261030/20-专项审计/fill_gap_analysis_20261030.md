@@ -2,8 +2,8 @@
 
 - **性质**：只读分析。未修改/删除任何仓库文件，未执行任何 git 写操作。
 - **唯一写操作**：本文件。
-- **输入报告**：`../10-五问探索/q3_reproducibility_report.md`、`../10-五问探索/q4_blockers_solutions_report.md`、`../10-五问探索/q5_next_plan_report.md`
-  > **路径订正**：任务书给的 `C:/Users/yanwen/AppData/Local/Temp/opencode/{q3,q4,q5}*.md` 三个文件**不存在**。三份报告的实况在仓库内 `docs/research/review_20261030/`（q3 25163 B / q4 43743 B / q5 34531 B，均已被 `84ca4fe` 前后入库）。本分析读的是仓库版本。
+- **输入报告**：q3（可复现性）、q4（阻塞）、q5（下一步）三份原始探索报告。**该三份文件已于 2026-10-30 删除**，结论已并入 `../00-必读/五个问题白话回答.md`；需要原文可用 `git show 3d422bb:'docs/research/review_20261030/10-五问探索/q3_reproducibility_report.md'` 等取回。
+  > **路径订正**：任务书给的 `C:/Users/yanwen/AppData/Local/Temp/opencode/{q3,q4,q5}*.md` 三个文件当时已不存在（已迁入仓库）。本分析读的是仓库版本。
 - **本轮实测新增证据**：A5 全提交穷举、D3 端到端打通、URL 假阳性剔除后的 E2 路径重算、TRANSPLANT 树可重建性验证、`run_identity.py` 存在性核查。凡与 Q3 数字不一致处均在下文标注。
 
 ---
@@ -134,7 +134,7 @@ Q3 §A4 列了三个阻断点。本轮实测确认两个、并**新增一个更�
 >
 > **因此本项结论限定为：除上述 4 项外，全部可追溯。** 这 4 项不满足"可从仓库+冻结介质重建"的定义，**不得**被视为已验证、**不得**以任何推测内容替代。凡引用 v12 输入的下游结论（如 W2 四策略回放），其证据强度上限为"输入内容完整、但其中 4 个源模块的版本不可考证"。
 >
-> 声明日期：2026-10-30。依据：`../10-五问探索/q3_reproducibility_report.md` §A5 与本轮 177 提交全历史穷举。
+> 声明日期：2026-10-30。依据：q3 可复现性报告的 §A5（原文 `git show 3d422bb:'docs/research/review_20261030/10-五问探索/q3_reproducibility_report.md'`）与本轮 177 提交全历史穷举。
 
 **选项 2（中）：从 `raw_patches` 或 `opencode.db` 反向找**
 

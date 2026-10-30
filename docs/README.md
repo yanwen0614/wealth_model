@@ -26,18 +26,17 @@
 
 | 文件 | 回答 |
 |---|---|
-| `下一次实验必读.md` | **下次动手前必看**：四条真实事故 + 四条硬规范 + 检查清单 + 15 条教训 |
-| `五个问题白话回答.md` | 五问的人话版（已过三轮评审 8.0/10） |
-| `q1~q5_*.md` | 五个问题的原始探索报告（失败路线/当前进度/可复现性/阻塞/下一步） |
-| `fill_gap_analysis_20261030.md` | 八项不可复现能否补（3 不能 / 5 部分 / 1 推翻原判） |
-| `quant_source_audit_20261030.md` | quant 源头历史缺口可解性（停牌/上市前/unknown/限价/公司行动/退市） |
-| `train_data_stock_audit_20261030.md` | 训练数据侧问题股票排查 |
-| `DELETE_PLAN_abandoned_20261030.md` | 14 条放弃路线死代码删除计划与执行 |
-| `RESEARCH_CONSOLIDATION_AUDIT_20261030.md` | 研究产物收口审计 |
-| `CLEANUP_*_20261030.md` | Temp 清理方案与结果 |
-| `worktree_retirement_20261030/` | 工作树退役记录 |
-| `recovered_w1_20261030/` | 从会话数据库恢复的 18 个源文件 + 清单 + 原始补丁 |
-| `理解测试回答{,2,3}.md` | 三轮可读性评审答卷 |
+| `00-必读/下一次实验必读.md` | **下次动手前必看**：四条真实事故 + 四条硬规范 + 检查清单 + 15 条教训 |
+| `00-必读/五个问题白话回答.md` | 五问的人话版（已过三轮评审 8.0/10）；原始探索报告 q1~q5 已删除，其结论已完整并入此文件 |
+| `20-专项审计/fill_gap_analysis_20261030.md` | 八项不可复现能否补（3 不能 / 5 部分 / 1 推翻原判） |
+| `20-专项审计/quant_source_audit_20261030.md` | quant 源头历史缺口可解性（停牌/上市前/unknown/限价/公司行动/退市） |
+| `20-专项审计/train_data_stock_audit_20261030.md` | 训练数据侧问题股票排查 |
+| `20-专项审计/DELETE_PLAN_abandoned_20261030.md` | 14 条放弃路线死代码删除计划与执行 |
+| `20-专项审计/RESEARCH_CONSOLIDATION_AUDIT_20261030.md` | 研究产物收口审计 |
+| `30-清理与退役/CLEANUP_PLAN_20261030.md`、`CLEANUP_RESULT_20261030.md` | Temp 清理方案与结果 |
+| `30-清理与退役/worktree_retirement_20261030/` | 工作树退役记录 |
+| `30-清理与退役/recovered_w1_20261030/` | 恢复过程的身份与校验记录（源码已随 8cd25a9 入库；中间产物移出仓库） |
+| `90-评审记录/review-round{1,2,3}.md` | 三轮可读性评审答卷（7.5 / 7.5 / 8.0） |
 
 ### `20261026/` — 三天工程的过程文档
 
@@ -74,13 +73,13 @@
 
 **新人第一次接触** → `README_TRAINING_CHAIN.md` → `docs/research/final_delivery_20261030.md`
 
-**准备做新实验** → `docs/research/review_20261030/下一次实验必读.md`（强制）
+**准备做新实验** → `docs/research/review_20261030/00-必读/下一次实验必读.md`（强制）
 
-**查某条研究为什么失败** → `review_20261030/q1_failed_research_report.md`
+**查某条研究为什么失败 / 为什么没达标** → `docs/research/review_20261030/00-必读/五个问题白话回答.md` 第 3 节
 
-**查某个结论能不能复现** → `review_20261030/q3_reproducibility_report.md` + `fill_gap_analysis_20261030.md`
+**查某个结论能不能复现** → `docs/research/review_20261030/00-必读/五个问题白话回答.md` 第 8 节 + `20-专项审计/fill_gap_analysis_20261030.md`
 
-**要知道下一步做什么** → `review_20261030/q5_next_plan_report.md`
+**要知道下一步做什么** → `docs/research/review_20261030/00-必读/五个问题白话回答.md` 第 10~11 节
 
 ## 已知的文档债务
 
