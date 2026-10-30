@@ -1,12 +1,24 @@
 """复用独立QA两个真实probe输入，验证CA不会反向筛选历史交易。"""
 import json
+import os
+import tempfile
 import unittest
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from scripts import run_2025_restricted as entry
+# 证据根：W1 树已退役，2025 研究证据保存在 opencode 临时目录；
+# 显式注入以保持 W1 时期 ROOT.parent 语义，不改变任何校验强度。
+os.environ.setdefault("CNN_2025_EVIDENCE_ROOT", str(Path(tempfile.gettempdir()) / "opencode"))
+
+from scripts import run_2025_restricted as entry  # noqa: E402
+
+# 既审树已于 2026-10-30 退役，run_restricted 运行时复验该树必然失败 → 显式 skip。
+SKIP_RETIRED_TREE = unittest.skipIf(
+    not entry.review_identity_available(),
+    "原因：依赖已于 2026-10-30 退役的 corporate-action-fix-20261027 既审树",
+)
 
 OUT = entry.TEMP / "validation_2025_restricted_fix2_20261029"
 PROBES = entry.TEMP / "validation_2025_restricted_independent_qa_20261029/reverify1/evidence"
@@ -70,6 +82,7 @@ def fills(output, code="000001.SZ"):
 
 
 class Fix2Tests(unittest.TestCase):
+    @SKIP_RETIRED_TREE
     def test_QA_late_event_exact_input_does_not_change_early_trades(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             root = Path(tmp)
@@ -82,6 +95,7 @@ class Fix2Tests(unittest.TestCase):
                 self.assertEqual(fills(root / kind), before)
                 self.assertFalse(any(k.startswith("ca_") for k in report["rejection_counts"]))
 
+    @SKIP_RETIRED_TREE
     def test_QA_missing_record_future_requires_positive_holding_stop(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             report = probe(Path(tmp) / "缺登记未来除权", "missing_record_future")
@@ -89,6 +103,7 @@ class Fix2Tests(unittest.TestCase):
             self.assertFalse(report["main_return_usable"])
             self.assertGreater(report["terminal_positions"].get("000001.SZ", 0), 0)
 
+    @SKIP_RETIRED_TREE
     def test_positive_record_stops_that_day_and_retains_unchanged_prefix(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             root = Path(tmp)
@@ -105,6 +120,7 @@ class Fix2Tests(unittest.TestCase):
                     self.assertEqual(updates[-1]["trading_date"], "2025-01-06")
                     self.assertTrue(any(v > 0 for v in updates[-1]["post_state"]["record_positions"].values()))
 
+    @SKIP_RETIRED_TREE
     def test_no_position_unknown_does_not_abort_other_codes(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             for kind in ("rights", "missing_cash", "missing_record_future"):
@@ -114,12 +130,14 @@ class Fix2Tests(unittest.TestCase):
                 self.assertGreater(report["filled_buys"], 0)
                 self.assertTrue(report["main_return_usable"])
 
+    @SKIP_RETIRED_TREE
     def test_sold_at_record_open_has_zero_closing_entitlement(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             report = probe(Path(tmp) / "登记日开盘已卖", "rights", raw_changes={"股权登记日": "20250107"})
             self.assertIsNone(report["error"])
             self.assertNotIn("000001.SZ", report["terminal_positions"])
 
+    @SKIP_RETIRED_TREE
     def test_suspension_unknown_st_or_missing_price_do_not_erase_entitlement(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             for fault in ("suspended", "unknown_st", "missing_close"):
@@ -130,6 +148,7 @@ class Fix2Tests(unittest.TestCase):
                 self.assertGreater(report["terminal_positions"].get("000001.SZ", 0), 0)
                 self.assertLessEqual(report["max_positions"], 10)
 
+    @SKIP_RETIRED_TREE
     def test_entirely_undated_event_stops_only_after_real_positive_fill(self):
         with TemporaryDirectory(dir=OUT) as tmp:
             path = Path(tmp) / "日期全未知"

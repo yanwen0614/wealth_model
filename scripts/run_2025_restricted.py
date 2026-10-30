@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from collections import Counter
 from dataclasses import replace
@@ -14,7 +15,10 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMP = ROOT.parent
+# 证据根默认仍是原位置（ROOT.parent）；W1 树已退役，主区可用
+# CNN_2025_EVIDENCE_ROOT 显式注入外部证据根，不改变任何校验强度。
+EVIDENCE_ROOT_ENV = "CNN_2025_EVIDENCE_ROOT"
+TEMP = Path(os.environ[EVIDENCE_ROOT_ENV]) if os.environ.get(EVIDENCE_ROOT_ENV) else ROOT.parent
 DELIVERY = TEMP / "validation_2025_restricted_delivery_20261029"
 REVIEWED = TEMP / "corporate-action-fix-20261027"
 REVIEW_HASHES = TEMP / "staged_production_integration_delivery_20261027/SOURCE_HASHES_FINAL.json"
@@ -33,14 +37,38 @@ def sha(path, expected=None):
     return digest
 
 
-def verify_reviewed():
-    hashes = json.loads(REVIEW_HASHES.read_text(encoding="utf-8"))
+def verify_reviewed(*, reviewed_root=None, hashes_path=None):
+    """校验既审16文件；默认路径缺失或字节不符即 fail-closed，不提供降级通道。"""
+    root = REVIEWED if reviewed_root is None else Path(reviewed_root)
+    manifest = REVIEW_HASHES if hashes_path is None else Path(hashes_path)
+    hashes = json.loads(manifest.read_text(encoding="utf-8"))
     if len(hashes) != 16:
         raise ValueError("既审文件清单必须为16项")
-    return {str(REVIEWED / name): sha(REVIEWED / name, value) for name, value in hashes.items()}
+    return {str(root / name): sha(root / name, value) for name, value in hashes.items()}
 
 
-REVIEW_IDENTITY = verify_reviewed()
+_REVIEW_IDENTITY = None
+
+
+def review_identity():
+    """延迟校验既审身份并缓存：模块 import 不触发，真实研究入口仍 fail-closed。"""
+    global _REVIEW_IDENTITY
+    if _REVIEW_IDENTITY is None:
+        _REVIEW_IDENTITY = verify_reviewed()
+    return _REVIEW_IDENTITY
+
+
+def review_identity_available():
+    """只读探测既审身份能否复验；失败只返回 False，绝不降级门禁。"""
+    if _REVIEW_IDENTITY is not None:
+        return True
+    try:
+        review_identity()
+    except (OSError, ValueError, KeyError):
+        return False
+    return True
+
+
 if any(name == "backtest" or name.startswith("backtest.") for name in sys.modules):
     raise RuntimeError("须在干净解释器先导入受限入口，禁止混合不同树的 backtest 模块")
 sys.path.insert(0, str(REVIEWED))
@@ -710,7 +738,7 @@ def module_sources():
             if name == "backtest_core.engine.account_runner" and modules[name]["sha256"] != (
                     "aa156ec2ee7fe8ee82ea3c27a2359dc4954bd6cf3d28d00a7ece6868fc8daa00"):
                 raise ValueError("指定解释器core运行器与既审SHA不一致")
-    return {"reviewed_16": REVIEW_IDENTITY, "modules": modules, "python": sys.executable,
+    return {"reviewed_16": review_identity(), "modules": modules, "python": sys.executable,
             "sys_path": sys.path, "entry_sha256": sha(__file__)}
 
 
@@ -1112,6 +1140,8 @@ def main():
     args = parser.parse_args()
     if sum((args.mini, args.preflight_only, args.fetch_sz_rules, args.execute_ab)) != 1:
         parser.error("必须且只能选择一个动作；全年运行留待独立QA")
+    # 既审身份硬校验：延迟化只解除 import 期副作用，任何真实研究动作仍 fail-closed。
+    review_identity()
     if args.execute_ab:
         if not args.prepared_manifest or not args.prepared_sha256:
             parser.error("A/B执行必须提供冻结准备清单路径与SHA")
