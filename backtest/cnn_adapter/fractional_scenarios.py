@@ -103,8 +103,12 @@ class W1FractionalScenarioContext(CorporateActionContext):
         super().__init__(snapshot, period_id=period_id, reset_anchor=reset_anchor,
                           empty_reset=True, strict_tax=False,
                           tax_policy="cash_dividend_20pct_stress", delegate=delegate,
-                          window_end=window_end, calendar_sha256=calendar_sha256,
-                          asof_announcement_dates=conditional_only)
+                          window_end=window_end, calendar_sha256=calendar_sha256)
+        # 主区基类尚无 asof_announcement_dates 逐日 as-of 裁剪能力（该能力原属
+        # W1 版 corporate_action_context.py，未随本次恢复落库）。conditional 分支
+        # 已在上面按 announcement_horizon 对 snapshot 做一次性静态公告日裁剪，
+        # 故此处仅记录该可见性口径，用于 evidence 披露，不伪装成逐日 PIT。
+        self.asof_announcement_dates: bool = conditional_only
 
     @staticmethod
     def validate_identity(*, event_id: str, source_file_sha256: str,
@@ -221,6 +225,10 @@ class W1FractionalScenarioContext(CorporateActionContext):
         base.update({
             "scenario_only": True,
             "conditional_only": self.asof_announcement_dates,
+            # W1 版由基类 evidence() 提供同一键；主区基类无该字段，故在此补齐，
+            # 取值与 W1 版一致（conditional_date_only / full_snapshot）。
+            "announcement_visibility": ("conditional_date_only"
+                                        if self.asof_announcement_dates else "full_snapshot"),
             "certification": ("NOT_CERTIFIED_CONDITIONAL" if self.asof_announcement_dates
                               else "NOT_CERTIFIED"),
             "pit": "UNKNOWN",

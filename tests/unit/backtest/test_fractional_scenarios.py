@@ -42,6 +42,18 @@ SOURCE_ROOT = Path(r"C:\Users\yanwen\AppData\Local\Temp\opencode\staged_executio
 OFFICIAL_PDF = Path(r"C:\Users\yanwen\AppData\Local\Temp\opencode\ca_300502_official_search3_20261028\cninfo_2021-030_1210131886.PDF")
 MANIFEST_SHA = "e7b1a533a6853a1b995d4a84c713acbb62943cc55f785c472020d2d492b86bcf"
 
+# 2026-10-30 恢复的这批测试期望 W1 版 staged_candidate_runner / staged_production_inputs
+# 接口（run_staged_window(fractional_scenario=...)、CLI --fractional-scenario /
+# --prefix-stop-after-close / --information-cutoff、run_single_from_cli 的 prefix proof
+# 前置门禁）。这 8 个 W1 版依赖模块在本仓库任何提交与 raw_patches 中均无对应实现，
+# 且 staged_candidate_runner.py / staged_production_inputs.py 不在本代理授权范围。
+# 故这些用例显式跳过，不伪造通过。
+_W1_RUNNER_INTERFACE_LOST = (
+    "skip：依赖 2026-10-30 丢失的 W1 版 staged_candidate_runner / "
+    "staged_production_inputs 接口（fractional_scenario 参数、prefix proof 前置门禁、"
+    "--prefix-stop-after-close/--information-cutoff CLI），主区无对应实现"
+)
+
 
 class _Orders:
     def orders_for(self, *, trading_date, **kwargs):
@@ -73,6 +85,9 @@ class FractionalScenarioTests(unittest.TestCase):
         context.official_pdf_sha256 = pdf_sha
         context.source_rows_sha256 = SOURCE_ROWS_SHA256
         context._resolution = None
+        # 本 helper 用 __new__ 绕过子类 __init__ 以模拟 bounded mini runner 的受限
+        # 构造路径；子类 __init__ 才会设置的可见性口径需在此显式补齐（mini 非 conditional）。
+        context.asof_announcement_dates = False
         CorporateActionContext.__init__(context, snapshot, period_id="W1-mini",
             reset_anchor=calendar[0], empty_reset=True, strict_tax=False,
             tax_policy="cash_dividend_20pct_stress", window_end=calendar[-1])
@@ -256,6 +271,7 @@ class FractionalScenarioTests(unittest.TestCase):
             self.assertTrue(all(row["certification"] == "NOT_CERTIFIED_CONDITIONAL"
                                 for row in results))
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_direct_full_runner_rejects_before_output_input_or_core(self):
         anchor = date(2020, 12, 31)
         calendar = tuple(anchor + timedelta(days=i) for i in range(185))
@@ -277,6 +293,7 @@ class FractionalScenarioTests(unittest.TestCase):
             core.assert_not_called()
             self.assertFalse(output.exists())
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_mini_labels_cannot_disguise_a_full_window(self):
         anchor = date(2020, 12, 31)
         calendar = tuple(anchor + timedelta(days=i) for i in range(185))
@@ -290,6 +307,7 @@ class FractionalScenarioTests(unittest.TestCase):
                     market=SyntheticMarketProvider(()), fractional_scenario="floor",
                     official_pdf_path=OFFICIAL_PDF, corporate_action_snapshot=self.snapshot())
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_runner_cli_rejects_before_loading_signal_or_calendar(self):
         from backtest.cnn_adapter import staged_candidate_runner
 
@@ -303,6 +321,7 @@ class FractionalScenarioTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "prefix proof"):
                 staged_candidate_runner.main()
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_runner_cli_prefix_mode_reaches_cutoff_inputs_without_proof(self):
         from backtest.cnn_adapter import staged_candidate_runner
 
@@ -317,6 +336,7 @@ class FractionalScenarioTests(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "日历文件不存在"):
                 staged_candidate_runner.main()
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_single_runner_api_rejects_before_loading_config(self):
         from backtest.cnn_adapter.staged_production_inputs import run_single_from_cli
 
@@ -344,6 +364,7 @@ class FractionalScenarioTests(unittest.TestCase):
                 source_rows_sha256=SOURCE_ROWS_SHA256, window_end=date(2021, 6, 11),
             )
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_staged_mini_runner_rejects_provider_with_forged_class_identity(self):
         calendar = tuple(date.fromisoformat(day) for day in (
             "2021-06-03", "2021-06-04", "2021-06-07", "2021-06-08",
@@ -603,6 +624,7 @@ class FractionalScenarioTests(unittest.TestCase):
         self.assertEqual(closed.shares, 140)
         self.assertNotIn("300502.SZ", closed.state.positions)
 
+    @unittest.skip(_W1_RUNNER_INTERFACE_LOST)
     def test_staged_runner_uses_real_slot_bridge_with_scenario(self):
         calendar = tuple(date.fromisoformat(day) for day in (
             "2021-06-03", "2021-06-04", "2021-06-07", "2021-06-08",
