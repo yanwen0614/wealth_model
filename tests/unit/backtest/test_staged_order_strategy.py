@@ -19,6 +19,7 @@ from backtest_core.contracts.protocols import AccountView
 from backtest_core.engine import run_account_backtest_from_orders
 from backtest_core.testing import SyntheticMarketProvider
 
+from backtest.cnn_adapter.quantity_rules import MappingQuantityRuleResolver, QuantityRule
 from backtest.cnn_adapter.staged_allocation import (
     AllocationRegistry,
     CoreAccountSnapshot,
@@ -80,6 +81,43 @@ class _RecordingBridge(StagedExecutionBridge):
 
 
 class StagedOrderStrategyTests(unittest.TestCase):
+    def test_explicit_science_board_rule_rejects_100_and_accepts_200_or_300(self):
+        day, next_day = date(2020, 1, 2), date(2020, 1, 3)
+        rule = QuantityRule(200, 1, 100_000, "SSE-2019-23-20",
+                            date(2019, 3, 1), date(2023, 2, 16))
+        resolver = MappingQuantityRuleResolver({
+            "688": (date(2019, 3, 1), date(2023, 2, 16), rule),
+        })
+        for initial_cash, expected in ((6_000, None), (12_000, 200), (18_000, 300)):
+            with self.subTest(expected=expected):
+                registry = AllocationRegistry(initial_cash=initial_cash, calendar_days=[day, next_day])
+                registry.apply_core_snapshot(CoreAccountSnapshot(
+                    "quantity-open", 1, initial_cash, {}, frozenset(), frozenset(),
+                    cash=initial_cash, trading_date=day,
+                ))
+                ranks = RankingSnapshot(day, "quantity-ranks", {"688001.SH": 1}, True,
+                                        {"688001.SH": True})
+                strategy = StagedOrderStrategy(
+                    registry, MappingRankingSource({day: ranks}), policy=Policy.B1,
+                    execution_calendar=[day, next_day], worst_case_cost_config=CostConfig(),
+                    tick_size=0.01, quantity_rule_resolver=resolver,
+                )
+                bar = MarketBar("688001.SH", day, 10, 10, 10, 10, 1000, 10000,
+                                True, False, False)
+                orders = strategy.orders_for(
+                    trading_date=day, signal_time=strategy.signal_time_for(day),
+                    account=_account_view(initial_cash), market=_Market({"688001.SH": (bar,)}),
+                )
+                if expected is None:
+                    self.assertEqual(orders, ())
+                    tranche = next(iter(registry.tranches.values()))
+                    self.assertIs(tranche.status, TrancheStatus.REJECTED)
+                    self.assertIsNone(tranche.order_id)
+                    self.assertEqual(tranche.requested_shares, 0)
+                    self.assertEqual(next(iter(registry.episodes.values())).commitment, 1200)
+                else:
+                    self.assertEqual(orders[0].shares, expected)
+
     def test_placeholder_source_ids_fail_at_snapshot_creation_without_registry_pollution(self):
         day = date(2026, 1, 5)
         invalid_source_ids = (

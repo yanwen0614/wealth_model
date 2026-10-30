@@ -14,6 +14,7 @@ from backtest_core.contracts.validation import ensure_calendar_date, ensure_tz_a
 from backtest_core.policies import AShareCostModel
 
 from backtest.cnn_adapter.common import signal_time_for
+from backtest.cnn_adapter.quantity_rules import QuantityRule, QuantityRuleError
 from backtest.cnn_adapter.staged_allocation import (
     AllocationError,
     AllocationRegistry,
@@ -117,6 +118,7 @@ class StagedOrderStrategy:
                  *, policy: Policy, execution_calendar: Sequence[date],
                  worst_case_cost_config: CostConfig,
                  cost_config_resolver: Callable[[date, str], CostConfig] | None = None,
+                 quantity_rule_resolver: Callable[[date, str], QuantityRule] | None = None,
                  tick_size: float, lot_size: int = 100,
                  buffer_start_date: date | None = None):
         days = tuple(execution_calendar)
@@ -133,12 +135,15 @@ class StagedOrderStrategy:
             raise TypeError("worst_case_cost_config 必须为 CostConfig")
         if cost_config_resolver is not None and not callable(cost_config_resolver):
             raise ValueError("cost_config_resolver 必须可调用")
+        if quantity_rule_resolver is not None and not callable(quantity_rule_resolver):
+            raise ValueError("quantity_rule_resolver 必须可调用")
         self._registry = registry
         self._ranking_source = ranking_source
         self._policy = Policy(policy)
         self._calendar = days
         self._cost = worst_case_cost_config
         self._cost_resolver = cost_config_resolver
+        self._quantity_rule_resolver = quantity_rule_resolver
         self._lot_size = lot_size
         self._limit_buffer = _LIMIT_BUFFER
         self._tick = float(tick_size)
@@ -400,6 +405,14 @@ class StagedOrderStrategy:
         if shares <= 0:
             self._registry.fail_tranche(episode.episode_id, tranche_id, "zero_lot")
             return None
+        try:
+            rule = self._quantity_rule(episode.code, trading_date)
+            if rule is not None:
+                rule.validate(Side.BUY, shares, trading_date)
+        except (QuantityRuleError, ValueError) as exc:
+            self._registry.fail_tranche(episode.episode_id, tranche_id, "quantity_rule: " + str(exc))
+            self._rejections.append(f"{trading_date}:{episode.code}:buy_quantity_rule")
+            return None
         order_id = f"{episode.episode_id}:{tranche_id}:{trading_date.isoformat()}"
         self._registry.schedule_tranche(episode.episode_id, tranche_id, order_id, shares, limit)
         return OrderIntent(
@@ -440,6 +453,13 @@ class StagedOrderStrategy:
         shares = int(position.shares) - int(account.locked.get(episode.code, 0))
         if shares <= 0:
             return []
+        try:
+            rule = self._quantity_rule(episode.code, trading_date)
+            if rule is not None:
+                rule.validate(Side.SELL, shares, trading_date, available_shares=shares)
+        except (QuantityRuleError, ValueError):
+            self._rejections.append(f"{trading_date}:{episode.code}:sell_quantity_rule")
+            return []
         bar = self._bar(market, episode.code, trading_date)
         if bar is None or bar.close is None or not isfinite(bar.close) or bar.close <= 0:
             self._rejections.append(f"{trading_date}:{episode.code}:sell_raw_close_unknown")
@@ -450,6 +470,14 @@ class StagedOrderStrategy:
             instrument_id=episode.code, side=Side.SELL, shares=shares,
             episode_id=episode.episode_id, order_id=order_id, limit_price=limit,
         )]
+
+    def _quantity_rule(self, code: str, trading_date: date) -> QuantityRule | None:
+        if self._quantity_rule_resolver is None:
+            return None
+        rule = self._quantity_rule_resolver(trading_date, code)
+        if not isinstance(rule, QuantityRule):
+            raise QuantityRuleError("数量规则 resolver 必须返回 QuantityRule")
+        return rule
 
     def _bar(self, market: MarketView, code: str, trading_date: date) -> MarketBar | None:
         bars = market.get_bars(code, trading_date, trading_date)
