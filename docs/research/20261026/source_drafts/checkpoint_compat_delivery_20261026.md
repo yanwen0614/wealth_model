@@ -50,8 +50,7 @@ W2 `best_model.pth` 的 `optimizer.param_groups[0].lr` 是 `numpy.float64`。W2 
 | `training/trainer.py`（仅 Ruff import 排序） | `5C6B9C1175B018E36591B3B5D92B16CA4CBF282E776C31BE07E570DE8E93BAA4` |
 | `tests/unit/training/test_training_checkpoint.py` | `24F0F1722065E69CA965B8863F38E9251C49D9285DA4053EF7941978AEED0FA5` |
 | `tests/unit/scripts/test_walkforward_signals.py` | `4A23FFA4E4F01564BE7BE81A0E7CE93D817E80CFF48AFB3584F02F8C5C9482A7` |
-| `docs/agent/task/20261026_checkpoint-numpy-compat/PLAN.md` | `EA06DCF46CA1C94F15A19A9F4B5B593CE33F0007497A8B7EA173668886979CD6` |
-| `docs/agent/task/20261026_checkpoint-numpy-compat/REVIEW_CHECKLIST.md` | `4495085BF3A38FEABCCD611A1FD338ADA5AA80D12B300ADD35DB3978894FCAE5` |
-| `docs/agent/task/20261026_checkpoint-numpy-compat/HARNESS_PROGRESS.md` | `90FF77C62535941D7C4B07806E2D02768A208805176C38928FF5C929BDADB065` |
+
+原 `docs/agent/task/20261026_checkpoint-numpy-compat/` 的三份 harness 文档（PLAN / REVIEW_CHECKLIST / HARNESS_PROGRESS）已于 2026-10-31 随任务目录精简删除，其哈希不再可校验；结论见 `docs/agent/task/agent_task_conclusions.md` §5，过程原文可查 git 历史。
 
 变更 diff：4 个代码/测试文件，`112 insertions(+), 11 deletions(-)`；另有 3 个 harness 任务文档。保持冻结，等待主会话安排独立 Luna QA。

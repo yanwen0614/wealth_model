@@ -131,7 +131,7 @@
 
 ## 7. E0–E5 回测综合结论（2026-09-15，seed 42 / 2026-01-01~08-31 / 基准沪深300）
 
-> 依据：Val Loss/Acc、截面 RankIC（`scripts/eval_bins_mapping.py`）、rolling 与 target 回测（新费用模型 + 指数基准）、`--strong_buy_threshold` 扫描（0/2%/3%/5% × b500/exitnp × size 5/10/50）。任务留档：`docs/agent/task/20260913_2331_rolling-normalization-redesign/`、`docs/agent/task/20260914_2303_backtest-fee-target-exit/`、`docs/agent/task/20260915_0005_add-strong-buy-gate/`。
+> 依据：Val Loss/Acc、截面 RankIC（`scripts/eval_bins_mapping.py`）、rolling 与 target 回测（新费用模型 + 指数基准）、`--strong_buy_threshold` 扫描（0/2%/3%/5% × b500/exitnp × size 5/10/50）。任务结论留档：`docs/agent/task/agent_task_conclusions.md`（§1 E0–E5 对照、§2 费用与退出、§3 强买门槛）。
 
 | 臂 | RankIC | rolling 超额(top10) | target exitnp 超额 **均值**(s5/10/20/50) | 评价 |
 |---|---|---|---|---|

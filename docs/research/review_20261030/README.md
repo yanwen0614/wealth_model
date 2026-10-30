@@ -1,6 +1,6 @@
 # 研究回顾包索引（2026-10-30）
 
-本目录收 2026-10-30 工程整理与三天研究回顾的全部产物。新接手者从这里读起。
+本目录收 2026-10-30 工程整理与三天研究回顾的结论。新接手者从这里读起。
 
 ## 先读这两份
 
@@ -18,19 +18,15 @@
 | `fill_gap_analysis_20261030.md` | 八项不可复现能否补（3 不能 / 5 部分 / 1 推翻原判可补） |
 | `quant_source_audit_20261030.md` | quant 源头历史缺口可解性：缺口不是取数漏，是源头本无行情 |
 | `train_data_stock_audit_20261030.md` | 训练数据侧问题股票排查 |
-| `RESEARCH_CONSOLIDATION_AUDIT_20261030.md` | 研究产物收口审计（P0 TODO 来源） |
-| `DELETE_PLAN_abandoned_20261030.md` | 14 条放弃路线死代码删除计划与执行 |
 
 ## 清理与退役（`30-清理与退役/`）
 
 | 项 | 内容 |
 |---|---|
-| `CLEANUP_PLAN_20261030.md` / `CLEANUP_RESULT_20261030.md` | Temp 目录清理方案与结果（含 uv 缓存回收 8.17 GiB） |
+| `recovered_w1_20261030/REPORT.md` | 18 文件恢复方法学与逐文件校验结论 |
 | `worktree_retirement_20261030/REPORT.md` | 四棵工作树退役记录 |
-| `recovered_w1_20261030/` | 恢复过程的**身份与校验记录**（REPORT + MANIFEST + verification + scan_records + raw_patches_index + rebuild_v5） |
-| **代码清理（2026-10-30）** | 三批删除，共约 19.5 GB 可再生/已证伪产物：①`research/goal/`（旧栈只读快照，93 个已跟踪文件，提交 `0d85715`，结论已由 `research/goal_repro/` 新栈重做）；②`logs/tree_verify/` + `logs/tree_rebuild/`（3.21 GB 可再生 npz，小文本证据 63 个另存 `D:/code/cnn_full_20260905/logs_tree_evidence_20261030/`，**⚠️ `REPORT.md`/`SUMMARY.md` 两个 md 被保全脚本漏掉 .md 扩展名而误删，恢复状态待确认**）；③`paper_jkx/logs/`（16.27 GB JKX 七路产物，48 个小文本证据另存 `D:/code/cnn_full_20260905/paper_jkx_logs_small_evidence/`，结论见 `docs/archive/paper_jkx_2024-2026_seven_routes.md`）。失败的实验清单与"为什么可以删"见 `00-必读/五个问题白话回答.md` 第 3.1 节 |
 
-> `recovered_w1_20261030/` 只保留 6 个记录文件。18 个恢复出的源码已随 `8cd25a9` 进入主仓库（逐字节相同，无需在文档里留副本）；739 个恢复中间产物（`work/` 调试输出、`raw_patches/` 621 个补丁、`evidence2.json` 6.2 MB、`scripts_used/`）已移出仓库，完整副本在 `D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/`（SHA256SUMS 覆盖）。
+> `recovered_w1_20261030/` 保留 `REPORT.md` 与 `MANIFEST.json`（后者被 `scripts/research/README.md` 引用）。18 个恢复出的源码已随 `8cd25a9` 进入主仓库（逐字节相同，无需在文档里留副本）；其余恢复中间产物（`verification.json`、`scan_records.json`、`raw_patches_index.json`、`rebuild_v5.json`、`raw_patches/` 621 个补丁、`evidence2.json` 6.2 MB、`work/`、`scripts_used/`）已移出仓库，完整副本在 `D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/`（SHA256SUMS 覆盖）。
 
 ## 评审记录（`90-评审记录/`）
 
@@ -40,4 +36,4 @@
 
 1. 本目录内文件正文引用的绝对路径多为**写作时的原始位置**（整理前在 Temp）。保留原始记录未改写，阅读时映射到本目录即可。
 2. 大体积证据数据不在此处，已复制保全至 `D:/code/cnn_full_20260905/evidence_tmp_20261030/`（7 个根、5,863 文件、~13.4 GB、逐文件哈希、4812/4812 校验通过）。
-3. 本目录已入库（`3d422bb`）。
+3. 本目录已入库（`3d422bb`）。过程性审计与计划文档已于 2026-10-31 精简删除，结论并入 `docs/research/final_delivery_20261030.md` 与本目录两份必读。

@@ -47,4 +47,4 @@
 - 北交所：《北京证券交易所交易规则》3.3.11–3.3.13（30%、IPO/退市整理首日无涨跌幅、价格笼子）：https://www.bse.cn/jygl_list/200028217.html
 - 上交所：市场数据接口规格含价格档位、涨跌幅限制类型及上下限价字段说明：https://www.sse.com.cn/services/tradingtech/development/c/10789328/files/3c6ccdac26eb4639919413594d2d3d62.pdf
 - 深交所：ST金刚2022-06-06退市整理首日公告：https://disc.static.szse.cn/download/disc/disk03/finalpage/2022-05-26/d7d2d914-6da0-4722-934d-9a94c51e762b.PDF
-- 本地SQL语义依据：`docs/research/20261026/verified_state_source_contract.md`、`state_data_acquisition_plan.md`；quant `history_status.py`、`history_status_storage.py`、`touch_confirm_mixin.py`、`history_status_update_pipeline.py`。
+- 本地SQL语义依据：`quant_source_audit_20261030.md`（源头缺口权威版）；quant `history_status.py`、`history_status_storage.py`、`touch_confirm_mixin.py`、`history_status_update_pipeline.py`。

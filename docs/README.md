@@ -13,40 +13,39 @@
 
 ## `docs/research/` — 研究结论
 
+过程性审计与计划文档已于 2026-10-31 精简删除，结论并入本节所列文件。
+
 ### 最新总稿（先读这两个）
 
 | 文件 | 内容 |
 |---|---|
 | `final_delivery_20261030.md` | 策略探索最终交付说明：三年研究全部结论、有效性矩阵、数据边界、联合目标验收状态 |
-| `three_day_strategy_report_20261029.md` | 三天工程汇报：W1/W2 八窗、成本、税务、执行假设 |
+| `review_20261030/00-必读/五个问题白话回答.md` | 五问白话版：①试了哪些路 ②当前有什么 ③能不能复现 ④卡在哪 ⑤下一步（原三天汇报已并入） |
 
-### `review_20261030/` — 本轮工程整理的完整记录
+### `review_20261030/` — 本轮工程整理的结论
 
 **入口 = `review_20261030/README.md`**
 
 | 文件 | 回答 |
 |---|---|
 | `00-必读/下一次实验必读.md` | **下次动手前必看**：四条真实事故 + 四条硬规范 + 检查清单 + 15 条教训 |
-| `00-必读/五个问题白话回答.md` | 五问的人话版（已过三轮评审 8.0/10）；原始探索报告 q1~q5 已删除，其结论已完整并入此文件 |
+| `00-必读/五个问题白话回答.md` | 五问的人话版；原始探索报告 q1~q5 已删，结论已完整并入此文件 |
 | `20-专项审计/fill_gap_analysis_20261030.md` | 八项不可复现能否补（3 不能 / 5 部分 / 1 推翻原判） |
 | `20-专项审计/quant_source_audit_20261030.md` | quant 源头历史缺口可解性（停牌/上市前/unknown/限价/公司行动/退市） |
 | `20-专项审计/train_data_stock_audit_20261030.md` | 训练数据侧问题股票排查 |
-| `20-专项审计/DELETE_PLAN_abandoned_20261030.md` | 14 条放弃路线死代码删除计划与执行 |
-| `20-专项审计/RESEARCH_CONSOLIDATION_AUDIT_20261030.md` | 研究产物收口审计 |
-| `30-清理与退役/CLEANUP_PLAN_20261030.md`、`CLEANUP_RESULT_20261030.md` | Temp 清理方案与结果 |
-| `30-清理与退役/worktree_retirement_20261030/` | 工作树退役记录 |
-| `30-清理与退役/recovered_w1_20261030/` | 恢复过程的身份与校验记录（源码已随 8cd25a9 入库；中间产物移出仓库） |
+| `30-清理与退役/recovered_w1_20261030/REPORT.md` | 18 文件恢复方法学与逐文件校验结论 |
+| `30-清理与退役/worktree_retirement_20261030/REPORT.md` | 四棵工作树退役记录 |
 | `90-评审记录/review-round{1,2,3}.md` | 三轮可读性评审答卷（7.5 / 7.5 / 8.0） |
 
 ### `20261026/` — 三天工程的过程文档
 
-正式结论 26 个文件：`price_lineage.md`（价格血缘）、`universe_lineage.md`（股票池血缘）、`verified_state_source_contract.md`（状态源契约）、`ENGINEERING_STATUS.md`（工程状态）、`INDEPENDENT_AUDIT_REPORT_20261027.md`（独立审计）等。**以这些为准。**
+保留文档：`f4_signal_delivery.md`（F4 信号交付）、`ENGINEERING_STATUS.md`（工程状态）、`corporate_action_tax_tdd_plan.md`、`staged_order_strategy_delivery.md`、`state_acquisition_request_v2.md`、`z_corporate_actions_audit.md/.json`。
 
-`20261026/source_drafts/` 收 33 份原存于 Temp 的 `three_day_*.md` / `*_handoff*.md` / `*_qa_*.md` 过程草稿（2026-10-30 迁入，防证据孤本）。草稿不具权威性，正式版见上级目录；仅对无正式版的主题（candidate_registry、asset_inventory、training_queue 等）作为执行细节参考。
+`20261026/source_drafts/` 收 33 份原存于 Temp 的 `three_day_*.md` / `*_handoff*.md` / `*_qa_*.md` 过程草稿。草稿不具权威性，结论已并入 `final_delivery_20261030.md`；仅对无正式版的主题（candidate_registry、asset_inventory、training_queue 等）作为执行细节参考。
 
 ### `worktree_consolidation_20261030/` — 工作树整合索引
 
-含"已提交可复用 / 已永久丢失"两分清册（后者在 18 文件恢复后部分已过时，见 `review_20261030/` 的订正）。
+CA 整合树的可审代码与材料索引；"已永久丢失"一节写于 18 文件恢复之前，需与 `review_20261030/` 交叉阅读。
 
 ## `docs/` 顶层专题文档
 
@@ -55,7 +54,7 @@
 | `per_code_normalization_spec.md` | **归一化决策唯一事实源**（P/R/N/G 分组 + relative/asinh/clip/robust/winsor/mask），与 `data/schema.py`、`data/scaler.py` 一一对应 | 活文档，改分组先改此表 |
 | `prediction_target_and_tree_2026.md` | 预测目标与树模型收口结论（2026-10） | 稳定结论 |
 | `ENGINE_MAP_2026.md` | 引擎模块地图 | 稳定 |
-| `lambda_ablation_20260906.md` | λ 消融实验（**已证伪**，见 review_20261030/q1） | 历史 |
+| `lambda_ablation_20260906.md` | λ 消融实验（**已证伪**，见 `review_20261030/00-必读/五个问题白话回答.md` 第 3 节） | 历史 |
 | `loss_ablation_20260905.md` | 损失函数消融（**旧口径已作废**） | 历史 |
 | `retail_winrate_research_summary_20260920.md` | 单票胜率研究（**已证伪，数学不可达**） | 历史 |
 | `full_train_todo.md` | 全量训练待办（**未启动**） | 待定 |
@@ -66,8 +65,14 @@
 
 ## `docs/agent/` — 任务执行记录
 
-按 `task/YYYYMMDD_HHMM_<名称>/` 组织，每个含 `PLAN.md` / `REVIEW_CHECKLIST.md` / `HARNESS_PROGRESS.md`。
-**注意**：2026-09 的旧任务目录多数无状态标记，不代表仍在进行。
+历史任务目录（`task/YYYYMMDD_HHMM_<名称>/`，含 `PLAN.md` / `REVIEW_CHECKLIST.md` / `HARNESS_PROGRESS.md`）已于 2026-10-31 精简：已完结的过程记录全部删除，独有结论集中到 `task/agent_task_conclusions.md`（E0–E5 对照、费用模型与退出规则、强买门槛、换手/行业归因、checkpoint NumPy 兼容）。过程细节可查 git 历史。
+
+仅保留 2 个仍需跟踪的任务目录：
+
+| 目录 | 状态 |
+|---|---|
+| `task/20261027_staged-order-strategy/` | scope B（生产放行）仍 pending，是当前口径边界 |
+| `task/20261030_2200_workspace-consolidation/` | 审计报告要求改写后再处理，当前保持原状 |
 
 ## 阅读顺序建议
 

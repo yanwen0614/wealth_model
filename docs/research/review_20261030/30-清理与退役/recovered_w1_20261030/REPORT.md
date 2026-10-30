@@ -4,7 +4,7 @@
 - 数据库：`C:\Users\yanwen\.local\share\opencode\opencode.db`（3.8 GB，SQLite）
 - **只读访问**：全部连接均为 `sqlite3.connect("file:...?mode=ro", uri=True)`，未以写模式打开过
 - 未修改 `D:/code/cnn_full_20260905/cnn` 与 `D:/code/cnn_full_20260905/backtest-core` 的任何文件，未执行任何 git 写操作
-- 产物目录：`C:\Users\yanwen\AppData\Local\Temp\opencode\recovered_w1_20261030\`
+- 产物目录（原始）：`C:\Users\yanwen\AppData\Local\Temp\opencode\recovered_w1_20261030\`；现完整副本在 `D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/`
 
 ## 一、结论摘要
 
@@ -79,7 +79,7 @@
 **重建结果不匹配该值。** 实际 SHA256：
 
 ```
-ABF5E9FD3A19CDC4... (完整值见 MANIFEST.json)
+ABF5E9FD3A19CDC4... (完整值见外置证据副本 `D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/MANIFEST.json`)
 ```
 
 这不是恢复失败，而是**时间点不同**，有完整证据链：
@@ -131,8 +131,10 @@ ABF5E9FD3A19CDC4... (完整值见 MANIFEST.json)
 
 ## 七、产物清单
 
+以下清单描述恢复工作当时的完整产物布局。仓库内只保留本 `REPORT.md`；其余条目（`recovered/`、5 个 JSON、`raw_patches/`、`evidence2.json`、`scripts_used/`、`work/`）已移出仓库，完整副本在 `D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/`（SHA256SUMS 覆盖）。
+
 ```
-recovered_w1_20261030/
+D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/
 ├── recovered/                      18 个重建文件，保持原相对路径
 │   ├── backtest/cnn_adapter/*.py   (7)
 │   ├── scripts/*.py                (2)
@@ -163,7 +165,7 @@ recovered_w1_20261030/
 
 ```powershell
 $py = "D:/code/cnn_full_20260905/cnn/.venv/Scripts/python.exe"
-$d  = "C:\Users\yanwen\AppData\Local\Temp\opencode\recovered_w1_20261030\scripts_used"
+$d  = "D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/scripts_used"
 
 & $py "$d\collect2.py"      # 采集证据 -> evidence2.json
 & $py "$d\builder5.py"      # 重建 -> recovered/
@@ -175,5 +177,5 @@ $d  = "C:\Users\yanwen\AppData\Local\Temp\opencode\recovered_w1_20261030\scripts
 ## 九、需要人工确认的点
 
 1. **要哪一版 `fractional_scenarios.py`**：`7112BEDE`（07:55，独立 QA 冻结版，229 行）还是 `ABF5E9FD3A19`（07:58 之后，删除前最终版，248 行）。当前 `recovered/` 里是后者。
-2. **是否接受 `run_2025_restricted.py` 的 1135 行版本**。该文件体量远超其余，且有 edit 历史；如需更严格审计，建议对照 `work/` 里的逐事件日志（`rebuild_v5.json` 的 `log` 字段）。
+2. **是否接受 `run_2025_restricted.py` 的 1135 行版本**。该文件体量远超其余，且有 edit 历史；如需更严格审计，建议对照外置副本中的逐事件日志（`D:/code/cnn_full_20260905/evidence_tmp_20261030/recovered_w1_20261030/rebuild_v5.json` 的 `log` 字段）。
 3. **`test_fractional_scenarios.py` 与 `fractional_scenarios.py` 的 `announcement_visibility` 断言不一致**，属当时既存缺陷。是否要在恢复副本里修正，取决于用户是否把它当作可运行代码而非历史快照——**本次未做任何修正，保持原貌**。

@@ -137,6 +137,14 @@ fix2、fix3、fix5的mini验证通过其各自限定的机械检查；fix5独立
 
 准备及整合细节见`staged_prepared_inputs_20261027_v12/manifest.json`、`staged_integration_independent_qa_20261028/reverify1/QA_REPORT.md`及`staged_production_integration_delivery_20261027/SOURCE_HASHES_FINAL.json`。这些路径位于临时证据根目录`C:/Users/yanwen/AppData/Local/Temp/opencode/`。
 
+工程侧遗留项复核（2026-10-31 实测）：
+
+1. **wheel 身份**：cnn 现用 `wheels/backtest_core-0.1.1`（wheel 内 `account_runner.py` SHA-256 `0bb5c30c…`）与 core 提交 `a176be9` 语义一致，`stop_after_close` 已在运行副本生效；原「wheel = `893fc96`、core 远端 = `a176be9`」的身份差已消除。
+2. **推送状态**：core `main` = `df38c2e` = `origin/main`；cnn `main` = `f1321c4` = `origin/main`；「十月下旬提交仅存本地」「core 4 个未推送」均不再成立。
+3. **T18 轮转**：`collect_rotation_plan` 已改 `os.walk` 递归扫描，`logs/` 不再返回空计划（实测 keep 10 个 `logs/relative/run_*`，合计 302.6 MB）。
+4. **T18 覆盖缺口仍在**：`logs/` 的 17 个顶层目录（`bt_*`、`m_research`、`tree_verify`）不匹配 `run_*` 命名，永不进入轮转计划；`docs/archive/logs_manifest.csv` 仍为 341 行、止于 2026-09-29，编目未补。
+5. **`docs/agent/` 索引缺口已收口**：`task/` 下现仅 2 个任务目录，过程计划/进度/审查清单已删，结论集中到 `docs/agent/task/agent_task_conclusions.md`；原「22 目录无索引、无废弃标记」问题不再存在。
+
 ## 9. 费用、税务与持仓容量
 
 W2模拟佣金买卖各万二、最低¥5，卖出印花税千分之一、过户费万分之0.2，并计模型滑点；四策略成本合计见第4节，已进入NAV。换手较高，尤其B1单边换手约初始本金29.05倍；成交真实性、冲击成本模型和真实券商费率没有历史PIT认证。固定成交路径的成本压力重算不改变订单/仓位路径，不是动态收益上下界。
@@ -162,7 +170,7 @@ W2现金股息采用20% `cash_dividend_20pct_stress`压力政策，不是已证�
 
 | 主题 | 主要证据 |
 |---|---|
-| 原三天汇报与W2目标复核 | `D:/code/cnn_full_20260905/cnn/docs/research/three_day_strategy_report_20261029.md`；`C:/Users/yanwen/AppData/Local/Temp/opencode/w2_goal_acceptance_review_20261029/结论.md` |
+| 原三天汇报与W2目标复核 | `docs/research/review_20261030/00-必读/五个问题白话回答.md`（三天汇报结论已并入）；`C:/Users/yanwen/AppData/Local/Temp/opencode/w2_goal_acceptance_review_20261029/结论.md` |
 | 八窗账本、成本、buffer及coverage | `.../eight_windows_second_audit_20261028/audit.md`；`.../w2_mechanical_risk_review_20261028/audit_report.md`；`.../w2_exposure_evidence_20261028/README.md`；`.../w2_tax_fifo_independent_qa_20261029/独立审计报告.md` |
 | W1前缀与ceil根因 | `.../w1_real_prefix_independent_audit_20261029/REPORT.md`；`.../w1_ceil_failure_root_cause_20261029/ROOT_CAUSE.md`；`.../w1_prefix_independent_qa_20261028/reverify4/REPORT.md`；源码已在主区（`backtest/cnn_adapter/fractional_scenarios.py`、`prefix_attestor.py`、`prefix_ledger_verifier.py` 等） |
 | 2025输入与中断 | `.../validation_2025_local_inputs_20261029/FINAL_REPORT.md`；`.../validation_2025_ab_real_20261029_v2/annual/A/summary.json`及`.../annual/B/summary.json`；`.../validation_2025_restricted_independent_qa_20261029/reverify3/REPORT.md`；源码已在主区（`backtest/cnn_adapter/validation_2025_*.py`、`scripts/run_2025_restricted.py` 等） |
