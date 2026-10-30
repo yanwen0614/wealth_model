@@ -1,0 +1,1324 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-30",
+  "policy": "只排除“整只股不可用”的代码：dev 完全无 kline 的退市股，或数据全部为人工暂停上市行的股。区间性停牌/暂停上市但存在正常交易历史的股一律保留（停牌日已有 is_trading=False 过滤）。本文件只做代码级排除，不修改任何 parquet 原文件。",
+  "excluded": [],
+  "absent_from_training": [
+    {
+      "code": "000005.SZ",
+      "security_name": "ST星源(退市)",
+      "listdate": 19901210,
+      "delistdate": 20240426
+    },
+    {
+      "code": "000023.SZ",
+      "security_name": "*ST深天(退市)",
+      "listdate": 19930429,
+      "delistdate": 20240902
+    },
+    {
+      "code": "000038.SZ",
+      "security_name": "大通退(退市)",
+      "listdate": 19940808,
+      "delistdate": 20230712
+    },
+    {
+      "code": "000040.SZ",
+      "security_name": "*ST旭蓝(退市)",
+      "listdate": 19940808,
+      "delistdate": 20250430
+    },
+    {
+      "code": "000046.SZ",
+      "security_name": "*ST泛海(退市)",
+      "listdate": 19940912,
+      "delistdate": 20240207
+    },
+    {
+      "code": "000413.SZ",
+      "security_name": "ST旭电(退市)",
+      "listdate": 19960925,
+      "delistdate": 20241011
+    },
+    {
+      "code": "000416.SZ",
+      "security_name": "*ST民控(退市)",
+      "listdate": 19960719,
+      "delistdate": 20240605
+    },
+    {
+      "code": "000502.SZ",
+      "security_name": "绿景退(退市)",
+      "listdate": 19921123,
+      "delistdate": 20220627
+    },
+    {
+      "code": "000540.SZ",
+      "security_name": "*ST中天(退市)",
+      "listdate": 19940202,
+      "delistdate": 20230630
+    },
+    {
+      "code": "000584.SZ",
+      "security_name": "工智退(退市)",
+      "listdate": 19951128,
+      "delistdate": 20250711
+    },
+    {
+      "code": "000585.SZ",
+      "security_name": "东电退(退市)",
+      "listdate": 19951213,
+      "delistdate": 20220524
+    },
+    {
+      "code": "000587.SZ",
+      "security_name": "*ST金洲(退市)",
+      "listdate": 19960425,
+      "delistdate": 20230403
+    },
+    {
+      "code": "000606.SZ",
+      "security_name": "顺利退(退市)",
+      "listdate": 19961004,
+      "delistdate": 20230706
+    },
+    {
+      "code": "000611.SZ",
+      "security_name": "天首退(退市)",
+      "listdate": 19961008,
+      "delistdate": 20220628
+    },
+    {
+      "code": "000613.SZ",
+      "security_name": "东海A退(退市)",
+      "listdate": 19970128,
+      "delistdate": 20220629
+    },
+    {
+      "code": "000616.SZ",
+      "security_name": "*ST海投(退市)",
+      "listdate": 19961108,
+      "delistdate": 20230823
+    },
+    {
+      "code": "000622.SZ",
+      "security_name": "恒立退(退市)",
+      "listdate": 19961107,
+      "delistdate": 20250716
+    },
+    {
+      "code": "000627.SZ",
+      "security_name": "*ST天茂(退市)",
+      "listdate": 19961112,
+      "delistdate": 20250930
+    },
+    {
+      "code": "000638.SZ",
+      "security_name": "*ST万方(退市)",
+      "listdate": 19961126,
+      "delistdate": 20260603
+    },
+    {
+      "code": "000662.SZ",
+      "security_name": "天夏退(退市)",
+      "listdate": 19961216,
+      "delistdate": 20210412
+    },
+    {
+      "code": "000666.SZ",
+      "security_name": "经纬纺机(退市)",
+      "listdate": 19961210,
+      "delistdate": 20231026
+    },
+    {
+      "code": "000667.SZ",
+      "security_name": "ST美置(退市)",
+      "listdate": 19961205,
+      "delistdate": 20230714
+    },
+    {
+      "code": "000671.SZ",
+      "security_name": "ST阳光城(退市)",
+      "listdate": 19961218,
+      "delistdate": 20230816
+    },
+    {
+      "code": "000673.SZ",
+      "security_name": "当代退(退市)",
+      "listdate": 19970124,
+      "delistdate": 20220704
+    },
+    {
+      "code": "000687.SZ",
+      "security_name": "华讯退(退市)",
+      "listdate": 19970221,
+      "delistdate": 20220617
+    },
+    {
+      "code": "000732.SZ",
+      "security_name": "ST泰禾(退市)",
+      "listdate": 19970704,
+      "delistdate": 20230804
+    },
+    {
+      "code": "000760.SZ",
+      "security_name": "斯太退(退市)",
+      "listdate": 19970627,
+      "delistdate": 20210723
+    },
+    {
+      "code": "000780.SZ",
+      "security_name": "ST平能(退市)",
+      "listdate": 19970606,
+      "delistdate": 20220124
+    },
+    {
+      "code": "000806.SZ",
+      "security_name": "银河退(退市)",
+      "listdate": 19980416,
+      "delistdate": 20230706
+    },
+    {
+      "code": "000835.SZ",
+      "security_name": "长动退(退市)",
+      "listdate": 19990625,
+      "delistdate": 20220523
+    },
+    {
+      "code": "000836.SZ",
+      "security_name": "ST富通(退市)",
+      "listdate": 19970929,
+      "delistdate": 20240812
+    },
+    {
+      "code": "000851.SZ",
+      "security_name": "*ST高鸿(退市)",
+      "listdate": 19980609,
+      "delistdate": 20251111
+    },
+    {
+      "code": "000861.SZ",
+      "security_name": "海印股份(退市)",
+      "listdate": 19981028,
+      "delistdate": 20240918
+    },
+    {
+      "code": "000918.SZ",
+      "security_name": "*ST嘉凯(退市)",
+      "listdate": 19990720,
+      "delistdate": 20230728
+    },
+    {
+      "code": "000939.SZ",
+      "security_name": "凯迪退(退市)",
+      "listdate": 19990923,
+      "delistdate": 20201217
+    },
+    {
+      "code": "000961.SZ",
+      "security_name": "ST中南(退市)",
+      "listdate": 20000301,
+      "delistdate": 20240711
+    },
+    {
+      "code": "000976.SZ",
+      "security_name": "*ST华铁(退市)",
+      "listdate": 20000601,
+      "delistdate": 20240827
+    },
+    {
+      "code": "000996.SZ",
+      "security_name": "中期退(退市)",
+      "listdate": 20000718,
+      "delistdate": 20240628
+    },
+    {
+      "code": "002002.SZ",
+      "security_name": "ST鸿达(退市)",
+      "listdate": 20040625,
+      "delistdate": 20240318
+    },
+    {
+      "code": "002013.SZ",
+      "security_name": "中航机电(退市)",
+      "listdate": 20040705,
+      "delistdate": 20230317
+    },
+    {
+      "code": "002071.SZ",
+      "security_name": "长城退(退市)",
+      "listdate": 20061012,
+      "delistdate": 20210507
+    },
+    {
+      "code": "002087.SZ",
+      "security_name": "新纺退(退市)",
+      "listdate": 20061130,
+      "delistdate": 20240628
+    },
+    {
+      "code": "002113.SZ",
+      "security_name": "*ST天润(退市)",
+      "listdate": 20070208,
+      "delistdate": 20230811
+    },
+    {
+      "code": "002118.SZ",
+      "security_name": "*ST紫鑫(退市)",
+      "listdate": 20070302,
+      "delistdate": 20230804
+    },
+    {
+      "code": "002147.SZ",
+      "security_name": "新光退(退市)",
+      "listdate": 20070808,
+      "delistdate": 20220623
+    },
+    {
+      "code": "002220.SZ",
+      "security_name": "天宝退(退市)",
+      "listdate": 20080228,
+      "delistdate": 20200811
+    },
+    {
+      "code": "002231.SZ",
+      "security_name": "*ST奥维(退市)",
+      "listdate": 20080512,
+      "delistdate": 20260327
+    },
+    {
+      "code": "002260.SZ",
+      "security_name": "德奥退(退市)",
+      "listdate": 20080716,
+      "delistdate": 20220617
+    },
+    {
+      "code": "002280.SZ",
+      "security_name": "ST联络(退市)",
+      "listdate": 20090821,
+      "delistdate": 20240816
+    },
+    {
+      "code": "002288.SZ",
+      "security_name": "*ST超华(退市)",
+      "listdate": 20090903,
+      "delistdate": 20240819
+    },
+    {
+      "code": "002308.SZ",
+      "security_name": "*ST威创(退市)",
+      "listdate": 20091127,
+      "delistdate": 20240927
+    },
+    {
+      "code": "002325.SZ",
+      "security_name": "*ST洪涛(退市)",
+      "listdate": 20091222,
+      "delistdate": 20240815
+    },
+    {
+      "code": "002336.SZ",
+      "security_name": "人乐退(退市)",
+      "listdate": 20100113,
+      "delistdate": 20250704
+    },
+    {
+      "code": "002341.SZ",
+      "security_name": "ST新纶(退市)",
+      "listdate": 20100122,
+      "delistdate": 20240823
+    },
+    {
+      "code": "002359.SZ",
+      "security_name": "北讯退(退市)",
+      "listdate": 20100210,
+      "delistdate": 20210723
+    },
+    {
+      "code": "002411.SZ",
+      "security_name": "必康退(退市)",
+      "listdate": 20100525,
+      "delistdate": 20230712
+    },
+    {
+      "code": "002417.SZ",
+      "security_name": "深南退(退市)",
+      "listdate": 20100601,
+      "delistdate": 20230710
+    },
+    {
+      "code": "002433.SZ",
+      "security_name": "太安退(退市)",
+      "listdate": 20100618,
+      "delistdate": 20240705
+    },
+    {
+      "code": "002447.SZ",
+      "security_name": "晨鑫退(退市)",
+      "listdate": 20100713,
+      "delistdate": 20220627
+    },
+    {
+      "code": "002450.SZ",
+      "security_name": "康得退(退市)",
+      "listdate": 20100716,
+      "delistdate": 20210531
+    },
+    {
+      "code": "002473.SZ",
+      "security_name": "圣莱退(退市)",
+      "listdate": 20100910,
+      "delistdate": 20220622
+    },
+    {
+      "code": "002499.SZ",
+      "security_name": "科林退(退市)",
+      "listdate": 20101109,
+      "delistdate": 20230418
+    },
+    {
+      "code": "002502.SZ",
+      "security_name": "ST鼎龙(退市)",
+      "listdate": 20101117,
+      "delistdate": 20240905
+    },
+    {
+      "code": "002503.SZ",
+      "security_name": "*ST搜特(退市)",
+      "listdate": 20101117,
+      "delistdate": 20230811
+    },
+    {
+      "code": "002504.SZ",
+      "security_name": "*ST弘高(退市)",
+      "listdate": 20101118,
+      "delistdate": 20230821
+    },
+    {
+      "code": "002505.SZ",
+      "security_name": "鹏都农牧(退市)",
+      "listdate": 20101118,
+      "delistdate": 20240830
+    },
+    {
+      "code": "002509.SZ",
+      "security_name": "天茂退(退市)",
+      "listdate": 20101123,
+      "delistdate": 20200720
+    },
+    {
+      "code": "002610.SZ",
+      "security_name": "ST爱康(退市)",
+      "listdate": 20110815,
+      "delistdate": 20240812
+    },
+    {
+      "code": "002618.SZ",
+      "security_name": "丹邦退(退市)",
+      "listdate": 20110920,
+      "delistdate": 20220622
+    },
+    {
+      "code": "002621.SZ",
+      "security_name": "*ST美吉(退市)",
+      "listdate": 20110929,
+      "delistdate": 20240805
+    },
+    {
+      "code": "002665.SZ",
+      "security_name": "ST航高(退市)",
+      "listdate": 20120327,
+      "delistdate": 20240826
+    },
+    {
+      "code": "002684.SZ",
+      "security_name": "猛狮退(退市)",
+      "listdate": 20120612,
+      "delistdate": 20220627
+    },
+    {
+      "code": "002699.SZ",
+      "security_name": "*ST美盛(退市)",
+      "listdate": 20120911,
+      "delistdate": 20240605
+    },
+    {
+      "code": "002711.SZ",
+      "security_name": "欧浦退(退市)",
+      "listdate": 20140127,
+      "delistdate": 20210715
+    },
+    {
+      "code": "002740.SZ",
+      "security_name": "*ST爱迪(退市)",
+      "listdate": 20150122,
+      "delistdate": 20240304
+    },
+    {
+      "code": "002750.SZ",
+      "security_name": "龙津退(退市)",
+      "listdate": 20150324,
+      "delistdate": 20250627
+    },
+    {
+      "code": "002751.SZ",
+      "security_name": "易尚退(退市)",
+      "listdate": 20150424,
+      "delistdate": 20230713
+    },
+    {
+      "code": "002770.SZ",
+      "security_name": "科迪退(退市)",
+      "listdate": 20150630,
+      "delistdate": 20220623
+    },
+    {
+      "code": "002776.SZ",
+      "security_name": "*ST柏龙(退市)",
+      "listdate": 20150626,
+      "delistdate": 20240125
+    },
+    {
+      "code": "002781.SZ",
+      "security_name": "奇信退(退市)",
+      "listdate": 20151222,
+      "delistdate": 20230705
+    },
+    {
+      "code": "300023.SZ",
+      "security_name": "宝德退(退市)",
+      "listdate": 20091030,
+      "delistdate": 20220629
+    },
+    {
+      "code": "300028.SZ",
+      "security_name": "金亚退(退市)",
+      "listdate": 20091030,
+      "delistdate": 20200803
+    },
+    {
+      "code": "300038.SZ",
+      "security_name": "数知退(退市)",
+      "listdate": 20100108,
+      "delistdate": 20220630
+    },
+    {
+      "code": "300064.SZ",
+      "security_name": "金刚退(退市)",
+      "listdate": 20100326,
+      "delistdate": 20220627
+    },
+    {
+      "code": "300089.SZ",
+      "security_name": "文化退(退市)",
+      "listdate": 20100625,
+      "delistdate": 20230713
+    },
+    {
+      "code": "300090.SZ",
+      "security_name": "盛运退(退市)",
+      "listdate": 20100625,
+      "delistdate": 20200825
+    },
+    {
+      "code": "300108.SZ",
+      "security_name": "*ST吉药(退市)",
+      "listdate": 20100825,
+      "delistdate": 20250529
+    },
+    {
+      "code": "300116.SZ",
+      "security_name": "*ST保力(退市)",
+      "listdate": 20100902,
+      "delistdate": 20240725
+    },
+    {
+      "code": "300117.SZ",
+      "security_name": "*ST嘉寓(退市)",
+      "listdate": 20100902,
+      "delistdate": 20250430
+    },
+    {
+      "code": "300156.SZ",
+      "security_name": "神雾退(退市)",
+      "listdate": 20110107,
+      "delistdate": 20200825
+    },
+    {
+      "code": "300178.SZ",
+      "security_name": "腾邦退(退市)",
+      "listdate": 20110215,
+      "delistdate": 20220622
+    },
+    {
+      "code": "300202.SZ",
+      "security_name": "聚龙退(退市)",
+      "listdate": 20110415,
+      "delistdate": 20220704
+    },
+    {
+      "code": "300216.SZ",
+      "security_name": "千山退(退市)",
+      "listdate": 20110511,
+      "delistdate": 20200916
+    },
+    {
+      "code": "300262.SZ",
+      "security_name": "*ST巴安(退市)",
+      "listdate": 20110916,
+      "delistdate": 20240819
+    },
+    {
+      "code": "300273.SZ",
+      "security_name": "和佳退(退市)",
+      "listdate": 20111026,
+      "delistdate": 20230706
+    },
+    {
+      "code": "300280.SZ",
+      "security_name": "紫天退(退市)",
+      "listdate": 20111229,
+      "delistdate": 20251014
+    },
+    {
+      "code": "300282.SZ",
+      "security_name": "三盛退(退市)",
+      "listdate": 20111229,
+      "delistdate": 20240718
+    },
+    {
+      "code": "300297.SZ",
+      "security_name": "蓝盾退(退市)",
+      "listdate": 20120315,
+      "delistdate": 20230731
+    },
+    {
+      "code": "300309.SZ",
+      "security_name": "吉艾退(退市)",
+      "listdate": 20120410,
+      "delistdate": 20230530
+    },
+    {
+      "code": "300312.SZ",
+      "security_name": "邦讯退(退市)",
+      "listdate": 20120508,
+      "delistdate": 20220704
+    },
+    {
+      "code": "300325.SZ",
+      "security_name": "德威退(退市)",
+      "listdate": 20120601,
+      "delistdate": 20220628
+    },
+    {
+      "code": "300330.SZ",
+      "security_name": "计通退(退市)",
+      "listdate": 20120619,
+      "delistdate": 20230524
+    },
+    {
+      "code": "300336.SZ",
+      "security_name": "新文退(退市)",
+      "listdate": 20120710,
+      "delistdate": 20230705
+    },
+    {
+      "code": "300362.SZ",
+      "security_name": "天翔退(退市)",
+      "listdate": 20140121,
+      "delistdate": 20210830
+    },
+    {
+      "code": "300367.SZ",
+      "security_name": "网力退(退市)",
+      "listdate": 20140129,
+      "delistdate": 20220630
+    },
+    {
+      "code": "300379.SZ",
+      "security_name": "东通退(退市)",
+      "listdate": 20140128,
+      "delistdate": 20260122
+    },
+    {
+      "code": "300391.SZ",
+      "security_name": "长药退(退市)",
+      "listdate": 20140801,
+      "delistdate": 20260413
+    },
+    {
+      "code": "300392.SZ",
+      "security_name": "腾信退(退市)",
+      "listdate": 20140910,
+      "delistdate": 20230710
+    },
+    {
+      "code": "300431.SZ",
+      "security_name": "暴风退(退市)",
+      "listdate": 20150324,
+      "delistdate": 20201110
+    },
+    {
+      "code": "300495.SZ",
+      "security_name": "*ST美尚(退市)",
+      "listdate": 20151222,
+      "delistdate": 20240920
+    },
+    {
+      "code": "300526.SZ",
+      "security_name": "中潜退(退市)",
+      "listdate": 20160802,
+      "delistdate": 20230712
+    },
+    {
+      "code": "300630.SZ",
+      "security_name": "普利退(退市)",
+      "listdate": 20170328,
+      "delistdate": 20250522
+    },
+    {
+      "code": "300742.SZ",
+      "security_name": "越博退(退市)",
+      "listdate": 20180508,
+      "delistdate": 20240722
+    },
+    {
+      "code": "300799.SZ",
+      "security_name": "左江退(退市)",
+      "listdate": 20191029,
+      "delistdate": 20240729
+    },
+    {
+      "code": "600068.SH",
+      "security_name": "葛洲坝(退市)",
+      "listdate": 19970526,
+      "delistdate": 20210913
+    },
+    {
+      "code": "600069.SH",
+      "security_name": "退市银鸽(退市)",
+      "listdate": 19970430,
+      "delistdate": 20200827
+    },
+    {
+      "code": "600070.SH",
+      "security_name": "*ST富润(退市)",
+      "listdate": 19970604,
+      "delistdate": 20250430
+    },
+    {
+      "code": "600074.SH",
+      "security_name": "退市保千(退市)",
+      "listdate": 19970623,
+      "delistdate": 20200602
+    },
+    {
+      "code": "600077.SH",
+      "security_name": "*ST宋都(退市)",
+      "listdate": 19970520,
+      "delistdate": 20230725
+    },
+    {
+      "code": "600083.SH",
+      "security_name": "*ST博信(退市)",
+      "listdate": 19970606,
+      "delistdate": 20250305
+    },
+    {
+      "code": "600086.SH",
+      "security_name": "退市金钰(退市)",
+      "listdate": 19970606,
+      "delistdate": 20210317
+    },
+    {
+      "code": "600090.SH",
+      "security_name": "退市济堂(退市)",
+      "listdate": 19970616,
+      "delistdate": 20220707
+    },
+    {
+      "code": "600091.SH",
+      "security_name": "退市明科(退市)",
+      "listdate": 19970704,
+      "delistdate": 20220621
+    },
+    {
+      "code": "600093.SH",
+      "security_name": "退市易见(退市)",
+      "listdate": 19970626,
+      "delistdate": 20220623
+    },
+    {
+      "code": "600112.SH",
+      "security_name": "*ST天成(退市)",
+      "listdate": 19971127,
+      "delistdate": 20240815
+    },
+    {
+      "code": "600122.SH",
+      "security_name": "*ST宏图(退市)",
+      "listdate": 19980420,
+      "delistdate": 20230626
+    },
+    {
+      "code": "600139.SH",
+      "security_name": "*ST西源(退市)",
+      "listdate": 19980225,
+      "delistdate": 20230327
+    },
+    {
+      "code": "600145.SH",
+      "security_name": "退市新亿(退市)",
+      "listdate": 19990923,
+      "delistdate": 20220428
+    },
+    {
+      "code": "600175.SH",
+      "security_name": "退市美都(退市)",
+      "listdate": 19990408,
+      "delistdate": 20200814
+    },
+    {
+      "code": "600193.SH",
+      "security_name": "退市创兴(退市)",
+      "listdate": 19990527,
+      "delistdate": 20260706
+    },
+    {
+      "code": "600200.SH",
+      "security_name": "退市苏吴(退市)",
+      "listdate": 19990401,
+      "delistdate": 20251231
+    },
+    {
+      "code": "600209.SH",
+      "security_name": "退市罗顿(退市)",
+      "listdate": 19990325,
+      "delistdate": 20220622
+    },
+    {
+      "code": "600213.SH",
+      "security_name": "*ST亚星(退市)",
+      "listdate": 19990831,
+      "delistdate": 20241017
+    },
+    {
+      "code": "600220.SH",
+      "security_name": "ST阳光(退市)",
+      "listdate": 19990927,
+      "delistdate": 20240710
+    },
+    {
+      "code": "600225.SH",
+      "security_name": "退市卓朗(退市)",
+      "listdate": 20000127,
+      "delistdate": 20250306
+    },
+    {
+      "code": "600242.SH",
+      "security_name": "退市中昌(退市)",
+      "listdate": 20001207,
+      "delistdate": 20230629
+    },
+    {
+      "code": "600247.SH",
+      "security_name": "*ST成城(退市)",
+      "listdate": 20001123,
+      "delistdate": 20210322
+    },
+    {
+      "code": "600260.SH",
+      "security_name": "*ST凯乐(退市)",
+      "listdate": 20000706,
+      "delistdate": 20230215
+    },
+    {
+      "code": "600275.SH",
+      "security_name": "退市昌鱼(退市)",
+      "listdate": 20000810,
+      "delistdate": 20220622
+    },
+    {
+      "code": "600290.SH",
+      "security_name": "*ST华仪(退市)",
+      "listdate": 20001106,
+      "delistdate": 20240116
+    },
+    {
+      "code": "600291.SH",
+      "security_name": "退市西水(退市)",
+      "listdate": 20000731,
+      "delistdate": 20220614
+    },
+    {
+      "code": "600297.SH",
+      "security_name": "广汇汽车(退市)",
+      "listdate": 20001116,
+      "delistdate": 20240828
+    },
+    {
+      "code": "600306.SH",
+      "security_name": "退市商城(退市)",
+      "listdate": 20001226,
+      "delistdate": 20240626
+    },
+    {
+      "code": "600311.SH",
+      "security_name": "*ST荣华(退市)",
+      "listdate": 20010626,
+      "delistdate": 20230327
+    },
+    {
+      "code": "600317.SH",
+      "security_name": "营口港(退市)",
+      "listdate": 20020131,
+      "delistdate": 20210129
+    },
+    {
+      "code": "600321.SH",
+      "security_name": "正源股份(退市)",
+      "listdate": 20010524,
+      "delistdate": 20240627
+    },
+    {
+      "code": "600385.SH",
+      "security_name": "退市金泰(退市)",
+      "listdate": 20010723,
+      "delistdate": 20220707
+    },
+    {
+      "code": "600387.SH",
+      "security_name": "退市海越(退市)",
+      "listdate": 20040218,
+      "delistdate": 20250711
+    },
+    {
+      "code": "600393.SH",
+      "security_name": "ST粤泰(退市)",
+      "listdate": 20010319,
+      "delistdate": 20230718
+    },
+    {
+      "code": "600421.SH",
+      "security_name": "退市华嵘(退市)",
+      "listdate": 20040607,
+      "delistdate": 20260626
+    },
+    {
+      "code": "600462.SH",
+      "security_name": "退市九有(退市)",
+      "listdate": 20030903,
+      "delistdate": 20250721
+    },
+    {
+      "code": "600466.SH",
+      "security_name": "*ST蓝光(退市)",
+      "listdate": 20010212,
+      "delistdate": 20230606
+    },
+    {
+      "code": "600485.SH",
+      "security_name": "*ST信威(退市)",
+      "listdate": 20030807,
+      "delistdate": 20210601
+    },
+    {
+      "code": "600532.SH",
+      "security_name": "退市未来(退市)",
+      "listdate": 20021031,
+      "delistdate": 20230628
+    },
+    {
+      "code": "600555.SH",
+      "security_name": "退市海创(退市)",
+      "listdate": 20010328,
+      "delistdate": 20220713
+    },
+    {
+      "code": "600599.SH",
+      "security_name": "退市熊猫(退市)",
+      "listdate": 20010828,
+      "delistdate": 20260626
+    },
+    {
+      "code": "600608.SH",
+      "security_name": "退市沪科(退市)",
+      "listdate": 19920327,
+      "delistdate": 20260703
+    },
+    {
+      "code": "600614.SH",
+      "security_name": "退市鹏起(退市)",
+      "listdate": 19920828,
+      "delistdate": 20210721
+    },
+    {
+      "code": "600634.SH",
+      "security_name": "退市富控(退市)",
+      "listdate": 19930304,
+      "delistdate": 20210721
+    },
+    {
+      "code": "600636.SH",
+      "security_name": "退市国化(退市)",
+      "listdate": 19930316,
+      "delistdate": 20260629
+    },
+    {
+      "code": "600647.SH",
+      "security_name": "退市同达(退市)",
+      "listdate": 19930504,
+      "delistdate": 20240703
+    },
+    {
+      "code": "600652.SH",
+      "security_name": "退市游久(退市)",
+      "listdate": 19901219,
+      "delistdate": 20220621
+    },
+    {
+      "code": "600677.SH",
+      "security_name": "*ST航通(退市)",
+      "listdate": 19930928,
+      "delistdate": 20210318
+    },
+    {
+      "code": "600687.SH",
+      "security_name": "退市刚泰(退市)",
+      "listdate": 19931108,
+      "delistdate": 20210303
+    },
+    {
+      "code": "600695.SH",
+      "security_name": "退市绿庭(退市)",
+      "listdate": 19931122,
+      "delistdate": 20220614
+    },
+    {
+      "code": "600696.SH",
+      "security_name": "退市岩石(退市)",
+      "listdate": 19931206,
+      "delistdate": 20260629
+    },
+    {
+      "code": "600701.SH",
+      "security_name": "退市工新(退市)",
+      "listdate": 19960528,
+      "delistdate": 20210430
+    },
+    {
+      "code": "600705.SH",
+      "security_name": "中航产融(退市)",
+      "listdate": 19960516,
+      "delistdate": 20250527
+    },
+    {
+      "code": "600723.SH",
+      "security_name": "首商股份(退市)",
+      "listdate": 19960716,
+      "delistdate": 20211022
+    },
+    {
+      "code": "600767.SH",
+      "security_name": "退市运盛(退市)",
+      "listdate": 19961115,
+      "delistdate": 20230629
+    },
+    {
+      "code": "600781.SH",
+      "security_name": "退市辅仁(退市)",
+      "listdate": 19961218,
+      "delistdate": 20230628
+    },
+    {
+      "code": "600804.SH",
+      "security_name": "退市鹏博(退市)",
+      "listdate": 19940103,
+      "delistdate": 20250703
+    },
+    {
+      "code": "600811.SH",
+      "security_name": "*ST东方(退市)",
+      "listdate": 19940106,
+      "delistdate": 20250430
+    },
+    {
+      "code": "600823.SH",
+      "security_name": "*ST世茂(退市)",
+      "listdate": 19940204,
+      "delistdate": 20240614
+    },
+    {
+      "code": "600836.SH",
+      "security_name": "*ST易连(退市)",
+      "listdate": 19940224,
+      "delistdate": 20240711
+    },
+    {
+      "code": "600837.SH",
+      "security_name": "海通证券(退市)",
+      "listdate": 19940224,
+      "delistdate": 20250304
+    },
+    {
+      "code": "600856.SH",
+      "security_name": "退市中天(退市)",
+      "listdate": 19940425,
+      "delistdate": 20220622
+    },
+    {
+      "code": "600870.SH",
+      "security_name": "退市厦华(退市)",
+      "listdate": 19950228,
+      "delistdate": 20220630
+    },
+    {
+      "code": "600890.SH",
+      "security_name": "退市中房(退市)",
+      "listdate": 19960318,
+      "delistdate": 20220621
+    },
+    {
+      "code": "600891.SH",
+      "security_name": "退市秋林(退市)",
+      "listdate": 19960325,
+      "delistdate": 20210512
+    },
+    {
+      "code": "600896.SH",
+      "security_name": "退市海医(退市)",
+      "listdate": 19960503,
+      "delistdate": 20220725
+    },
+    {
+      "code": "600898.SH",
+      "security_name": "*ST美讯(退市)",
+      "listdate": 19960418,
+      "delistdate": 20250210
+    },
+    {
+      "code": "600978.SH",
+      "security_name": "*ST宜生(退市)",
+      "listdate": 20040824,
+      "delistdate": 20210322
+    },
+    {
+      "code": "601028.SH",
+      "security_name": "玉龙股份(退市)",
+      "listdate": 20111107,
+      "delistdate": 20250527
+    },
+    {
+      "code": "601258.SH",
+      "security_name": "*ST庞大(退市)",
+      "listdate": 20110428,
+      "delistdate": 20230630
+    },
+    {
+      "code": "601558.SH",
+      "security_name": "退市锐电(退市)",
+      "listdate": 20110113,
+      "delistdate": 20200702
+    },
+    {
+      "code": "601989.SH",
+      "security_name": "中国重工(退市)",
+      "listdate": 20091216,
+      "delistdate": 20250905
+    },
+    {
+      "code": "603003.SH",
+      "security_name": "退市龙宇(退市)",
+      "listdate": 20120817,
+      "delistdate": 20250703
+    },
+    {
+      "code": "603056.SH",
+      "security_name": "德邦股份(退市)",
+      "listdate": 20180116,
+      "delistdate": 20260331
+    },
+    {
+      "code": "603133.SH",
+      "security_name": "退市碳元(退市)",
+      "listdate": 20170320,
+      "delistdate": 20240703
+    },
+    {
+      "code": "603157.SH",
+      "security_name": "退市拉夏(退市)",
+      "listdate": 20170925,
+      "delistdate": 20220524
+    },
+    {
+      "code": "603388.SH",
+      "security_name": "*ST元成(退市)",
+      "listdate": 20170324,
+      "delistdate": 20251205
+    },
+    {
+      "code": "603555.SH",
+      "security_name": "ST贵人(退市)",
+      "listdate": 20140124,
+      "delistdate": 20240329
+    },
+    {
+      "code": "603603.SH",
+      "security_name": "退市博天(退市)",
+      "listdate": 20170217,
+      "delistdate": 20240425
+    },
+    {
+      "code": "603963.SH",
+      "security_name": "*ST大药(退市)",
+      "listdate": 20170922,
+      "delistdate": 20250321
+    },
+    {
+      "code": "603996.SH",
+      "security_name": "退市中新(退市)",
+      "listdate": 20151222,
+      "delistdate": 20220524
+    },
+    {
+      "code": "605081.SH",
+      "security_name": "退市太和(退市)",
+      "listdate": 20210209,
+      "delistdate": 20260703
+    },
+    {
+      "code": "688086.SH",
+      "security_name": "退市紫晶(退市)",
+      "listdate": 20200226,
+      "delistdate": 20230707
+    },
+    {
+      "code": "688287.SH",
+      "security_name": "退市观典(退市)",
+      "listdate": 20220525,
+      "delistdate": 20260610
+    },
+    {
+      "code": "688555.SH",
+      "security_name": "退市泽达(退市)",
+      "listdate": 20200623,
+      "delistdate": 20230707
+    }
+  ],
+  "absent_from_training_note": "以下 200 只（dev 无 kline 的退市股）经核对在两个训练 parquet 中均为 0 行，按“根本不在的不要进黑名单”原则不列入 excluded；若未来重建 parquet 收录了它们，需重新审计后再决定是否排除。",
+  "retained_candidates": [
+    {
+      "code": "000155.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2622,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2782
+    },
+    {
+      "code": "000520.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2656,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2816
+    },
+    {
+      "code": "000629.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2728,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2888
+    },
+    {
+      "code": "000670.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2222,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2372
+    },
+    {
+      "code": "000751.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2786,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2946
+    },
+    {
+      "code": "000792.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2812,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2972
+    },
+    {
+      "code": "000950.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2687,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2847
+    },
+    {
+      "code": "000995.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2369,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2529
+    },
+    {
+      "code": "002506.SZ",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2767,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2927
+    },
+    {
+      "code": "600610.SH",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2397,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2557
+    },
+    {
+      "code": "600710.SH",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2696,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2856
+    },
+    {
+      "code": "600732.SH",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2695,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 2855
+    },
+    {
+      "code": "601360.SH",
+      "reason": "有完整正常交易历史，仅区间性停牌/暂停上市；停牌日已由 is_trading=False 过滤",
+      "train_rows_v1": 3157,
+      "train_trading_rows_v1": 2923,
+      "train_rows_f60": 3317,
+      "train_trading_rows_f60": 3083
+    }
+  ],
+  "sources": [
+    "C:/Users/yanwen/AppData/Local/Temp/opencode/quant_source_audit_20261030.md",
+    "Z:/dev/quant_data_dev.db stock_basic（SQLite mode=ro, PRAGMA query_only=ON）",
+    "Z:/dev/kline/day/*.parquet 文件清单（5215 个）",
+    "D:/code/cnn_full_20260905/cnn/data/test/train_data/train_data_v1_20130101-20251231_0faaf8c69c89.parquet",
+    "Z:/dev/train_data/train_data_v1_F60_20130101-20260831_26c3db036a26.parquet",
+    "D:/code/quant/src/core/data_fetcher/history_status.py:14-16（API 无此字段，手动维护）",
+    "D:/code/quant/scripts/backfill_paused_listing.py:40-54（PAUSED_RANGES 硬编码 13 只）"
+  ]
+}

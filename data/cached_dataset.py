@@ -16,6 +16,7 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from data.cs_mkt import resolve_cs_rank_features, resolve_mkt_factor_list
+from data.excluded_codes import excluded_codes_identity
 from data.feature_cache import (
     FeatureCache,
     _WindowIndex,
@@ -162,6 +163,13 @@ def scaler_identity(cfg, pf: pq.ParquetFile, feature_cols: list[str]) -> dict:
     # rolling_scope 仅 rolling 有意义；写入后由 rolling_source_identity 剔除，保持 per_code 字节不变。
     if cfg.normalize == "rolling":
         identity["rolling_scope"] = cfg.rolling_scope
+    # 代码级黑名单仅非空时写入：空名单（当前默认）保持旧 identity/key 逐字节不变，
+    # 名单一旦非空即进入 identity 与缓存 key，使携带旧过滤语义的缓存自动失效。
+    if getattr(cfg, "exclude_codes", True):
+        codes_identity = excluded_codes_identity(getattr(cfg, "excluded_codes_path", None))
+        if codes_identity["excluded_codes_count"]:
+            identity["excluded_codes_digest"] = codes_identity["excluded_codes_digest"]
+            identity["excluded_codes_count"] = codes_identity["excluded_codes_count"]
     return identity
 
 

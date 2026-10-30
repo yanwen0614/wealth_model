@@ -98,6 +98,10 @@ class ParquetDataConfig:
     feature_cols: list[str] | None = None
     # 过滤 is_trading（必须 True，避免合成行污染窗口）
     filter_is_trading: bool = True
+    # 代码级黑名单（默认开）：过滤 data/excluded_codes.json 中“整只股不可用”的代码。
+    # 只做代码级排除，绝不修改 parquet 原文件；名单非空时 digest 进入 scaler identity/缓存 key。
+    exclude_codes: bool = True
+    excluded_codes_path: str | None = None  # None -> data/excluded_codes.json
     # 标签口径：
     # - "absolute"（默认，现有行为）：y = future_ret = open[t+1+horizon]/open[t+1]-1
     # - "excess"：y = future_ret - 当日（kline_time）截面均值，剥离市场 beta；

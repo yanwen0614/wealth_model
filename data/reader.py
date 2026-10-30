@@ -33,6 +33,7 @@ from data.cs_mkt import (
     resolve_cs_rank_features,
     resolve_mkt_factor_list,
 )
+from data.excluded_codes import filter_excluded_codes, load_excluded_codes, resolve_excluded_codes_path
 from data.feature_cache import FeatureCache, resolve_cache_root
 from data.labels import _future_ret_open_open
 from data.rolling_scaler import RollingNormalizationConfig, RollingNormalizer
@@ -74,6 +75,19 @@ def filter_is_trading(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df["is_trading"] == True]
     print(f"[ParquetDataset] 过滤 is_trading False: {before:,} -> {len(df):,} (drop {before - len(df):,})")
     return df
+
+
+def apply_excluded_codes_filter(cfg: Any, df: pd.DataFrame) -> pd.DataFrame:
+    """过滤代码级黑名单（`data/excluded_codes.json`，不碰 parquet 原文件）。
+
+    与 `filter_is_trading` 相邻执行：先剔合成行，再剔“整只股不可用”的代码全部行。
+    名单为空时也打印一行可观测日志，便于确认过滤链路确实生效。
+    """
+    if not getattr(cfg, "exclude_codes", True):
+        print("[ParquetDataset] 代码级黑名单过滤已关闭 (exclude_codes=False)")
+        return df
+    resolved = resolve_excluded_codes_path(getattr(cfg, "excluded_codes_path", None))
+    return filter_excluded_codes(df, load_excluded_codes(resolved))
 
 
 def apply_time_filter_with_context(df: pd.DataFrame, cfg: Any) -> pd.DataFrame:
@@ -232,6 +246,8 @@ def load_and_prepare(dataset: Any, scaler_stats: dict | object | None) -> None:
     df = read_parquet_table(cfg, feature_cols, _all_cols)
     # is_trading 已在构造时强制为 True。
     df = filter_is_trading(df)
+    # 代码级黑名单紧随其后：只剔“整只股不可用”的代码，不读/不改 parquet 原文件。
+    df = apply_excluded_codes_filter(cfg, df)
     df = apply_time_filter_with_context(df, cfg)
 
     # 截面 rank：必须在按 code 分组/排序与 max_codes 截断之前，在全体股票（含 context 行）
