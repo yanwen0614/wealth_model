@@ -45,7 +45,9 @@ if any(name == "backtest" or name.startswith("backtest.") for name in sys.module
     raise RuntimeError("须在干净解释器先导入受限入口，禁止混合不同树的 backtest 模块")
 sys.path.insert(0, str(REVIEWED))
 
-import numpy as np
+# 本导入块必须位于 sys.path.insert(REVIEWED) 之后，否则会先导入主区 backtest.*
+# 并触发上方 RuntimeError；故不能按 isort 默认规则上移排序（W1 树原貌）。
+import numpy as np  # noqa: I001
 import pyarrow as pa
 import pyarrow.parquet as pq
 from backtest.cnn_adapter.corporate_action_context import CorporateActionContext
