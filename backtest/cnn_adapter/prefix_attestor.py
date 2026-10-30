@@ -77,11 +77,42 @@ def _file_map(root: Path) -> dict[str, str]:
             for item in entries if item.is_file()}
 
 
+def _content_sha_variants(data: bytes) -> frozenset[str]:
+    """返回同一份内容在三种行尾写法下的 SHA256，用于抵消检出策略差异。"""
+    lf = data.replace(b"\r\n", b"\n")
+    return frozenset((hashlib.sha256(data).hexdigest(),
+                      hashlib.sha256(lf).hexdigest(),
+                      hashlib.sha256(lf.replace(b"\n", b"\r\n")).hexdigest()))
+
+
+def _matches_pinned_content(path: Path, expected: str) -> bool:
+    """按内容身份比对源码 pin：行尾 CRLF/LF 差异不算内容差异。
+
+    pin 清单来自不同历史时点的检出，其中既有按 LF 计算的项，也有按 CRLF
+    计算的项（实测各存在），因此只认单一写法必然误伤。这里对三种行尾写法
+    取并集，仍要求除行尾外的每个字节完全一致，且不忽略文件末尾换行、BOM
+    或任何空白差异。仓库内的 pin 目标文件实测不含孤立 CR，故只需处理 CRLF。
+    """
+    return expected in _content_sha_variants(path.read_bytes())
+
+
+def _is_source_label(label: str) -> bool:
+    """只有源码清单容忍行尾差异；输入证据文件仍按严格字节身份校验。"""
+    return label.endswith("source")
+
+
 def _check_fixed_paths(entries: dict[str, str], label: str) -> dict[str, str]:
     result = {}
+    tolerate_eol = _is_source_label(label)
     for raw_path, expected in entries.items():
         path = Path(raw_path).resolve()
-        if len(expected) != 64 or not path.is_file() or _sha(path) != expected:
+        if len(expected) != 64 or not path.is_file():
+            raise ValueError(f"{label} fixed SHA mismatch: {path}")
+        if tolerate_eol:
+            matched = _matches_pinned_content(path, expected)
+        else:
+            matched = _sha(path) == expected
+        if not matched:
             raise ValueError(f"{label} fixed SHA mismatch: {path}")
         result[str(path)] = expected
     return result
