@@ -30,6 +30,28 @@
 - **大清理**：`paper_jkx/logs/` 删除 16.27 GB（48 个小文本证据另存 `D:/code/cnn_full_20260905/paper_jkx_logs_small_evidence/`）；`logs/tree_verify/`+`logs/tree_rebuild/` 删除 3.21 GB（63 个评估结果另存）；`uv cache prune` 释放 8.17 GB。共释放约 19.5 GB。
 - **死代码删除**：14 条放弃路线专属代码 30 文件删除（`b9254bb`）；`docs/`、主链路、frozen、config 默认值一律不动。
 
+### core wheel 对齐已完成（2026-10-31）
+- 问题：core `a176be9` 的 `stop_after_close` 只在源码里，cnn 的 wheel 停在 `893fc96`，CNN 全树 0 处引用 —— 能力做了但调不到。
+- core bump **0.1.0 → 0.1.1**（`pyproject.toml` + `__init__.__version__` + `test_package_smoke`），重新 `uv build --wheel`，cnn `wheels/` 换成 `backtest_core-0.1.1-py3-none-any.whl`（sha256 `bbb061c2…`，与 `uv.lock` 一致）。
+- **版本纪律**：同名 wheel 会被 uv 缓存命中导致升级无感，故必须 bump。默认值/公式未改，`policy_version` 保持 `v1`，仅 `engine_version` 随 `__version__` 前移。
+- **`uv.lock` 只改自身包版本行**：`uv lock` 会把镜像源（清华）全刷成 pypi.org（113 行无关 churn），已回退。core lock 用「只改 version 行 + `uv sync --locked` 验证」处理。
+- CNN 接线：`run_staged_window(stop_after_close=...)` 透传 core；CLI 新增 `--stop-after-close`（此前完全没有该参数）；`run_single_from_cli` 转发；停止日写入 `provenance.stop_after_close`/`pending_orders` 并进入 `config_hash`（否则不同停止日撞同一身份）。
+- 接线时暴露的真实缺陷：停止后 buffer 日无回调，`_write_outputs` 按 calendar 全量取 `recorder.daily` 键会 `KeyError` —— 已改为只写实际观测到的交易日。
+- 实测停止语义：基线 9 快照/6 成交 → 停止版 6 快照/3 成交，快照止于 E 日，E 日挂单留存为 `pending_orders`。
+- 验证：core 718 OK；cnn ruff 零告警；CI 最小门 58 OK；全量 1007 项 2F/10E/40S 与基线逐项一致。
+
+### 文档精简（2026-10-31，HEAD 8e8edee）
+- owner 要求「只保留精简的文档结论，不需要保留过程性内容」。
+- **`docs/agent/task/`：22 目录 → 2**。删 20 个已完结过程目录（61 文件），独有结论抽成 `docs/agent/task/agent_task_conclusions.md`（E0–E5 对照 / 费用与退出 / 强买门槛 / 换手行业归因 / checkpoint NumPy）。保留 `20261027_staged-order-strategy`（scope B 仍 pending）、`20261030_2200_workspace-consolidation`（待改写）。
+- **`docs/research/`：83 文件 → 55**（1.4 MB → 600 KB）。删一次性操作记录、纯评审过程、未执行计划、已过时状态、`recovered_w1` 的 5 个机器 JSON（约 600 KB）。
+- **保留判定依据**：`source_drafts/`、`90-评审记录/`、`worktree_retirement/REPORT.md`、`recovered_w1/MANIFEST.json`、`20261026/{ENGINEERING_STATUS,staged_order_strategy_delivery,corporate_action_tax_tdd_plan}.md`、`z_corporate_actions_audit.json` 均因 `MEMORY.md` / `scripts/research/README.md` / `scripts/audit_z_corporate_actions.py` 还在引用而保留。
+- 修 3 处断链：`per_code_normalization_spec.md:134` 的任务目录指向 → `agent_task_conclusions.md`；`checkpoint_compat_delivery` 的已删文件哈希表；`docs/README.md` 的 `review_20261030/q1`（早已删除）。
+- 原 `RESEARCH_CONSOLIDATION_AUDIT` 4 项结论中 3 项已过时（均已推送 / T18 已 `os.walk` / agent/task 已索引），按实测现状并入 `final_delivery §8`，只保留「T18 覆盖缺口 + `logs_manifest.csv` 未补录」。
+
+### 测试基线必须带 CNN_ALLOW_LEGACY=1
+- 直接跑全量得到 **50 errors** 全是 `LegacyBacktestDisabledError`（`backtest/legacy.py` 默认拒绝旧引擎），**不是代码缺陷**。
+- 加大 `CNN_ALLOW_LEGACY=1` 后才是真基线 **2F/10E/40S**。跑全量核对必须带此环境变量，否则会误判为回归。
+
 ### P0 冷备份已完成（2026-10-31 00:01）
 - 位置 **`G:\backups\cnn_full_20261030\`**（C 盘 → G 盘异卷），含 `README.md` 恢复说明。
 - **opencode.db**：`sqlite3.Connection.backup()`（源 `mode=ro`，pages=4096，耗时 340s），**不用文件级复制**（WAL 活动期会拿到不一致快照）。已 `wal_checkpoint(TRUNCATE)`+`journal_mode=DELETE` 收尾为**自包含单文件** 3,836,485,632 B，sha256 `ec9218b8…`，`integrity_check=ok`。备份快照滞后源库 8 messages/32 parts（= 拷贝期间本会话写入），session 数一致 892。
@@ -118,6 +140,7 @@
 
 ## 待办与已知缺口（2026-10-31 更新）
 - **P0 已完成（2026-10-31）**：opencode.db 冷备份 + 4 个 scaler pkl 异盘保全（含身份 JSON），均在 `G:\backups\cnn_full_20261030\`。
-- **P1 未完成**：CA snapshot 的 `asof_announcement_dates` 能力（**过滤键必须是 announcement/known_at，绝不能是 ex_date**——300502 是公告在前 ex 在后的反例）；补 2 个真缺接口；pin 标 UNREPRODUCIBLE；core wheel 对齐（CNN `.venv` 内 wheel == core `893fc96`，不含 `a176be9` 的 `stop_after_close`，CNN 全树 0 处引用）；行业中性复测（E0 默认值证据已被行业归因抽掉但未改默认）；quant 数据源 `AD_HOST` 8600 端口不可达；T18 同类"假设目录层级"扫描逻辑复查（`collect_rotation_plan` 已改 `os.walk`）。
+- **core wheel 对齐已完成（2026-10-31）**：core 0.1.1 / cnn wheel 0.1.1，`stop_after_close` 已接线到 staged runner + CLI。
+- **P1 未完成**：CA snapshot 的 `asof_announcement_dates` 能力（**过滤键必须是 announcement/known_at，绝不能是 ex_date**——300502 是公告在前 ex 在后的反例）；补 2 个真缺接口；pin 标 `UNREPRODUCIBLE`；行业中性复测（E0 默认值证据已被行业归因抽掉但未改默认）；quant 数据源 `AD_HOST` 8600 端口不可达；T18 同类「假设目录层级」扫描逻辑复查（`collect_rotation_plan` 已改 `os.walk`，但 `logs/` 17 个不匹配 `run_*` 的顶层目录仍永不进入轮转计划）；`docs/archive/logs_manifest.csv` 需补录。
 - **P2 候选**：A=W2 证据资格补强（unknown 双极端敏感度，8~12h）；B=干净考试 harness 空跑（1~2d）；C=≤10 只低换手政策族（3~5d，下限 6 只是资金效率要求，峰值仍须 ≤10）。
-- **仓库卫生**：`docs/agent/` 下 2026-09 旧任务目录多数无状态标记；`scripts/frozen/` 为只读快照禁 import。
+- **wheel 入库注意**：`wheels/*.whl` 被 `wheels/.gitignore`（内容为 `*`）忽略，已有 committed wheel 靠 `git add -f` 入库；新增/替换 wheel 时必须 `-f`，否则 pyproject 指向的文件不在仓库里。
