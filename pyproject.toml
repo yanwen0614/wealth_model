@@ -107,12 +107,11 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-# T15: research/goal 为 READ ONLY 快照、scripts/frozen 为冻结归档（READ ONLY），
-# 二者不改源码，ruff 直接跳过；生产代码零告警口径。
+# T15: scripts/frozen 为冻结归档（READ ONLY），不改源码，ruff 直接跳过；
+# 生产代码零告警口径。
 # T19: precision/alpha_attribution/unified_recalc/market_neutral 为研究快照
 # （只读复现脚本，生产禁import），同样跳过以守零告警门。
 exclude = [
-    "research/goal/**",
     "scripts/frozen/**",
     "research/precision/**",
     "research/alpha_attribution/**",
