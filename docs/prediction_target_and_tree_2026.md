@@ -74,6 +74,11 @@
 
 - 原主力（`logs/gbdt_cs` 16 截面 rank GBDT）随大扫除删除、归档包已丢 → 本轮重建。
 - 重建复现：VAL RankIC 0.1187（目标 0.1126）、TEST 0.0803（目标 0.0751），结构指标吻合。
+  > **2026-10-30 注**：原详细记录 `logs/tree_rebuild/SUMMARY.md`（8,909 B）已随目录删除且
+  > 不可恢复（四表 59 万行 + 11 处磁盘 + 18 个快照库均无记录，7 天保留期已过）。
+  > **本节以上两个 RankIC 数字是该文件唯一存世的副本**——来源为当时对话中的引用，非文件回读。
+  > `logs/tree_rebuild/` 下的 metrics.json / eval_*.json 等 41 个过程文件已另存
+  > `D:/code/cnn_full_20260905/logs_tree_evidence_20261030/`。
 - 同口径正式验证（`logs/tree_verify/REPORT.md`）：
   - 阶段 1 固定切分对齐主链路 → 树 IC 领先 A/B 相对 +25~55%（t 6.3~16.1）。
   - 阶段 2 expanding 滚动 10 折（无泄漏断言全过）→ 滚动≈单次，不崩。

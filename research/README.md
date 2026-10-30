@@ -38,8 +38,14 @@
   - `logs/tree_verify/REPORT.md`（177 行 / 12,295 字节）：**已从会话数据库完整恢复**并回写原位
     （`logs/tree_verify/REPORT.md`，受 `.gitignore` 忽略，故不入库；恢复来源 opencode.db 的 read 快照，
     SHA256 四重校验一致）。
-  - `logs/tree_rebuild/SUMMARY.md`：**不可恢复**——数据库三层扫描（含 WAL）无任何读写记录，
-    且原会话已过 7 天保留期清除。该文件内容永久缺失，不要再引用。
+  - `logs/tree_rebuild/SUMMARY.md`（8,909 B / 2026-10-03 10:39:12）—— **不可恢复**。
+    2026-10-30 两次独立深度复核（第二次含前一代理漏扫的 event 表 40.7 万行）：
+    四表 59 万行、11 个磁盘位置、18 个 opencode 快照 git 库（13 万对象）全零命中；
+    并以同批可恢复的 `tree_verify/REPORT.md` 作正向对照，证明扫描器有效。
+    根因：写入会话 `ses_f00a30de6ffe0TuNPVHpDCnVkJ` 在 7 天保留期（cleanup prune=7.days）
+    后被四表物理删除，2026-10-03 当天在四表中均为 0 行。
+    **内容替代**：结论压缩版见 `docs/prediction_target_and_tree_2026.md` 第六节
+    （含重建复现的 VAL RankIC 0.1187 / TEST 0.0803 等原始数字）。
   仍在盘上的 logs 侧报告：`logs/m_research/`（门控/双塔引擎指标）。
   结论性内容另见 `docs/research/review_20261030/`（含 `20-专项审计/` 与 `30-清理与退役/`）。
 - TEMP是工作草稿区（`%TEMP%/opencode/`下h10/rv/t3/t4/t6等百余文件），只有被本表
