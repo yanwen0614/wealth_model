@@ -72,8 +72,14 @@ class TestApplyArgsRetailNamespace(unittest.TestCase):
         pc = train_main.build_parquet_data_config(cfg)
         self.assertEqual(pc.seq_len, cfg["SEQ_LEN"])
         self.assertEqual(pc.normalize, cfg["NORMALIZE"])
-        self.assertFalse(pc.cs_rank)
-        self.assertFalse(pc.mkt_factors)
+        self.assertIs(pc.cs_rank, True)
+        self.assertIs(pc.mkt_factors, True)
+
+        cfg["CS_RANK"] = False
+        cfg["MKT_FACTORS"] = False
+        pc_off = train_main.build_parquet_data_config(cfg)
+        self.assertIs(pc_off.cs_rank, False)
+        self.assertIs(pc_off.mkt_factors, False)
 
 
 class TestRetailFactoryDelegation(unittest.TestCase):

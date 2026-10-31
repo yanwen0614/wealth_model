@@ -73,7 +73,7 @@ uv run --project . python -m scripts.run_backtest \
   --preds "$PREDS" \
   --parquet "$PARQUET" \
   --topn 5 10 20 \
-  --horizon 5 \
+  --horizon 10 \
   --out_dir "logs/backtest_${RUN_TAG}_${START}_${END}"
 
 # 旧 --ohlc 口径已废弃（T02 起 CLI 仅告警忽略，engine 口径已删除）：回测统一走 adapter + --parquet 真实 OHLC，不再传 --ohlc。

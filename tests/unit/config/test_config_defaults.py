@@ -3,6 +3,12 @@ import unittest
 
 import train
 from config.defaults import make_default_config
+from data.schema import (
+    APPROVED_RAW_FEATURES,
+    DEFAULT_CS_RANK_FEATURES,
+    DEFAULT_MKT_FACTOR_FEATURES,
+    G9_MASK_COLUMNS,
+)
 
 
 class TestConfigDefaults(unittest.TestCase):
@@ -26,7 +32,16 @@ class TestConfigDefaults(unittest.TestCase):
 
     def test_featurenum_placeholder_matches_new_schema(self):
         config = make_default_config()
-        self.assertEqual(config["CNNTransformerConfig"]["featurenum"], 53)
+        featurenum = config["CNNTransformerConfig"]["featurenum"]
+        schema_total = (
+            len(APPROVED_RAW_FEATURES)
+            + len(G9_MASK_COLUMNS)
+            + len(DEFAULT_CS_RANK_FEATURES)
+            + len(DEFAULT_MKT_FACTOR_FEATURES)
+        )
+        self.assertEqual(featurenum, 80)
+        self.assertEqual(schema_total, 80)
+        self.assertEqual(featurenum, schema_total)
 
     def test_default_rolling_scope_is_e5(self):
         config = make_default_config()

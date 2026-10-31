@@ -12,6 +12,7 @@ from unittest import mock
 import numpy as np
 
 import scripts.run_backtest as entry_mod
+from backtest.cnn_adapter.predictions import PREDICTED_HORIZON
 from scripts.run_backtest import (
     default_index_dir,
     index_covers_trade_days,
@@ -74,6 +75,70 @@ class TestRunBacktestCLI(unittest.TestCase):
         self.assertEqual(a.benchmark_index, "000905.SH")
         self.assertEqual(a.index_dir, "D:/idx")
         self.assertEqual(a.topn, [5, 10])
+
+
+class TestHorizonCliConsistency(unittest.TestCase):
+    """--horizon 语义：未传为 None、显式一致被接受且不进引擎、不一致立即报错（adapter 谱系常量锁定）."""
+
+    def _parse(self, argv):
+        return parse_args(["--preds", "x.npz", "--parquet", "q.parquet", *argv])
+
+    def _preds(self):
+        return {"exp_ret": np.array([0.10]), "true_ret": np.array([0.10]),
+                "dates": np.array(["2026-01-05", "2026-01-06"], dtype="datetime64[D]"),
+                "codes": np.array(["000001"])}
+
+    def test_absent_by_default(self):
+        """B1：未传 --horizon 时为 None（不设隐式默认值）；CLI 允许值即 adapter 谱系常量."""
+        self.assertIsNone(self._parse([]).horizon)
+        self.assertEqual(entry_mod.PREDICTED_HORIZON, PREDICTED_HORIZON)
+
+    def test_matching_value_accepted_without_touching_engine(self):
+        """B2：显式一致值被接受，且 run_cnn_backtest 的 kwargs 不含 horizon 键（零行为耦合）."""
+        args = self._parse(["--horizon", str(PREDICTED_HORIZON)])
+        self.assertEqual(args.horizon, PREDICTED_HORIZON)
+        outcome = SimpleNamespace(account_evaluation={"total_return": 0.0},
+                                  config_hash="h", data_fingerprint="f")
+        mock_run = mock.Mock(return_value=outcome)
+        with (mock.patch.multiple("scripts.run_backtest",
+                                  load_preds=mock.Mock(return_value=self._preds()),
+                                  _resolve_benchmark=mock.Mock(return_value=(None, None)),
+                                  run_cnn_backtest=mock_run),
+              tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO())):
+            entry_mod.run_adapter_rolling(args, tmp)
+        self.assertTrue(mock_run.called)
+        self.assertNotIn("horizon", mock_run.call_args.kwargs)
+
+    def test_mismatched_value_rejected_with_diagnostic_message(self):
+        """B3：显式不一致值被拒绝：SystemExit(2)，stderr 同时含 --horizon 与允许值."""
+        allowed = str(entry_mod.PREDICTED_HORIZON)
+        for bad in ("5", "6", "0", "-1"):
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf), self.assertRaises(SystemExit) as ctx:
+                self._parse(["--horizon", bad])
+            self.assertEqual(ctx.exception.code, 2)
+            err = buf.getvalue()
+            self.assertIn("--horizon", err)
+            self.assertIn(allowed, err)
+
+    def test_mismatch_fails_before_engine_runs(self):
+        """B4：报错发生在 main() 执行回测之前（引擎零调用、out_dir 未被创建）."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = os.path.join(tmp, "r3_bad")
+            mock_rolling = mock.Mock()
+            mock_target = mock.Mock()
+            buf = io.StringIO()
+            with (mock.patch.multiple("scripts.run_backtest",
+                                      run_adapter_rolling=mock_rolling,
+                                      run_adapter_target=mock_target),
+                  contextlib.redirect_stderr(buf), self.assertRaises(SystemExit) as ctx):
+                entry_mod.main(["--preds", "x.npz", "--parquet", "q.parquet",
+                                "--horizon", "5", "--out_dir", out_dir])
+            self.assertEqual(ctx.exception.code, 2)
+            self.assertTrue(buf.getvalue().strip())
+            mock_rolling.assert_not_called()
+            mock_target.assert_not_called()
+            self.assertFalse(os.path.exists(out_dir))
 
 
 class TestIndexBenchmarkHelpers(unittest.TestCase):

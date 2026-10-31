@@ -4,11 +4,17 @@ import shutil
 import tempfile
 import unittest
 from datetime import date
+from unittest import mock
 
 import numpy as np
 
 from backtest.cnn_adapter.cache import load_prediction_cache, save_prediction_cache
-from backtest.cnn_adapter.predictions import CnnPredictionAdapter
+from backtest.cnn_adapter.predictions import (
+    EXP_RET_MAPPING,
+    LABEL_FORMULA,
+    PREDICTED_HORIZON,
+    CnnPredictionAdapter,
+)
 
 
 def _synth_arrays(n: int = 6):
@@ -47,7 +53,7 @@ class TestBasicMapping(_TempDirMixin):
         self.assertEqual(len(preds), 6)
         for pred in preds:
             self.assertIs(pred.prediction_type, PredictionType.PREDICTED_RETURN)
-            self.assertEqual(pred.predicted_horizon, 5)
+            self.assertEqual(pred.predicted_horizon, 10)
             self.assertEqual((pred.signal_time.year, pred.signal_time.month, pred.signal_time.day,
                               pred.signal_time.hour), (2025, 3, 3, 15))
             self.assertEqual(pred.signal_time.utcoffset().total_seconds(), 8 * 3600)
@@ -161,8 +167,10 @@ class TestProvenance(_TempDirMixin):
         self.assertEqual(provenance["epoch"], "12")
         self.assertEqual(provenance["bins_version"], "BINS52_v1")
         self.assertEqual(provenance["eval_script_version"], "eval_bins_mapping@v1")
-        self.assertEqual(provenance["horizon"], "5")
-        self.assertIn("horizon=5", provenance["label_formula"])
+        self.assertEqual(provenance["horizon"], "10")
+        self.assertEqual(provenance["label_formula"],
+                         "future_ret[t]=open[t+1+horizon]/open[t+1]-1,horizon=10")
+        self.assertNotIn("horizon", EXP_RET_MAPPING)
 
     def test_provenance_rejects_empty(self):
         for field in ("model_name", "checkpoint", "bins_version", "eval_script_version"):
@@ -178,6 +186,53 @@ class TestProvenance(_TempDirMixin):
         codes = np.array(["000000"] * 6)
         with self.assertRaises(ValueError):
             _make_adapter(self, exp_ret=exp_ret, true_ret=true_ret, dates=dates, codes=codes)
+
+
+class TestLineageHorizonConstant(unittest.TestCase):
+    """谱系常量与训练标签 horizon 的跨层一致性（防单侧漂移）。"""
+
+    def test_constant_is_ten(self):
+        self.assertIsInstance(PREDICTED_HORIZON, int)
+        self.assertEqual(PREDICTED_HORIZON, 10)
+
+    def test_matches_training_horizon(self):
+        from config.defaults import make_default_config
+
+        self.assertEqual(PREDICTED_HORIZON, make_default_config()["HORIZON"])
+
+    def test_label_formula_derives_from_constant(self):
+        self.assertEqual(LABEL_FORMULA,
+                         f"future_ret[t]=open[t+1+horizon]/open[t+1]-1,horizon={PREDICTED_HORIZON}")
+        self.assertNotIn("horizon", EXP_RET_MAPPING)
+
+
+class TestConfigHashHorizonPayload(_TempDirMixin):
+    """config_hash 收到谱系常量值（包装原函数，不替换算法）。"""
+
+    def test_hash_payload_carries_constant_horizon(self):
+        import backtest.cnn_adapter.runner as runner_mod
+        from tests.unit.backtest._adapter_fixtures import (
+            build_synthetic_sample,
+            run_synthetic_backtest,
+            trading_days,
+        )
+
+        days = trading_days(4)
+        codes = [f"00000{i}.SZ" for i in range(1, 4)]
+        sample = [(day, code, 0.20 - 0.01 * index, 10.0, 10.1)
+                  for day in days for index, code in enumerate(codes)]
+        pred_cache, parquet_path = build_synthetic_sample(self.tmp, sample, "hash")
+
+        original = runner_mod._config_hash
+        with mock.patch.object(runner_mod, "_config_hash", wraps=original) as spy:
+            outcome = run_synthetic_backtest(pred_cache, parquet_path)
+
+        self.assertTrue(spy.called)
+        payload = spy.call_args.args[0]
+        self.assertEqual(payload["horizon"], PREDICTED_HORIZON)
+        self.assertEqual(payload["horizon"], 10)
+        self.assertEqual(outcome.config_hash, original(payload))
+        self.assertEqual(len(outcome.config_hash), 40)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ from backtest.cnn_adapter.common import (
     UNIFIED_STAMP_RATE,
     UNIFIED_TRANSFER_RATE,
 )
+from backtest.cnn_adapter.predictions import PREDICTED_HORIZON
 from backtest.cnn_adapter.runner import run_cnn_backtest
 from backtest.engine import (
     DEFAULT_CAPITAL,
@@ -255,7 +256,9 @@ def parse_args(argv=None):
     p.add_argument("--checkpoint", default="unknown")
     p.add_argument("--bins_version", default="unknown")
     p.add_argument("--topn", nargs="+", type=int, default=[5, 10, 20])
-    p.add_argument("--horizon", type=int, default=5)
+    p.add_argument("--horizon", type=int, default=None,
+                   help=f"[已锁定 {PREDICTED_HORIZON}] 仅接受与 adapter 谱系常量一致的值；"
+                        "本参数不改变回测行为，仅用于校验调用方预期与谱系常量一致")
     p.add_argument("--mode", choices=["rolling", "target"], default="rolling",
                    help="rolling=cnn_adapter 订单引擎等权（默认）；target=adapter 目标持仓（滞后带+强买门槛）")
     p.add_argument("--capital", type=float, default=DEFAULT_CAPITAL, help="组合本金（元），用于最低佣金折算")
@@ -290,7 +293,13 @@ def parse_args(argv=None):
     p.add_argument("--full_ohlc", default=None, help="[已废弃] 旧全期日频矩阵 npz；显式传入仅告警并忽略")
     p.add_argument("--ohlc", default=None, help="[已废弃] 旧 ohlc 路径表 npz；显式传入仅告警并忽略")
     p.add_argument("--out_dir", default=None, help="默认 logs/backtest_<时间戳>")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    # --horizon 不参与回测：只接受与 adapter 谱系常量一致的显式声明（不一致立即报错，不静默忽略）。
+    if args.horizon is not None and args.horizon != PREDICTED_HORIZON:
+        p.error(f"--horizon 已锁定为 {PREDICTED_HORIZON}"
+                f"（backtest.cnn_adapter.predictions.PREDICTED_HORIZON）：该参数不改变回测标签口径，"
+                f"收到 --horizon {args.horizon}")
+    return args
 
 
 if __name__ == "__main__":

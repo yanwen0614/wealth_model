@@ -6,7 +6,7 @@
   旧 ``linspace(-0.255,0.255,52)`` 已删，漂移声明见 ``config/defaults.py``；
   pure_reg 模式直接取回归头输出）；
 - ``true_ret`` 口径为训练标签 ``future_ret``（``data/labels.py``）：
-  ``open[t+1+horizon] / open[t+1] - 1``，``horizon = 5`` 与训练 ``HORIZON`` 一致；
+  ``open[t+1+horizon] / open[t+1] - 1``，``horizon = 10`` 与训练 ``HORIZON`` 一致；
 - ``dates``/``codes`` 为逐样本对齐的信号归属日与标的代码。
 
 隔离语义：
@@ -36,11 +36,11 @@ from data.schema import validate_prediction_cache_arrays
 
 __all__ = ["LABEL_FORMULA", "PREDICTED_HORIZON", "CnnPredictionAdapter", "PredictionCounters"]
 
-# 与训练标签 horizon 一致并锁定（data.dataset 默认 HORIZON=5）：
-# 改此常量即改谱系，单测锁定为 5（变异为 6 必须失败）。
-PREDICTED_HORIZON = 5
-# 标签公式谱系（data.labels._future_ret_open_open 口径，horizon=5）。
-LABEL_FORMULA = "future_ret[t]=open[t+1+horizon]/open[t+1]-1,horizon=5"
+# 与训练标签 horizon 一致并锁定（data.dataset 默认 HORIZON=10）：
+# 改此常量即改谱系，单测锁定为 10（变异为 6 必须失败）。
+PREDICTED_HORIZON = 10
+# 标签公式谱系（data.labels._future_ret_open_open 口径），horizon 由常量派生。
+LABEL_FORMULA = f"future_ret[t]=open[t+1+horizon]/open[t+1]-1,horizon={PREDICTED_HORIZON}"
 # exp_ret 映射谱系（T09 方案A：config.defaults.bins_to_centers(BINS) 派生；
 # 旧 linspace(-0.255,0.255,52)已删，新中心为旧向量 1.52 倍线性缩放，排序不变）。
 EXP_RET_MAPPING = "exp_ret=(probs*centers52).sum(-1),centers52=bins_to_centers(BINS),BINS=linspace(-0.38,0.38,51)"
@@ -194,7 +194,7 @@ class CnnPredictionAdapter:
     def actuals_for_cross_section(self, trading_date: date) -> dict:
         """指定归属日的实际收益映射（仅供截面评估消费 actuals）。
 
-        口径为训练标签 ``future_ret``（``LABEL_FORMULA``，horizon=5）；
+        口径为训练标签 ``future_ret``（``LABEL_FORMULA``，horizon=10）；
         非有限 true_ret 按 ``invalid_true_count`` 计数后剔除。
         T10 兼容：历史缓存无 true_ret（None）时返回空映射并一次性告警。
         本方法是 true_ret 的唯一出口。
