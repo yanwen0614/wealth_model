@@ -19,7 +19,7 @@
 
 | 仓 | 路径 | HEAD | 作用 |
 |---|---|---|---|
-| cnn | `D:\code\cnn_full_20260905\cnn` | `2e91124` | 模型训练 + 回测适配层 |
+| cnn | `D:\code\cnn_full_20260905\cnn` | `3f78894` | 模型训练 + 回测适配层 |
 | backtest-core | `D:\code\cnn_full_20260905\backtest-core` | `1f0c83f` | 回测引擎（三仓共享） |
 | quant | `D:\code\quant` | `e4b4814` | 数据仓储与导出 |
 
@@ -172,15 +172,23 @@ uv run --project . python -m unittest discover -s tests -t . -q
 `test_cnn_adapter_rolling_semantics.py`、`test_cnn_adapter_target_semantics.py`、
 `test_cnn_adapter_regression.py`。
 
-### 5.2 quant 在 Windows 跑测试需两个前置
+### 5.2 quant 在 Windows 跑测试需三个前置
 
 1. `fcntl` 缺失（`src/utils/auth.py:4`、`src/core/model_bridge/feature_cache.py`）→ 注入进程内桩
 2. 必须设 `QUANT_REPO_ROOT`，否则 17 个 q02/q04 用例假失败
 3. 跑导出还需 `QUANT_DATA_ROOT=Z:\` 与 `QUANT_DB_ENV=prd`
 
-设好后 `tests/unit/backtesting` = **390 passed / 3 skipped**。
+```python
+# 前置桩（写进临时脚本，sys.path 需含 D:\code\quant）
+import sys, types
+if sys.platform == "win32" and "fcntl" not in sys.modules:
+    m = types.ModuleType("fcntl")
+    m.LOCK_EX, m.LOCK_SH, m.LOCK_NB, m.LOCK_UN = 2, 1, 4, 8
+    m.flock = m.lockf = m.ioctl = lambda *a, **k: None
+    sys.modules["fcntl"] = m
+```
 
-现成脚本：`C:\Users\yanwen\AppData\Local\Temp\opencode\run_quant_tests_with_fcntl_stub.py`
+设好后 `tests/unit/backtesting` = **390 passed / 3 skipped**。
 
 ### 5.3 wheel 升级三件套（升级 backtest-core 时才相关）
 
@@ -248,7 +256,8 @@ uv run --project . python -m unittest discover -s tests -t . -q
 | 分批回测 | `backtest/cnn_adapter/staged_candidate_runner.py` |
 | 数据导出 | `D:\code\quant\scripts\export_training_data.py` |
 | P0 冷备份 | `G:\backups\cnn_full_20261030\` |
-| 外置证据（13.4 GB） | `D:\code\cnn_full_20260905\evidence_tmp_20261030\` |
+| 外置证据（14.0 GB） | `D:\code\cnn_full_20260905\evidence_tmp_20261030\` |
+| 结论性报告归档（223 份） | `docs/archive/temp_reports_20261031/` |
 
 ---
 
