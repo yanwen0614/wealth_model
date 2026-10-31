@@ -140,7 +140,11 @@
 
 ## 待办与已知缺口（2026-10-31 更新）
 - **P0 已完成（2026-10-31）**：opencode.db 冷备份 + 4 个 scaler pkl 异盘保全（含身份 JSON），均在 `G:\backups\cnn_full_20261030\`。
-- **core wheel 对齐已完成（2026-10-31）**：core 0.1.1 / cnn wheel 0.1.1，`stop_after_close` 已接线到 staged runner + CLI。
+- **core wheel 对齐已完成（2026-10-31），三个仓全部升到 0.1.1**：core `1f0c83f` + cnn `8205f27` + quant `e4b4814`，均已推送。三个 `wheels/backtest_core-0.1.1-py3-none-any.whl` 是同一份构建（sha256 `bbb061c2…`），两个 venv 实测 `__version__=0.1.1` 且 `stop_after_close` 在签名中。
+  - **重要事实**：cnn 旧 wheel 虽标 `0.1.0` 但语义是 `893fc96`（非 v0.1.0 tag）；quant 的 `0.1.0` 才是真 tag（`92c33da3…`/`bf3bf1b`）。两者本来就不是同一构建，故 quant 此次是真实 0.1.0→0.1.1（跨 1078 行改动）。
+  - quant 侧验证：符号契约 35 项全通过；`tests/unit/backtesting` **390 passed / 3 skipped**，与 0.1.0 逐项一致（零行为漂移）。quant 的 backtesting adapter 未使用 `stop_after_close`，纯依赖对齐。
+  - **quant 测试的两个环境前置**（否则会误判为升级破坏）：① Windows 缺 `fcntl`（来自 `src/core/model_bridge/feature_cache.py`），需注入桩；② 必须设 `QUANT_REPO_ROOT`，否则 17 个 q02/q04 用例因 `PathConfig.get_repo_root()` 抛错而假失败。
+- **`uv lock` 的镜像源陷阱（三仓通用）**：直接 `uv lock` 会把 tsinghua 镜像 URL 批量刷成 pypi.org（core 113 行 / quant 1035 行）。正确做法：`git checkout -- uv.lock` 后只手工改 backtest-core 的 4 行（version / path / filename / hash），再用 `uv sync --frozen` 验证。quant `uv sync --frozen` 会卸掉 pytest（不在 dev 组），需 `uv pip install pytest pytest-asyncio` 装回。
 - **P1 未完成**：CA snapshot 的 `asof_announcement_dates` 能力（**过滤键必须是 announcement/known_at，绝不能是 ex_date**——300502 是公告在前 ex 在后的反例）；补 2 个真缺接口；pin 标 `UNREPRODUCIBLE`；行业中性复测（E0 默认值证据已被行业归因抽掉但未改默认）；quant 数据源 `AD_HOST` 8600 端口不可达；T18 同类「假设目录层级」扫描逻辑复查（`collect_rotation_plan` 已改 `os.walk`，但 `logs/` 17 个不匹配 `run_*` 的顶层目录仍永不进入轮转计划）；`docs/archive/logs_manifest.csv` 需补录。
 - **P2 候选**：A=W2 证据资格补强（unknown 双极端敏感度，8~12h）；B=干净考试 harness 空跑（1~2d）；C=≤10 只低换手政策族（3~5d，下限 6 只是资金效率要求，峰值仍须 ≤10）。
 - **wheel 入库注意**：`wheels/*.whl` 被 `wheels/.gitignore`（内容为 `*`）忽略，已有 committed wheel 靠 `git add -f` 入库；新增/替换 wheel 时必须 `-f`，否则 pyproject 指向的文件不在仓库里。
