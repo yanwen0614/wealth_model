@@ -138,8 +138,10 @@ ValueError: self-check 失败：因子整列NaN（非白名单） pe
 
 | npz | 真实 horizon |
 |---|---|
-| `preds_fullA_2025/2026`、`preds_fullB_2025/2026`、`m_research/preds_B2025_xgbgate` | **H=10**（误差 ~1e-10） |
-| `preds_jkxI5_2025/2026`、`preds_jkxI30_2025/2026`、`m_research/preds_dualalpha_2025`、`_gate` | **H=5**（误差 0，H10 假设误差 ~1e-2） |
+| `preds_fullA_2025/2026`、`preds_fullB_2025/2026`、`m_research/preds_B2025_xgbgate` | **H=10**（中位误差 ≤1e-8） |
+| `preds_jkxI5_2025/2026`、`preds_jkxI30_2025/2026`、`m_research/preds_dualalpha_2025`、`_gate` | **H=5**（H5 假设误差 0，H10 假设误差 ≥1e-2） |
+
+（判定依据是「两个假设的误差差 6 个数量级以上」，不是阈值调参；上表分类无歧义。）
 
 **陷阱**：`run_backtest` 的 `load_preds()` 只校验四键与长度，**不校验 `true_ret` 的真实 horizon**。
 把上表下半部分（H=5）喂给它，会产出一份 `provenance.horizon="10"`、`config_hash` 含 10 的
