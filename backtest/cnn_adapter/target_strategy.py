@@ -4,10 +4,21 @@
 （并列按代码升序）；持有仓位 rank > target_size + sell_buffer 则卖出；
 ``exit_on_nonpositive`` 时持仓 exp_ret <= exit_threshold 也卖出（忽略 rank
 buffer，缺预测不卖）；买入带 rank <= target_size 内 exp_ret < 门槛
-（仅当 ``strong_buy_threshold > 0``，0.0 = 关闭）跳过留现金、不补位；
+（仅当 ``strong_buy_threshold > 0``，0.0 = 关闭）跳过；
 ``min_edge > 0`` 时买入带尾部（默认后 30%，``min_edge_tail_ratio`` 可调）内
-exp_ret < ``min_edge`` 同样跳过留现金、不补位（0.0 = 关闭；goal v6 同语义的 cnn 侧等价参数）；
+exp_ret < ``min_edge`` 同样跳过（0.0 = 关闭；goal v6 同语义的 cnn 侧等价参数）；
 买入按预算等权现金单，已持有目标不动。
+
+预算口径（与旧引擎不同，勿混用）：
+- 本策略：``可用现金 / 当日实际成交家数``，另有 ``_MAX_HOLDINGS = 10`` 独立
+  持仓上限；``target_size`` 仅表示买入带名次带宽（默认 100），不是预算分母。
+  因此被门槛跳过的槽位，其份额会分摊给当日实际成交的标的。
+- 旧引擎 ``run_backtest_target``：``nav / target_size`` 每槽固定预算，无持仓
+  上限概念；被跳过的槽位留作现金、不补位。
+- 后果：``strong_buy_threshold``/``min_edge`` 开启时，两者的现金比**不可直接
+  比较**（同等阈值下本策略现金比显著更低）。历史强买门槛结论出自旧引擎。
+- ``strong_buy``/``min_edge`` 属策略层过滤，跳过数记在本策略 counters，
+  不进入 core ``skipped_counts``（后者只含 core 裁决的 limit_up/locked 等原因）。
 
 两档止损（可选，默认关闭）：``stop_half``（如 0.03）触发持仓浮亏
 ``price / cost - 1 <= -stop_half`` 时卖出一半可卖股数；
@@ -299,10 +310,14 @@ class CnnTargetOrderStrategy:
 
     def _buy_orders(self, account: AccountView, buy_band: Sequence[str],
                     exp_map: dict) -> tuple[list[OrderIntent], int, int]:
-        """买入带等权现金单：已持有不动；两道买入门槛（均跳过留现金、不补位）.
+        """买入带等权现金单：已持有不动；两道买入门槛（均跳过）.
 
         全带门槛 ``strong_buy_threshold``（>0 开启）；尾部门槛 ``min_edge``（>0 开启，
         仅作用于买入带后 ``min_edge_tail_ratio`` 部分，按带内名次划分）。
+
+        预算按当日实际成交家数等分（``可用现金 / len(candidates)``）：被门槛跳过
+        或已持有的槽位不保留份额，其现金会流向实际成交者。这与旧引擎每槽固定
+        ``nav / target_size``、跳过留现金的口径不同，详见模块 docstring。
         """
         candidates: list[str] = []
         skipped_strong_buy = 0

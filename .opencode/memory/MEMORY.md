@@ -48,9 +48,11 @@
 - 修 3 处断链：`per_code_normalization_spec.md:134` 的任务目录指向 → `agent_task_conclusions.md`；`checkpoint_compat_delivery` 的已删文件哈希表；`docs/README.md` 的 `review_20261030/q1`（早已删除）。
 - 原 `RESEARCH_CONSOLIDATION_AUDIT` 4 项结论中 3 项已过时（均已推送 / T18 已 `os.walk` / agent/task 已索引），按实测现状并入 `final_delivery §8`，只保留「T18 覆盖缺口 + `logs_manifest.csv` 未补录」。
 
-### 测试基线必须带 CNN_ALLOW_LEGACY=1
-- 直接跑全量得到 **50 errors** 全是 `LegacyBacktestDisabledError`（`backtest/legacy.py` 默认拒绝旧引擎），**不是代码缺陷**。
-- 加大 `CNN_ALLOW_LEGACY=1` 后才是真基线 **2F/10E/40S**。跑全量核对必须带此环境变量，否则会误判为回归。
+### 测试基线（无需任何环境变量）
+- 全量 `python -m unittest discover -s tests -t . -q` 直接跑即真基线：**1013 tests，2 failures / 10 errors / 40 skipped**，**不需要 `CNN_ALLOW_LEGACY=1`**。
+- 2 failures 与 10 errors 均与 legacy 引擎无关（详见「测试现状」）：pin 不符（故意保留）+ plotly 缺失 + Windows 文件锁 + `train.py` KeyError + `RelativeScaler.identity_hash` + trainer + retail/config 滞后。
+- 守卫契约自证有独立测试：`test_engine_legacy_guard.py`（5 项）断言「未置 `CNN_ALLOW_LEGACY` 时 legacy 入口必须 raise」，默认跑全量即覆盖。
+- `tests/unit/backtest/test_engine.py` 已退役为纯索引文件（无测试），覆盖迁至 `test_metrics_and_benchmark.py` / `test_cnn_adapter_rolling_semantics.py` / `test_cnn_adapter_target_semantics.py` / `test_cnn_adapter_regression.py`。
 
 ### P0 冷备份已完成（2026-10-31 00:01）
 - 位置 **`G:\backups\cnn_full_20261030\`**（C 盘 → G 盘异卷），含 `README.md` 恢复说明。
@@ -82,8 +84,8 @@
 - 三个公证签名 `TRUSTED_PREFIX_{ATTESTATOR,ATTESTATION,PROOF}_SHA256` 从头到尾为 `None`。
 - 决定：**不重签**（条件永远不成立），改为标注 `UNREPRODUCIBLE`；`test_prefix_attestor` 保持红作为唯一自动告警，禁止修绿。
 
-### 测试现状（2026-10-30 实测）
-- 全量 1002 tests：2 failures / 10 errors / 40 skipped。2 failures 为 `test_prefix_attestor`/`test_prefix_ledger_verifier` 的 pin 不符（**故意保留**）。
+### 测试现状（2026-10-31 实测）
+- 全量 1013 tests：2 failures / 10 errors / 40 skipped，无需环境变量。2 failures 为 `test_prefix_attestor`/`test_prefix_ledger_verifier` 的 pin 不符（**故意保留**）。
 - `test_fractional_scenarios`：29 tests OK (skipped=7) — skip 因依赖模块接口不符。
 - `test_validation_2025_bridge`(17) / `test_validation_2025_execution`(4)：真全绿。
 - 其余 errors 归因：测试滞后/可选依赖/Windows 文件锁，无引擎或数据契约失败。

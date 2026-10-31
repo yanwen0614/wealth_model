@@ -28,6 +28,8 @@ uv run --project . python train.py --feature_cols open high low close ma_5 --fea
 uv run --project . python -m unittest tests.unit.data.test_feature_cache tests.unit.data.test_dataset_cache tests.unit.config.test_config_defaults
 # 最小门（T16，CI 同款选择；本地无 pytest 时用 unittest 同路径替代，需 --num_workers 0 + CPU）
 uv run --project . python -m unittest tests.unit.test_ci_gate tests.unit.data.test_identity tests.unit.data.test_transform_kernel tests.unit.training.test_training_preprocessing tests.unit.data.test_dataset_cache
+# 全量单测（无需任何环境变量；当前 1013 项 = 2F/10E/40S，均为已知非引擎缺陷，见「Gotchas」）
+uv run --project . python -m unittest discover -s tests -t . -q
 
 # 全量/分段
 uv run --project . python train.py --epochs 50 --batch_size 256 --num_workers 4
@@ -71,6 +73,8 @@ uv run ruff check .   # 零告警；规则见 pyproject.toml [tool.ruff.lint] se
 
 - `data/dataset.py:82` `bins` 用 `field(default_factory=...)` — 直接写 `list` 会在 3.12 报 mutable default。
 - `logs/`、`*.parquet`、`*.pth` 不入库，`history` 在 `.opencode/memory/`（被 `.gitignore:15` 忽略）。
+- 全量单测无需任何环境变量即达真基线 2F/10E/40S：2F 为 `test_prefix_attestor`/`test_prefix_ledger_verifier` 的 pin 不符（**故意保留，禁止修绿**），10E 归因 plotly 缺失 / Windows 文件锁 / `train.py` KeyError 'CNNTransformerConfig' / `RelativeScaler.identity_hash` / trainer / retail-config 滞后。legacy 守卫（`backtest.legacy.guard_legacy_disabled`）由 `test_engine_legacy_guard.py` 独立断言，跑全量即覆盖。
+- 回测测试分层：`test_engine.py` 已退役为索引文件（无测试）；实际覆盖在 `test_metrics_and_benchmark.py`（费率算术/指标 parity/指数基准）、`test_cnn_adapter_rolling_semantics.py`（rolling top_n 等权）、`test_cnn_adapter_target_semantics.py`（target 滞后带/门槛/现金比）、`test_cnn_adapter_regression.py`（新引擎单侧基线）。
 - 详规见 `docs/per_code_normalization_spec.md`（P/R/N/G 分组与 `ColumnRule` 决策表，正文含历史 G1~G9 说明）与项目记忆 `.opencode/memory/MEMORY.md`。
 - 预测目标与树模型收口（2026-10）见 `docs/prediction_target_and_tree_2026.md`：信号是 α（截面相对）、截面目标只提 IC 不提 top-N 绝对收益、早停应用 RankIC、择时样本外无效、树模型排序领先主模型但不直接转产。
 
