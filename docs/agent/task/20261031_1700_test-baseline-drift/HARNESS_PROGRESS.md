@@ -32,8 +32,8 @@
 | T1 | featurenum 断言 53→80 + schema 派生式交叉断言 | done | — | `test_featurenum_placeholder_matches_new_schema` GREEN；`config/defaults.py` 零改动 |
 | T2 | cs_rank/mkt_factors 断言 False→True + 显式关闭对照 | done | — | `test_parquet_helper_passthrough` GREEN；同文件 error 数仍为 2；`train.py` 零改动 |
 
-**Gate 结果**（主编排器填写）：_预留_
-**修复轮次**（主编排器填写）：_预留_ — fix: 0 / logic 回调: 0
+**Gate 结果**：PASS（8 关卡全过）
+**修复轮次**：fix: 0 / logic 回调: 0
 
 ---
 
@@ -46,8 +46,8 @@
 |---|---|---|---|---|
 | T3 | `PREDICTED_HORIZON` 5→10、`LABEL_FORMULA` 派生式、（I1/I2）测试锁 5→10 + 新增 B4/B5 | done | — | 常量 10；provenance `horizon="10"`/`label_formula` 精确匹配；`config_hash` payload 捕获 10 且长度 40；`runner.py` 除 import 外零改动 |
 
-**Gate 结果**（主编排器填写）：_预留_
-**修复轮次**（主编排器填写）：_预留_ — fix: 0 / logic 回调: 0
+**Gate 结果**：PASS（8 关卡全过）
+**修复轮次**：fix: 0 / logic 回调: 0
 
 ---
 
@@ -60,8 +60,8 @@
 |---|---|---|---|---|
 | T4 | `--horizon default=None` + 一致性校验（I3）、`run_eval_full.sh:76` 同步、新增 B1-B4 用例 | done | T3 | 不传→None；10→通过且不进 kwargs；5→`SystemExit(2)` + stderr 含 `--horizon`/`10` |
 
-**Gate 结果**（主编排器填写）：_预留_
-**修复轮次**（主编排器填写）：_预留_ — fix: 0 / logic 回调: 0
+**Gate 结果**：PASS（8 关卡全过）
+**修复轮次**：fix: 0 / logic 回调: 0
 
 ---
 
@@ -79,7 +79,8 @@ error 集合必须与 Phase 0 逐项一致（见「Phase 0 基线」表）。
 
 | 阶段 | 状态 | 说明 |
 |---|---|---|
-| Phase 2.4 squash | pending | — |
-| Phase 2.5 整体质量门禁（batch_id="ALL"） | pending | _预留_ |
-| Phase 3 REPORT.md | pending | 须留痕 PLAN.md §KD9 / REVIEW_CHECKLIST §9 的「已知陈旧文档/待决不一致」 |
+| Phase 2.4 squash | done | 3 批次合为 `5401f92`（文档另提 `7ad5fb3`、归档 `0dfb353`） |
+| Phase 2.5 整体质量门禁（batch_id="ALL"） | FAIL→已修 | 代码/测试/P&L 全过；文档 4 处事实错误（HIGH 1 + MEDIUM 3）已修 |
+| Phase 3 REPORT.md | done | 见同目录 REPORT.md |
 | Phase 4 归档 | pending | 目录名追加 `_archive` |
+

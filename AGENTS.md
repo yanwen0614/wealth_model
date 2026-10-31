@@ -73,7 +73,7 @@ uv run ruff check .   # 零告警；规则见 pyproject.toml [tool.ruff.lint] se
 
 - `data/dataset.py:82` `bins` 用 `field(default_factory=...)` — 直接写 `list` 会在 3.12 报 mutable default。
 - `logs/`、`*.parquet`、`*.pth` 不入库，`history` 在 `.opencode/memory/`（被 `.gitignore:15` 忽略）。
-- 全量单测真基线 0F/10E/40S，**需 Temp 下 4 个证据目录就位**（缺则退化 3F/30E，全是 `FileNotFoundError`），见 `docs/agent/handoff-cnn-experiment-20261031.md` §5.1。10E 中 2 个为 `test_prefix_attestor`/`test_prefix_ledger_verifier` 的 pin 不符（**故意保留，禁止修绿**），其余归因 plotly 缺失 / Windows 文件锁 / `train.py` KeyError 'CNNTransformerConfig' / `RelativeScaler.identity_hash` / trainer / retail-config 滞后。legacy 守卫（`backtest.legacy.guard_legacy_disabled`）由 `test_engine_legacy_guard.py` 独立断言，跑全量即覆盖。
+- 全量单测真基线 0F/10E/40S，**需 Temp 下 4 个证据目录就位**（缺则退化 1F/30E/40S，非引擎缺陷），见 `docs/agent/handoff-cnn-experiment-20261031.md` §5.1。10E 中 2 个为 `test_prefix_attestor`/`test_prefix_ledger_verifier` 的 pin 不符（**故意保留，禁止修绿**），其余归因 plotly 缺失 / Windows 文件锁 / `train.py` KeyError 'CNNTransformerConfig' / `RelativeScaler.identity_hash` / trainer / retail-config 滞后。legacy 守卫（`backtest.legacy.guard_legacy_disabled`）由 `test_engine_legacy_guard.py` 独立断言，跑全量即覆盖。
 - 回测测试分层：`test_engine.py` 已退役为索引文件（无测试）；实际覆盖在 `test_metrics_and_benchmark.py`（费率算术/指标 parity/指数基准）、`test_cnn_adapter_rolling_semantics.py`（rolling top_n 等权）、`test_cnn_adapter_target_semantics.py`（target 滞后带/门槛/现金比）、`test_cnn_adapter_regression.py`（新引擎单侧基线）。
 - 详规见 `docs/per_code_normalization_spec.md`（P/R/N/G 分组与 `ColumnRule` 决策表，正文含历史 G1~G9 说明）与项目记忆 `.opencode/memory/MEMORY.md`。
 - 预测目标与树模型收口（2026-10）见 `docs/prediction_target_and_tree_2026.md`：信号是 α（截面相对）、截面目标只提 IC 不提 top-N 绝对收益、早停应用 RankIC、择时样本外无效、树模型排序领先主模型但不直接转产。

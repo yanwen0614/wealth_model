@@ -131,6 +131,24 @@ ValueError: self-check 失败：因子整列NaN（非白名单） pe
   只能用于调试链路，**不得用于验收判定**。
 - 若确实需要新信号，只能重新训练 + 导出 npz（见 §4.3 链路说明），不能从现有 npz 拼接。
 
+#### npz 真实 horizon（必须核对，`run_backtest` 不校验）
+
+用 parquet 真实 OHLC 反推 `true_ret`（对照 `open[t+1+h]/open[t+1]-1`，h=5 与 h=10），
+11 个 npz 实测结果：
+
+| npz | 真实 horizon |
+|---|---|
+| `preds_fullA_2025/2026`、`preds_fullB_2025/2026`、`m_research/preds_B2025_xgbgate` | **H=10**（误差 ~1e-10） |
+| `preds_jkxI5_2025/2026`、`preds_jkxI30_2025/2026`、`m_research/preds_dualalpha_2025`、`_gate` | **H=5**（误差 0，H10 假设误差 ~1e-2） |
+
+**陷阱**：`run_backtest` 的 `load_preds()` 只校验四键与长度，**不校验 `true_ret` 的真实 horizon**。
+把上表下半部分（H=5）喂给它，会产出一份 `provenance.horizon="10"`、`config_hash` 含 10 的
+metrics.json，但底层标签是 H=5 —— 看上去合规、实际口径错。
+本轮只用 `preds_fullA_2025.npz`（已确认 H=10）。
+
+**重新生成 npz 时必须显式 `--horizon 10`**：`scripts/eval_bins_mapping.py` 的 `--horizon`
+默认仍是 5，不传就会产出 H=5 缓存（同 `scripts/eval_three_way.py`、`scripts/run_eval_pipeline.py`）。
+
 ### 4.2 核心判据（这是本轮的定义）
 
 一个参数「有效」**不算数**，必须满足：
@@ -200,12 +218,15 @@ rolling `topn=10` → 年化 **-44.51%**、超额 **-42.65%**；同期基准 `00
 3. **看平台**：有效参数应落在一片「高原」上，不是孤立尖峰
 4. **记录口径**：费用、滑点、基准、持仓上限（≤10）全程冻结，中途不得改
 
-**跑之前必须先知道的两条**：
+**跑之前必须先知道的四条**：
 
 - `run_backtest.py` **默认指数目录不存在**，必须显式 `--index_dir Z:/prd/kline_index/day`
-- 回测 provenance 里的 `horizon` 恒为 5，与实际 H=10 标签口径不符
+- `--horizon` 只能是 10（不传或传 10 等价，其它值直接报错退出）
+- **`run_backtest` 不校验 `--preds` 的真实 horizon**：它只看 `exp_ret/true_ret/dates/codes` 四键，
+  不会发现 `true_ret` 是 H=5 还是 H=10。用错缓存会产出一份「标称 H=10、实际 H=5」的 metrics
+- 历史 `config_hash` 与改动前不可比（`horizon` 入参变过），跨版本对比用 `data_fingerprint`
 
-两条都会静默影响结论，细节与实测证据见 §5.6。
+细节与实测证据见 §5.6。第 3 条的具体清单见 §4.1 下方「npz 真实 horizon」表。
 
 ### 4.6 必须遵守
 
@@ -218,7 +239,7 @@ rolling `topn=10` → 年化 **-44.51%**、超额 **-42.65%**；同期基准 `00
 
 ## 5. 必须知道的坑（都实测过）
 
-### 5.1 全量测试：有 Temp 目录前置，基线 2F/10E/40S
+### 5.1 全量测试：有 Temp 目录前置，基线 0F/10E/40S（1021 项）
 
 ```powershell
 uv run --project . python -m unittest discover -s tests -t . -q
@@ -227,7 +248,7 @@ uv run --project . python -m unittest discover -s tests -t . -q
 **真基线（Temp 证据已就位）= 1021 项 → 0 failures / 10 errors / 40 skipped**。
 `LegacyBacktestDisabledError` 出现 **0 次**（回测已迁到 `backtest/cnn_adapter/`）。
 
-**前置：4 个 Temp 目录必须存在**，否则会退化成 3F/30E/40S。它们不在仓库内：
+**前置：4 个 Temp 目录必须存在**，否则会退化成 1F/30E/40S。它们不在仓库内：
 
 | 目录（父路径 `C:\Users\yanwen\AppData\Local\Temp\opencode\`） | 用它的测试 | 缺失后果 |
 |---|---|---|
@@ -257,7 +278,8 @@ New-Item -ItemType Directory -Force -Path "$dst\validation_2025_restricted_deliv
 （`validation_2025_ab_v1_unique` 的第 14 组 14 个与 `w1_real_prefix_exploration_20261029_v2` 的 149 个同样不在）。
 即：复制后能恢复出真基线，但 snapshot 那 49 个文件是**无哈希校验**的。
 
-不恢复时的额外 error/failure 全是 `FileNotFoundError`，不是引擎缺陷。
+不恢复时的退化基线实测为 **1F/30E/40S**（附加 20 个 `FileNotFoundError` + 1 个
+`AssertionError`，来自 `test_historical_costs` 的「证据目录不存在」断言），不是引擎缺陷。
 
 **真基线明细（Temp 就位时）**：
 
