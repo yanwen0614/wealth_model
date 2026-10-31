@@ -357,7 +357,7 @@ budget = (nav_pre / target_size) * capital   # 未约束可用现金
 # ── 生产代码验证 ──
 uv run --project . python -m py_compile data/dataset.py train.py backtest/engine.py
 uv run --project . python -m unittest tests.unit.data.test_data_cs_rank tests.unit.data.test_data_excess_labels -v
-uv run --project . python -m unittest tests.unit.backtest.test_engine tests.unit.scripts.test_run_backtest_cli -v  # 64 OK
+uv run --project . python -m unittest tests.unit.backtest.test_metrics_and_benchmark tests.unit.backtest.test_cnn_adapter_rolling_semantics tests.unit.backtest.test_cnn_adapter_target_semantics tests.unit.scripts.test_run_backtest_cli -v
 uv run --project . python train.py --cs_rank --smoke --num_workers 0
 
 # ── 研究报告 ──
