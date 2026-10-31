@@ -22,6 +22,9 @@
 - 仍不算达标：只有 115 个样本外交易日、信号源头 checkpoint 已丢失无法重生成、
   收益集中在少数月份（2025-08 单月贡献绝对收益大头）
 
+**下一轮最高优先级**：给 `run_backtest.load_preds()` 加 horizon 自证。11 个 npz 里 6 个是 H=5，
+而它不校验 —— 喂错会静默产出口径错误的 metrics（见 §5.7）。
+
 ---
 
 ## 1. 三个仓
@@ -159,6 +162,8 @@ metrics.json，但底层标签是 H=5 —— 看上去合规、实际口径错�
 
 **重新生成 npz 时必须显式 `--horizon 10`**：`scripts/eval_bins_mapping.py` 的 `--horizon`
 默认仍是 5，不传就会产出 H=5 缓存（同 `scripts/eval_three_way.py`、`scripts/run_eval_pipeline.py`）。
+
+**根治方案见 §5.7**（给 `load_preds` 加 horizon 自证，是下一轮最高优先级项）。
 
 ### 4.2 核心判据（这是本轮的定义）
 
@@ -415,6 +420,30 @@ uv run --project . python -m scripts.run_backtest `
 - 已实测：rolling top10 在 `preds_fullA_2026.npz` 上改动前后 P&L 逐项相同
   （annual -0.4451 / sharpe -2.513 / mdd 0.4136 / final_nav 695813.51 / 超额 -0.4265），只有 `config_hash` 变
 
+### 5.7 下一轮优先做：给 `load_preds` 加 horizon 自证
+
+**这是本轮遗留的最高优先级项**，因为它会静默污染任何后续实验，且不会被任何现有测试拦住。
+
+问题：`scripts/run_backtest.py` 的 `load_preds()` 只校验 `exp_ret/true_ret/dates/codes` 四键与长度，
+**不校验 `true_ret` 的真实 horizon**。11 个 npz 里 6 个是 H=5（见 §4.1 表），
+喂进去会产出一份 `provenance.horizon="10"`、`config_hash` 含 10 的 metrics.json，但底层标签是 H=5。
+
+为什么是本次改动让它变危险：`PREDICTED_HORIZON` 从 5 改成 10 之前，常量与 H=5 缓存至少自洽；
+改成 10 之后，H=5 缓存被贴上 H=10 标签 —— **从「不精确」变成「主动错标」**。
+
+建议实现（二选一，前者强、后者弱）：
+
+1. **自证**：`load_preds()` 读 parquet 复算 2–3 个样本的 `open[t+1+h]/open[t+1]-1`，
+   与缓存的 `true_ret` 对齐；h 取 `PREDICTED_HORIZON` 时误差应 ≤1e-8，
+   否则 `parser.error` 提示「缓存真实 horizon 与谱系常量不符」
+2. **告警**：消费 H≠10 缓存时打 warning（弱，但零风险）
+
+注意：`preds_fullA_2025.npz` 的源头 checkpoint 已丢失（§4.1），
+**不要试图通过「重新生成一份正确的」来绕过这个问题** —— 只能是加校验。
+
+完整风险清单（含 R2 生成脚本默认 5、R3 双字面量）见
+`docs/agent/task/20261031_1700_test-baseline-drift_archive/REPORT.md` 的「遗留风险」章。
+
 ---
 
 ## 6. 红线
@@ -428,6 +457,8 @@ uv run --project . python -m scripts.run_backtest `
 5. 不加回方向择时门（已有三类独立负向证据）
 6. 不猜丢失文件内容、不把「无法评价」写成「可评价」
 7. **不把单点最优当结论**（这是本轮的核心判据，见 §4.2）
+8. **不拿 H=5 缓存当 H=10 用**：喂 `--preds` 前先核对真实 horizon（§4.1 表）；`load_preds` 不会替你拦
+9. 不在样本内窗口（2025-01~06）上报告「有效」；邻域实验必须切到 `TRAIN_END=2025-06-30` 之后
 
 ---
 
@@ -448,6 +479,7 @@ uv run --project . python -m scripts.run_backtest `
 | 参数邻域扫描 | `scripts/research/neighborhood_validation.py` |
 | 邻域稳定性诊断 | `scripts/research/neighborhood_stability.py` |
 | 邻域验证报告（2025 实测） | `docs/research/neighborhood_validation_20261031.md` |
+| 本轮改动与遗留风险清单 | `docs/agent/task/20261031_1700_test-baseline-drift_archive/REPORT.md` |
 | 滚动信号 | `scripts/generate_walkforward_signals.py` |
 | 分批回测 | `backtest/cnn_adapter/staged_candidate_runner.py` |
 | 数据导出 | `D:\code\quant\scripts\export_training_data.py` |
