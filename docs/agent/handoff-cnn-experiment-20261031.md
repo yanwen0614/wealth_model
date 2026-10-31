@@ -31,11 +31,14 @@
 
 | 仓 | 路径 | HEAD | 作用 |
 |---|---|---|---|
-| cnn | `D:\code\cnn_full_20260905\cnn` | `7b65f93` | 模型训练 + 回测适配层 |
+| cnn | `D:\code\cnn_full_20260905\cnn` | 见下注 | 模型训练 + 回测适配层 |
 | backtest-core | `D:\code\cnn_full_20260905\backtest-core` | `1f0c83f` | 回测引擎（三仓共享） |
 | quant | `D:\code\quant` | `e4b4814` | 数据仓储与导出 |
 
-cnn 已推送至 `7b65f93`，core / quant 均已推送。未跟踪项：cnn 有 `.bluecode/`，quant 有 `docs/research/`（均非代码）。
+cnn 的 HEAD 随文档提交本身变化，故不在文中写死：用 `git -C <cnn> log -1 --format=%h` 取当前值，
+并 `git status -sb` 确认 `main...origin/main` 无 ahead（无 ahead 即已推送）。
+core / quant 的 HEAD 稳定，可直接用上表值。
+未跟踪项：cnn 有 `.bluecode/`，quant 有 `docs/research/`（均非代码）。
 `wheels/backtest_core-0.1.1-py3-none-any.whl` 与 core `dist/` 是**同一份构建**
 （sha256 `bbb061c2…`）。`stop_after_close` 已从 core 接到 cnn 的 `run_staged_window()` 与
 CLI `--stop-after-close`（`backtest/cnn_adapter/staged_candidate_runner.py`）。
