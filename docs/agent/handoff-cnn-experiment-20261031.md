@@ -194,13 +194,24 @@ metrics.json，但底层标签是 H=5 —— 看上去合规、实际口径错�
 所以：**要跑回测，只能用现成 npz；或走「`multi_seed_train` + `eval_bins_mapping` 重新生成 npz」**。
 `generate_walkforward_signals.py` 的产物不能直接喂给 `run_backtest.py`。
 
-### 4.4 缺口：没有参数扫描入口 + 直调契约
+### 4.4 参数扫描入口 + 直调契约
 
-**已核实：仓库里没有回测参数扫描脚本**。`scripts/` 顶层 17 个 py 文件里，
-`analyze_preds.py` 只有阈值/分位网格（预测分析，不跑回测），
-`itertools.product` 仅出现在 `scripts/frozen/` 两个冻结归档里（生产禁 import）。
-要做邻域验证，需要自己写循环——建议外层脚本调 `run_backtest.py`，或直接调
-`run_cnn_backtest()`。
+**已有固化入口** `scripts/research/`（2026-10-31 落地，本轮实验即用它）：
+
+| 脚本 | 作用 |
+|---|---|
+| `neighborhood_validation.py` | 扫 `target_size` / `topn` 双维度，双窗口（样本外 2025H2 + 全年），按 §4.2 三判据自动汇总 |
+| `neighborhood_stability.py` | 月度/季度分解、剔除最强月、参数排名翻转检验 |
+
+```powershell
+uv run --project . python -m scripts.research.neighborhood_validation `
+  --preds logs/preds_fullA_2025.npz --out logs/neighborhood_2025.json
+uv run --project . python -m scripts.research.neighborhood_stability `
+  --preds logs/preds_fullA_2025.npz
+```
+
+要扫其它维度（`sell_buffer` / `exit_threshold` / `strong_buy_threshold` / `min_edge` /
+`stop_half|stop_full`），在 `neighborhood_validation.py` 的 `sweep()` 里加循环，或直接调下面的契约。
 
 **直调契约**（`backtest/cnn_adapter/runner.py:117`）：
 
@@ -224,10 +235,13 @@ rolling `topn=10` → 年化 **-44.51%**、超额 **-42.65%**；同期基准 `00
 
 ### 4.5 执行顺序
 
-1. **定基线**：选一个已知最优参数点（如 `target_size=100, sell_buffer=500`），跑滚动回测
-2. **扫邻域**：对该参数的每个维度取 ±2 档（如 `target_size ∈ {50,80,100,120,150}`）
+1. **切样本内外**：按 `config/defaults.py` 的 `TRAIN_END=2025-06-30` 切；在全年上直接跑会混入样本内信息
+2. **扫邻域**：用 `scripts/research/neighborhood_validation.py`（已含 `target_size` / `topn` 双维度）
 3. **看平台**：有效参数应落在一片「高原」上，不是孤立尖峰
-4. **记录口径**：费用、滑点、基准、持仓上限（≤10）全程冻结，中途不得改
+4. **查稳定性**：跑 `neighborhood_stability.py`。**只看「全正超额」不够** ——
+   必须同时看参数排名在不同窗口是否一致。排名翻转（如本轮 `100` 在 OOS 第 1、全年第 5）
+   说明档位差异是噪声
+5. **记录口径**：费用、滑点、基准、持仓上限（≤10）全程冻结，中途不得改
 
 **跑之前必须先知道的四条**：
 
@@ -431,6 +445,9 @@ uv run --project . python -m scripts.run_backtest `
 | 历史任务结论汇编 | `docs/agent/task/agent_task_conclusions.md` |
 | 训练入口 | `train.py` |
 | 回测入口 | `scripts/run_backtest.py` |
+| 参数邻域扫描 | `scripts/research/neighborhood_validation.py` |
+| 邻域稳定性诊断 | `scripts/research/neighborhood_stability.py` |
+| 邻域验证报告（2025 实测） | `docs/research/neighborhood_validation_20261031.md` |
 | 滚动信号 | `scripts/generate_walkforward_signals.py` |
 | 分批回测 | `backtest/cnn_adapter/staged_candidate_runner.py` |
 | 数据导出 | `D:\code\quant\scripts\export_training_data.py` |
